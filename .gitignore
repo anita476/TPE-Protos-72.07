@@ -55,4 +55,5 @@ dkms.conf
 # Project specific 
 script/container.sh
 script/image.sh
+src/foo.png
 
