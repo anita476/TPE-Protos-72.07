@@ -50,3 +50,9 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+
+# Project specific 
+script/container.sh
+script/image.sh
+
