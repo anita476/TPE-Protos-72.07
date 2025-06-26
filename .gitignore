@@ -56,4 +56,8 @@ dkms.conf
 script/container.sh
 script/image.sh
 src/foo.png
+.bash_history
 
+#Project binary or object folders
+/bin
+/obj
