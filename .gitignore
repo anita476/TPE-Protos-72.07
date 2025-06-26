@@ -57,6 +57,7 @@ script/container.sh
 script/image.sh
 src/foo.png
 .bash_history
+.lesshst
 
 #Project binary or object folders
 /bin
