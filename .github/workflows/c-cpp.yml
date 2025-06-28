@@ -16,7 +16,9 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libcheck-dev libsubunit-dev
+        sudo apt-get install -y build-essential
+        sudo apt-get install -y check
+        sudo apt-get install -y subunit
     
     - name: Build server and client
       run: make all
@@ -24,7 +26,7 @@ jobs:
     - name: Run tests
       run: make test
     
-    - name: Run each test
+    - name: Run individual tests
       run: |
         cd bin
         for test in *_test; do
@@ -33,4 +35,4 @@ jobs:
         done
     
     - name: Clean build artifacts
-      run: make clean
+      run: make clean 
