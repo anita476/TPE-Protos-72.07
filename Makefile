@@ -1,7 +1,8 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
+CFLAGS = -Wall -Wextra -g
 # added -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L because of "implicit declaration of pselect"
 # https://barnowl.mit.edu/ticket/166
+# -std=c11 -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
 LDFLAGS = -pthread
 
 SRC_DIR = src
@@ -62,8 +63,17 @@ $(OBJ_DIR)/%.o: $(LIBS_DIR)/%.c
 $(OBJ_DIR)/%.o: $(CLIENT_DIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+
 $(BIN_DIR)/%: $(TEST_DIR)/%.c $(LIBS_OBJS)
-	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(LIBS_OBJS) $(LDFLAGS) -o $@
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(LIBS_OBJS) $(LDFLAGS) -lcheck -lm -lsubunit -o $@
+
+#  for buffer_test exclude selector.o since it includes buffer.c directly
+$(BIN_DIR)/buffer_test: $(TEST_DIR)/buffer_test.c $(filter-out obj/buffer.o,$(LIBS_OBJS))
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(filter-out obj/buffer.o,$(LIBS_OBJS)) $(LDFLAGS) -lcheck -lm -lsubunit -o $@
+
+# same for selectoe test
+$(BIN_DIR)/selector_test: $(TEST_DIR)/selector_test.c $(filter-out obj/selector.o,$(LIBS_OBJS))
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(filter-out obj/selector.o,$(LIBS_OBJS)) $(LDFLAGS) -lcheck -lm -lsubunit -o $@
 
 clean:
 	rm -rf $(BIN_DIR) $(OBJ_DIR)

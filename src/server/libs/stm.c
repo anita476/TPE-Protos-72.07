@@ -3,9 +3,13 @@
  *         del selector.c
  */
 #include "../include/stm.h"
+#include "../include/selector.h"
 #include <stdlib.h>
 
 #define N(x) (sizeof(x) / sizeof((x)[0]))
+
+// extern in .h to avoid multiple definition
+struct selector_key *key;
 
 void stm_init(struct state_machine *stm) {
 	// verificamos que los estados son correlativos, y que están bien asignados.
