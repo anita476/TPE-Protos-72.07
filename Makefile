@@ -1,0 +1,71 @@
+CC = gcc
+CFLAGS = -Wall -Wextra -std=c11 -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
+# added -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L because of "implicit declaration of pselect"
+# https://barnowl.mit.edu/ticket/166
+LDFLAGS = -pthread
+
+SRC_DIR = src
+SERVER_DIR = $(SRC_DIR)/server
+CLIENT_DIR = $(SRC_DIR)/client
+LIBS_DIR = $(SERVER_DIR)/libs
+TEST_DIR = $(SERVER_DIR)/test
+INCLUDE_DIR = $(SERVER_DIR)/include
+OBJ_DIR = obj
+BIN_DIR = bin
+
+# server src files
+SERVER_SRCS = $(SERVER_DIR)/main.c $(SERVER_DIR)/socks5.c
+SERVER_OBJS = $(SERVER_SRCS:$(SERVER_DIR)/%.c=$(OBJ_DIR)/%.o)
+
+# libraries source files
+LIBS_SRCS = $(wildcard $(LIBS_DIR)/*.c)
+LIBS_OBJS = $(LIBS_SRCS:$(LIBS_DIR)/%.c=$(OBJ_DIR)/%.o)
+
+# client source files
+CLIENT_SRCS = $(CLIENT_DIR)/main.c
+CLIENT_OBJS = $(CLIENT_SRCS:$(CLIENT_DIR)/%.c=$(OBJ_DIR)/%.o)
+
+# tests
+TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
+TEST_BINS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(BIN_DIR)/%)
+
+
+all: server client
+
+
+$(OBJ_DIR):
+	mkdir -p $(OBJ_DIR)
+
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
+
+#  compiles libs to .o files, then compiles socks5 and main
+server: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(SERVER_OBJS)
+	$(CC) $(SERVER_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/server
+
+
+client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS)
+	$(CC) $(CLIENT_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
+
+# compile all libs and tests (each test is its own binary)
+test: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(TEST_BINS)
+
+# compile SERVER object files
+$(OBJ_DIR)/%.o: $(SERVER_DIR)/%.c
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+
+# compile LIBRARY object files
+$(OBJ_DIR)/%.o: $(LIBS_DIR)/%.c
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+
+
+$(OBJ_DIR)/%.o: $(CLIENT_DIR)/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BIN_DIR)/%: $(TEST_DIR)/%.c $(LIBS_OBJS)
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(LIBS_OBJS) $(LDFLAGS) -o $@
+
+clean:
+	rm -rf $(BIN_DIR) $(OBJ_DIR)
+
+.PHONY: all server client test clean
