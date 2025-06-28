@@ -1,0 +1,36 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libcheck-dev libsubunit-dev
+    
+    - name: Build server and client
+      run: make all
+    
+    - name: Run tests
+      run: make test
+    
+    - name: Run each test
+      run: |
+        cd bin
+        for test in *_test; do
+          echo "Running $test..."
+          ./$test
+        done
+    
+    - name: Clean build artifacts
+      run: make clean
