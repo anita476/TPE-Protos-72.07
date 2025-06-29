@@ -13,7 +13,7 @@ static unsigned short port(const char *s) {
 
 	if (end == s || '\0' != *end || ((LONG_MIN == sl || LONG_MAX == sl) && ERANGE == errno) || sl < 0 ||
 		sl > USHRT_MAX) {
-		fprintf(stderr, "port should in in the range of 1-65536: %s\n", s);
+		fprintf(stderr, "Port should in in the range of 1-65536: %s\n", s);
 		exit(1);
 		return 1;
 	}
@@ -23,7 +23,7 @@ static unsigned short port(const char *s) {
 static void user(char *s, struct users *user) {
 	char *p = strchr(s, ':');
 	if (p == NULL) {
-		fprintf(stderr, "password not found\n");
+		fprintf(stderr, "Password not found\n");
 		exit(1);
 	} else {
 		*p = 0;
@@ -35,8 +35,25 @@ static void user(char *s, struct users *user) {
 
 static void version(void) {
 	fprintf(stderr, "socks5v version 0.0\n"
-					"ITBA Protocolos de Comunicación 2025/1 -- Grupo X\n"
-					"AQUI VA LA LICENCIA\n");
+					"ITBA Protocolos de Comunicación 2025/1 -- Grupo 04\n"
+					"MIT License"
+					"Copyright (c) 2025 Ana Negre"
+					"Permission is hereby granted, free of charge, to any person obtaining a copy"
+					"of this software and associated documentation files (the 'Software'), to deal"
+					"in the Software without restriction, including without limitation the rights"
+					"to use, copy, modify, merge, publish, distribute, sublicense, and/or sell"
+					"copies of the Software, and to permit persons to whom the Software is"
+					"furnished to do so, subject to the following conditions:\n"
+					"The above copyright notice and this permission notice shall be included in all"
+					"copies or substantial portions of the Software.\n"
+
+					"THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR"
+					"IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,"
+					"FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE"
+					"AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER"
+					"LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,"
+					"OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE"
+					"SOFTWARE.\n");
 }
 
 static void usage(const char *progname) {
@@ -99,7 +116,8 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
 				break;
 			case 'u':
 				if (nusers >= MAX_USERS) {
-					fprintf(stderr, "maximun number of command line users reached: %d.\n", MAX_USERS);
+					fprintf(stderr, "Maximum number of command line users reached: %d.\n", MAX_USERS);
+
 					exit(1);
 				} else {
 					user(optarg, args->users + nusers);
@@ -110,12 +128,12 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
 				version();
 				exit(0);
 			default:
-				fprintf(stderr, "unknown argument %d.\n", c);
+				fprintf(stderr, "Unknown argument %d.\n", c);
 				exit(1);
 		}
 	}
 	if (optind < argc) {
-		fprintf(stderr, "argument not accepted: ");
+		fprintf(stderr, "Argument not accepted: ");
 		while (optind < argc) {
 			fprintf(stderr, "%s ", argv[optind++]);
 		}
