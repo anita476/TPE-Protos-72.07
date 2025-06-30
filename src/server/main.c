@@ -2,7 +2,6 @@
 #include "../include/logger.h"
 #include "../include/selector.h"
 #include "include/socks5.h"
-#include "include/tcp_server_utils.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
@@ -25,7 +24,7 @@ static void exit_error(const char *error_msg, int errnum);
 /************* PLACEHOLDER FUNCTIONS CHANGE LATEEER */
 static void handle_read(struct selector_key *key) {
 	// Placeholder for read handler
-	log(INFO, "Read event on fd %d", key->fd);
+	// log(INFO, "Read event on fd %d", key->fd);
 }
 static void handle_write(struct selector_key *key) {
 	// placeholder for write
