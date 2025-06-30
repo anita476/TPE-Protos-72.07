@@ -238,17 +238,17 @@ static void request_read(struct selector_key *key) {
 		return;
 	}
 
-	// Actualizo buffer de escritura
+	// Updating buffer
 	buffer_write_adv(rb, bytes_read);
     log(DEBUG, "[REQUEST_READ] Read %zd bytes from client.", bytes_read);
 
-	// Verifico que estén todos los headers fijos
+	// Verifying existence of fixed headers (VER, CMD, RSV, ATYP)
 	if (buffer_readable_bytes(rb) < 4) {
 		log(DEBUG, "[REQUEST_READ] Need 4 bytes for header, have %zu", buffer_readable_bytes(rb));
 		return;
 	}
 
-	// Consumo los primeros headers
+	// Consuming fixed headers
 	uint8_t version = buffer_read(rb);
 	uint8_t cmd = buffer_read(rb);
 	uint8_t rsv = buffer_read(rb);
@@ -257,27 +257,28 @@ static void request_read(struct selector_key *key) {
 	log(DEBUG, "[REQUEST_READ] Header: VER=0x%02x CMD=0x%02x RSV=0x%02x ATYP=0x%02x", 
 		version, cmd, rsv, atyp);
 
-	// Validación de versión
+	// Version validation
 	if (version != SOCKS5_VERSION) {
 		log(ERROR, "[HELLO_READ] Unsupported SOCKS version: 0x%02x. Closing connection.", version);
 		session->current_state = STATE_ERROR;
 		return;
 	}
 
+	// Command validation
 	if (cmd != SOCKS5_CMD_CONNECT) {
 		log(ERROR, "[REQUEST_READ] Unsupported command: 0x%02x (only CONNECT supported)", cmd);
 		session->current_state = STATE_ERROR;
 		return;
 	}
 
-	// Validación del campo reservado
+	// Reserved field validation
 	if (rsv != 0x00) {
 		log(ERROR, "[REQUEST_READ] Invalid RSV: 0x%02x. Closing connection.", rsv);
 		session->current_state = STATE_ERROR;
 		return;
 	}
 
-	// Longitud de la dirección
+	// Address lenght validation
 	size_t addr_len;
 	switch (atyp) {
 		case SOCKS5_ATYP_IPV4:
@@ -301,13 +302,13 @@ static void request_read(struct selector_key *key) {
 			return;
 	}
 
-	// Verificar que estén el puerto y la dirección destino
+	// Verifying the existence of destination address and port
 	if (buffer_readable_bytes(rb) < addr_len + 2) {
 		log(DEBUG, "[REQUEST_READ] Need %zu bytes for address and port, have %zu", addr_len + 2, buffer_readable_bytes(rb));
 		return;
 	}
 
-	// Parseo de dirección
+	// Address parsing
 	char dst_addr[INET6_ADDRSTRLEN + 1] = {0};
 	switch (atyp) {
 		case SOCKS5_ATYP_IPV4: {
@@ -336,12 +337,12 @@ static void request_read(struct selector_key *key) {
 		}
 	}
 
-	// Parseo de puerto
+	// Port parsing
 	uint16_t dst_port = 0;
 	dst_port = (buffer_read(rb) << 8) | buffer_read(rb); // >¡Big Endian!
 	log(DEBUG, "[REQUEST_READ] Parsed address: %s, port: %d", dst_addr, dst_port);
 
-	// Actualizo la sesión
+	// Updating session
 	session->current_request.cmd = cmd;
 	session->current_request.atyp = atyp;
 	if (session->current_request.dstAddress) {
@@ -350,7 +351,17 @@ static void request_read(struct selector_key *key) {
 	session->current_request.dstAddress = strdup(dst_addr);
 	session->current_request.dstPort = dst_port;
 
-	// TODO: Falta la conexión
+	// TODO: Missing connect_to_destination and success logic
+
+	if (connect_to_destination(session) == 0) {
+		// Success
+		printf("Connected...\n");
+		log(DEBUG, "[REQUEST_READ] Connected successfully, sending response");
+	} else {
+		log(ERROR, "[REQUEST_READ] No space to write even after compaction");
+		session->current_state = STATE_ERROR;
+		return;
+	}
 }
 
 
