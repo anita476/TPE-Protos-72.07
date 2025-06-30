@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
 		exit_error(error_msg, errno);
 	}
 	const struct selector_init configuration = {
-		.signal = SIGALRM,
+		.signal = SIGALRM, // TODO: ask what is sigALRM for? 
 		.select_timeout =
 			{
 				.tv_sec = 10,
@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
 		error_msg = "Error initializing selector";
 		exit_error(error_msg, errno);
 	}
-	// maximum number of fds TODO make use of epoll
+	// maximum number of fds TODO make use of epoll <- is it necessary to use epoll?
 	selector = selector_new(1024);
 	if (selector == NULL) {
 		error_msg = "Error creating selector";

@@ -24,11 +24,21 @@ void setLogLevel(LOG_LEVEL newLevel);
 char * levelDescription(LOG_LEVEL level);
 
 // Debe ser una macro para poder obtener nombre y linea de archivo.
+// fprintf (stderr, "%s %s %s: %s:%d, ",__DATE__, __TIME__, levelDescription(level), __FILE__, __LINE__); <- took out date and time
+
 #define log(level, fmt, ...)   {if(level >= current_level) {\
-fprintf (stderr, "%s %s %s: %s:%d, ",__DATE__, __TIME__, levelDescription(level), __FILE__, __LINE__); \
+    const char *color; \
+    switch (level) { \
+        case DEBUG: color = "\033[34m"; break; /* Blue */ \
+        case INFO: color = "\033[32m"; break;  /* Green */ \
+        case ERROR: color = "\033[33m"; break; /* Yellow */ \
+        case FATAL: color = "\033[31m"; break; /* Red */ \
+        default: color = "\033[0m"; break; \
+    } \
+fprintf (stderr, "%s%s: %s:%d, ", color, levelDescription(level), __FILE__, __LINE__); \
 fprintf(stderr, fmt, ##__VA_ARGS__); \
-fprintf(stderr,"\n"); }\
-if ( level==FATAL) exit(1);}
+fprintf(stderr,"\033[0m\n"); /* Reset color */ \
+if ( level==FATAL) exit(1);}}
 
 
 #endif //LOGGER_H

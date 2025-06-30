@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include "selector.h"
 #include "buffer.h"
+#include "logger.h"
 
 /* Since the send, recv etc. are blocking, we can use a state machine to transition between states and ensure no
  * blocking occurs */
@@ -21,6 +22,7 @@ typedef enum {
 	STATE_HELLO_READ,
 	STATE_HELLO_WRITE,
 	STATE_REQUEST_READ,
+	STATE_REQUEST_WRITE,
 	// todo others..
 	STATE_DONE,
 	STATE_ERROR,
