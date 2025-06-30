@@ -22,10 +22,7 @@ static void sigterm_handler(const int signal);
 static void exit_error(const char *error_msg, int errnum);
 
 /************* PLACEHOLDER FUNCTIONS CHANGE LATEEER */
-static void handle_read(struct selector_key *key) {
-	// Placeholder for read handler
-	// log(INFO, "Read event on fd %d", key->fd);
-}
+
 static void handle_write(struct selector_key *key) {
 	// placeholder for write
 	log(INFO, "Write event on fd %d", key->fd);
@@ -111,7 +108,10 @@ void main(int argc, char **argv) {
 	}
 
 	const struct fd_handler socks5Handler = {
-		.handle_read = handle_read, .handle_write = handle_write, .handle_close = handle_close};
+		// TODO complete the handler on close and so on
+		.handle_read = socks5_handle_new_connection, // This is the first handler, it will handle the new connections
+		.handle_write = handle_write,
+		.handle_close = handle_close};
 	selectorStatus = selector_register(selector, socksFd, &socks5Handler, OP_READ, NULL);
 	if (selectorStatus != SELECTOR_SUCCESS) {
 		error_msg = "Error registering SOCKS5 server socket with selector";

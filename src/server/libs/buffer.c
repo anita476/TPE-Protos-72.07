@@ -3,7 +3,6 @@
  *            mantiene puntero de lectura y de escritura.
  */
 #include <assert.h>
-#include <stdint.h>
 #include <string.h>
 
 #include "../include/buffer.h"
