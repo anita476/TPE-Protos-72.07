@@ -30,6 +30,7 @@ typedef enum {
 	STATE_REQUEST_READ,
 	STATE_REQUEST_WRITE,
 	// todo others..
+	STATE_CLIENT_CLOSE,
 	STATE_DONE,
 	STATE_ERROR,
 } socks5_state;

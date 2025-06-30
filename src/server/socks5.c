@@ -15,6 +15,8 @@ static void socks5_handle_read(struct selector_key *key);
 static void socks5_handle_write(struct selector_key *key);
 static void socks5_handle_close(struct selector_key *key);
 
+static void close_client(struct selector_key *key);
+
 // remember that the selector key has the selector , the fd we write to and the data itself
 // this is the FIRST message, it looks like:
 /*
@@ -130,7 +132,6 @@ static void hello_read(struct selector_key *key) {
 	// Obs!!!! change interest to WRITE, selector wakes up WHEN we can write
 	// selector_set_interest(key->s, key->fd, OP_WRITE);
 	selector_set_interest_key(key, OP_WRITE); // change interest to write
-	log(DEBUG, "[HELLO_READ] Switching to STATE_HELLO_WRITE and setting interest to OP_WRITE.");
 }
 
 /*
@@ -146,8 +147,7 @@ sends a METHOD selection message:
 
 If the selected METHOD is X'FF', none of the methods listed by the
 client are acceptable, and the CLIENT MUST close the connection. -> shutdown from server side and wait for client to
-disconnect?
-
+disconnect
 */
 
 static void write_to_client(struct selector_key *key, bool should_shutdown) {
@@ -185,10 +185,17 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 		return; // More data pending
 	}
 
+	// The shutdown is justified because the RFC specifies that the CLIENT must close the connection.
+	// However, gracefully shutting down from the server side is considered good practice and is commonly done by
+	// industry standards such as nginx. By calling shutdown(), we signal we won’t send or receive more data, allowing
+	// for a clean connection teardown.
 	if (should_shutdown) {
 		log(DEBUG, "[WRITE_TO_CLIENT] All data sent. Shutting down socket.");
 		shutdown(key->fd, SHUT_RDWR);
-		selector_unregister_fd(key->s, key->fd);
+		// Keep the socket registered for OP_READ we receive recv() == 0 from client.
+		selector_set_interest(key->s, key->fd, OP_READ);
+		session->current_state = STATE_CLIENT_CLOSE;
+		// OPTION 2: // selector_unregister_fd(key->s, key->fd); // Trigger handle_close immediately
 		return;
 	}
 
@@ -362,15 +369,15 @@ static void request_read(struct selector_key *key) {
 
 	// TODO: Missing connect_to_destination and success logic
 
-	if (connect_to_destination(session) == 0) {
-		// Success
-		printf("Connected...\n");
-		log(DEBUG, "[REQUEST_READ] Connected successfully, sending response");
-	} else {
-		log(ERROR, "[REQUEST_READ] No space to write even after compaction");
-		session->current_state = STATE_ERROR;
-		return;
-	}
+	// if (connect_to_destination(session) == 0) {
+	// 	// Success
+	// 	printf("Connected...\n");
+	// 	log(DEBUG, "[REQUEST_READ] Connected successfully, sending response");
+	// } else {
+	// 	log(ERROR, "[REQUEST_READ] No space to write even after compaction");
+	// 	session->current_state = STATE_ERROR;
+	// 	return;
+	// }
 }
 
 static void handle_error(struct selector_key *key) {
@@ -379,7 +386,9 @@ static void handle_error(struct selector_key *key) {
 // reg the new client socket with the selector
 // OBS: this has to be static to ensure the memory remains valid throughout the whole program
 static const struct fd_handler client_handler = {
-	.handle_read = socks5_handle_read, .handle_write = socks5_handle_write, .handle_close = socks5_handle_close,
+	.handle_read = socks5_handle_read, 
+	.handle_write = socks5_handle_write, 
+	.handle_close = socks5_handle_close,
 	// todo handle the other cases
 };
 
@@ -449,6 +458,9 @@ static void socks5_handle_read(struct selector_key *key) {
 			request_read(key);
 			// todo complete
 			break;
+		case STATE_CLIENT_CLOSE:
+			close_client(key);
+			break;
 		default:
 			// Should not happen
 			break;
@@ -483,4 +495,28 @@ static void socks5_handle_close(struct selector_key *key) {
 	}
 	// IMPORTANT: Do NOT call selector_unregister_fd here!
 	// The selector is already in the process of unregistering when it calls this function
+}
+
+// Basically: never forcing client to close in order to follow RFC standards. 
+// Idk how to implement the timeout 
+// Maybe should just selector_unregister_fd in hello_write_error 
+static void close_client(struct selector_key *key) {
+    client_session *session = (client_session *) key->data;
+
+    char dummy[256];
+    ssize_t bytes_read = recv(key->fd, dummy, sizeof(dummy), 0);
+
+    if (bytes_read == 0) {
+        log(DEBUG, "[CLOSE_CLIENT] Client closed connection gracefully.");
+        selector_unregister_fd(key->s, key->fd); // This will trigger handle_close
+    } else if (bytes_read < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+        } else {
+            log(ERROR, "[CLOSE_CLIENT] recv() error: %s", strerror(errno));
+            selector_unregister_fd(key->s, key->fd);
+        }
+    } else {
+        log(DEBUG, "[CLOSE_CLIENT] Unexpected data from client during close. Ignoring and waiting for proper close.");
+    }
 }
