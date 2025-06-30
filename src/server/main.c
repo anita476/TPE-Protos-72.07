@@ -35,7 +35,7 @@ static void handle_close(struct selector_key *key) {
 }
 
 // TODO expand parse args to include log level and eventually log file
-void main(int argc, char **argv) {
+int main(int argc, char **argv) {
 	/********************************************** SETTING UP THE SERVER  ***********************/
 	struct socks5args args;
 	printf("Starting server...\n");

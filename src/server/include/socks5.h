@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "selector.h"
+#include "buffer.h"
 
 /* Since the send, recv etc. are blocking, we can use a state machine to transition between states and ensure no
  * blocking occurs */

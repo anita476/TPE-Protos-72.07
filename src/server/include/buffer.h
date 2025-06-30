@@ -135,4 +135,7 @@ bool buffer_can_read(buffer *b);
 /** retorna true si se pueden escribir bytes en el buffer */
 bool buffer_can_write(buffer *b);
 
+/** returns number of bytes available to read */
+size_t buffer_readable_bytes(buffer *b);
+
 #endif

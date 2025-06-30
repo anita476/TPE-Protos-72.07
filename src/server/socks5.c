@@ -2,6 +2,13 @@
 #include "include/selector.h"
 #include <stdio.h>
 
+#define SOCKS5_VERSION 0x05
+#define SOCKS5_NO_AUTH 0x00
+#define SOCKS5_CMD_CONNECT 0x01
+#define SOCKS5_ATYP_IPV4 0x01
+#define SOCKS5_ATYP_DOMAIN 0x03
+#define SOCKS5_NO_ACCEPTABLE_METHODS 0xFF
+
 // remember that the selector key has the selector , the fd we write to and the data itself
 // this is the FIRST message, it looks like:
 /*
@@ -14,8 +21,20 @@ static void hello_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 	buffer *rb = &session->read_buffer;
 
+	size_t wbytes;
+	uint8_t *ptr = buffer_write_ptr(rb, &wbytes); // get where to write and how much space is left
+	if (wbytes <= 0) { 
+		buffer_compact(rb); // try to recover space
+		ptr = buffer_write_ptr(rb, &wbytes); // get the new pointer and size
+		if (wbytes <= 0) { // still no space to write
+			fprintf(stderr, "No space to write in the read buffer, closing connection\n");
+			session->current_state = STATE_ERROR; // no space to write, error <-- not sure about this, shouldnt it automatically compact?? 
+			return;
+		}
+	}
+	
 	// Read all available data from the socket into our buffer
-	ssize_t bytes_read = recv(key->fd, buffer_write_ptr(rb), buffer_can_write(rb), 0);
+	ssize_t bytes_read = recv(key->fd, ptr, wbytes, 0);
 	if (bytes_read <= 0) {
 		session->current_state = STATE_ERROR;
 		return;
@@ -23,45 +42,50 @@ static void hello_read(struct selector_key *key) {
 	buffer_write_adv(rb, bytes_read);
 
 	//  we received the initial 2 bytes ?
-	if (buffer_can_read(rb) < 2) {
+	if (buffer_readable_bytes(rb) < 2) {
 		return; // not enough data yet, wait for the next read event
 	}
 
 	uint8_t version;
 	uint8_t nmethods;
 
-	// todo maybe we can safely consume ? check out no peek later
+	// TODO maybe we can safely consume ? check out no peek later --> yes since we already checked with buffer_can_read
+	// i dont see buffer_peek in buffer.h... so will be commenting this
+	// version = buffer_peek(rb, 0);
+	// nmethods = buffer_peek(rb, 1);
 
-	version = buffer_peek(rb, 0);
-	nmethods = buffer_peek(rb, 1);
+	version = buffer_read(rb); // consume the byte
+	nmethods = buffer_read(rb); // consume the byte
 
-	if (version != 0x05) {
+	if (version != SOCKS5_VERSION) {
 		session->current_state = STATE_ERROR;
 		return;
 	}
-	if (buffer_can_read(rb) < (size_t) (2 + nmethods)) {
+
+	// SOCKS5 + nmethods + methods <- im not quite getting this
+	if (buffer_readable_bytes(rb) < (size_t) (2 + nmethods)) {
 		return; // Not enough data yet, wait for more
 	}
 
-	// consume header
-	buffer_read_adv(rb, 2);
+	// // consume header
+	// buffer_read_adv(rb, 2);
 
 	// client supports 0x00 ? no auth
 	bool no_auth_supported = false;
 	for (int i = 0; i < nmethods; i++) {
-		if (buffer_read(rb) == 0x00) { // consume the byte
+		if (buffer_read(rb) == SOCKS5_NO_AUTH) { // consume the byte
 			no_auth_supported = true;
 		}
 	}
 
 	// prepare reply and change interest to WRITE (we want to send the hello response)
 	buffer *wb = &session->write_buffer;
-	buffer_write(wb, 0x05); // SOCKS version
+	buffer_write(wb, SOCKS5_VERSION); // SOCKS version
 	if (no_auth_supported) {
-		buffer_write(wb, 0x00); // no auth
+		buffer_write(wb, SOCKS5_NO_AUTH); // no auth
 		session->current_state = STATE_HELLO_WRITE;
 	} else {
-		buffer_write(wb, 0xFF);				  // FF means error
+		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS);				  // FF means error
 		session->current_state = STATE_ERROR; // close
 	}
 
