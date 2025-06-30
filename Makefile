@@ -16,15 +16,15 @@ BIN_DIR = bin
 
 # server src files
 SERVER_SRCS = $(SERVER_DIR)/main.c $(SERVER_DIR)/socks5.c
-SERVER_OBJS = $(SERVER_SRCS:$(SERVER_DIR)/%.c=$(OBJ_DIR)/%.o)
+SERVER_OBJS = $(OBJ_DIR)/server-main.o $(patsubst $(SERVER_DIR)/%.c,$(OBJ_DIR)/%.o,$(filter-out $(SERVER_DIR)/main.c,$(SERVER_SRCS)))
 
 # libraries source files
 LIBS_SRCS = $(wildcard $(LIBS_DIR)/*.c)
-LIBS_OBJS = $(LIBS_SRCS:$(LIBS_DIR)/%.c=$(OBJ_DIR)/%.o)
+LIBS_OBJS = $(patsubst $(LIBS_DIR)/%.c,$(OBJ_DIR)/%.o,$(LIBS_SRCS))
 
 # client source files
 CLIENT_SRCS = $(CLIENT_DIR)/main.c
-CLIENT_OBJS = $(CLIENT_SRCS:$(CLIENT_DIR)/%.c=$(OBJ_DIR)/%.o)
+CLIENT_OBJS = $(OBJ_DIR)/client-main.o
 
 # tests
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
@@ -51,18 +51,21 @@ client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(LIBS_OBJS)
 # compile all libs and tests (each test is its own binary)
 test: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(TEST_BINS)
 
-# compile SERVER object files
+# Compile Server-specific main
+$(OBJ_DIR)/server-main.o: $(SERVER_DIR)/main.c
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+
+# Compile Client-specific main
+$(OBJ_DIR)/client-main.o: $(CLIENT_DIR)/main.c
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+
+# compile everything else for the server
 $(OBJ_DIR)/%.o: $(SERVER_DIR)/%.c
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
 # compile LIBRARY object files
 $(OBJ_DIR)/%.o: $(LIBS_DIR)/%.c
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
-
-
-$(OBJ_DIR)/%.o: $(CLIENT_DIR)/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
 
 $(BIN_DIR)/%: $(TEST_DIR)/%.c $(LIBS_OBJS)
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(LIBS_OBJS) $(LDFLAGS) -lcheck -lm -lsubunit -o $@
