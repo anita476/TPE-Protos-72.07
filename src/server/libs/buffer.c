@@ -22,6 +22,11 @@ inline bool buffer_can_write(buffer *b) {
 	return b->limit - b->write > 0;
 }
 
+inline size_t buffer_writeable_bytes(buffer *b) {
+    return b->limit - b->write;
+}
+
+
 inline uint8_t *buffer_write_ptr(buffer *b, size_t *nbyte) {
 	assert(b->write <= b->limit);
 	*nbyte = b->limit - b->write;

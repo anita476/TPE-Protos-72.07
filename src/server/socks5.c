@@ -31,16 +31,22 @@ static void hello_read(struct selector_key *key) {
 		ptr = buffer_write_ptr(rb, &wbytes); // get the new pointer and size
 		if (wbytes <= 0) {					 // still no space to write
 			log(ERROR, "[HELLO_READ] No space to write even after compaction. Closing connection.");
-			session->current_state =
-				STATE_ERROR; // no space to write, error <-- not sure about this, shouldnt it automatically compact??
+			session->current_state = STATE_ERROR;
 			return;
 		}
 	}
 
 	// Read all available data from the socket into our buffer
 	ssize_t bytes_read = recv(key->fd, ptr, wbytes, 0);
-	if (bytes_read <= 0) {
-		log(ERROR, "[HELLO_READ] Error reading from socket or connection closed.");
+	if (bytes_read < 0) {
+		// if (errno == EAGAIN || errno == EWOULDBLOCK) {
+		//     return; // No data available - normal for non-blocking
+		// }
+		log(ERROR, "[HELLO_READ] recv() error");
+		session->current_state = STATE_ERROR;
+		return;
+	} else if (bytes_read == 0) {
+		log(INFO, "[HELLO_READ] Connection closed by peer");
 		session->current_state = STATE_ERROR;
 		return;
 	}
@@ -48,20 +54,16 @@ static void hello_read(struct selector_key *key) {
 	log(DEBUG, "[HELLO_READ] Read %zd bytes from client.", bytes_read);
 
 	//  we received the initial 2 bytes ?
-	if (buffer_readable_bytes(rb) < 2) {
-		return; // not enough data yet, wait for the next read event
-	}
 
-	// uint8_t version;
-	// uint8_t nmethods;
+	size_t available;
+	uint8_t *data = buffer_read_ptr(rb, &available);
+	if (available < 2)
+		return;
 
-	// TODO maybe we can safely consume ? check out no peek later --> yes since we already checked with buffer_can_read
-	// i dont see buffer_peek in buffer.h... so will be commenting this
-	// version = buffer_peek(rb, 0);
-	// nmethods = buffer_peek(rb, 1);
+	// Don't consume bytes until we have the complete message
+	uint8_t version = data[0]; // Peek, don't consume
+	uint8_t nmethods = data[1];
 
-	uint8_t version = buffer_read(rb);	// consume the byte
-	uint8_t nmethods = buffer_read(rb); // consume the byte
 	log(DEBUG, "[HELLO_READ] Received version: 0x%02x, nmethods: %d", version, nmethods);
 
 	if (version != SOCKS5_VERSION) {
@@ -70,25 +72,49 @@ static void hello_read(struct selector_key *key) {
 		return;
 	}
 
-	// SOCKS5 + nmethods + methods <- im not quite getting this
-	if (buffer_readable_bytes(rb) < (size_t) (nmethods)) {
+	if (nmethods == 0) {
+        log(ERROR, "[HELLO_READ] Invalid nmethods: 0");
+        session->current_state = STATE_ERROR;
+        return;
+    }
+
+	if (available < (size_t) (2 + nmethods)) {
+		log(DEBUG, "[HELLO_READ] Not enough data yet. Waiting for more.");
 		return; // Not enough data yet, wait for more
 	}
 
+	// TODO maybe we can safely consume ? check out no peek later --> yes since we already checked with buffer_can_read
+	// i dont see buffer_peek in buffer.h... so will be commenting this
+	// version = buffer_peek(rb, 0);
+	// nmethods = buffer_peek(rb, 1);
+
+	// uint8_t version = buffer_read(rb);	// consume the byte
+	// uint8_t nmethods = buffer_read(rb); // consume the byte
+
 	// // consume header
-	// buffer_read_adv(rb, 2);
+	buffer_read_adv(rb, 2);
 
 	// client supports 0x00 ? no auth
 	bool no_auth_supported = false;
 	for (int i = 0; i < nmethods; i++) {
+		uint8_t method = buffer_read(rb);
 		if (buffer_read(rb) == SOCKS5_NO_AUTH) { // consume the byte
 			no_auth_supported = true;
 		}
 	}
+	// should we check if there is more data to read? 
 
 	// prepare reply and change interest to WRITE (we want to send the hello response)
 	buffer *wb = &session->write_buffer;
-	buffer_write(wb, SOCKS5_VERSION); // SOCKS version // should we be checking if there is space to write?
+	if (buffer_writeable_bytes(wb) < 2) {
+		log(ERROR, "[HELLO_READ] No space to write response. Closing connection."); // shouldnt we wait until there is more space left maybe?
+		session->current_state = STATE_ERROR;
+		return; // no space to write the response
+	}
+
+	// safe to write the response
+	buffer_write(wb, SOCKS5_VERSION); // SOCKS version TODO: should we be checking if there is space to write? --> it
+									  // will silently fail if there is no space, so we should handle that somehow
 	if (no_auth_supported) {
 		buffer_write(wb, SOCKS5_NO_AUTH); // no auth
 		log(DEBUG, "[HELLO_READ] No auth supported. Moving to STATE_HELLO_WRITE.");
@@ -96,7 +122,8 @@ static void hello_read(struct selector_key *key) {
 	} else {
 		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS); // FF means error
 		log(ERROR, "[HELLO_READ] No acceptable methods. Moving to STATE_ERROR.");
-		session->current_state = STATE_ERROR; // close
+		session->current_state = STATE_HELLO_WRITE; // close
+		// session->will_close_after_write = true <- somehting like this maybe?
 	}
 
 	// Obs!!!! change interest to WRITE, selector wakes up WHEN we can write
@@ -175,9 +202,7 @@ static void socks5_handle_close(struct selector_key *key);
 // reg the new client socket with the selector
 // OBS: this has to be static to ensure the memory remains valid throughout the whole program
 static const struct fd_handler client_handler = {
-	.handle_read = socks5_handle_read, 
-	.handle_write = socks5_handle_write, 
-	.handle_close = socks5_handle_close,
+	.handle_read = socks5_handle_read, .handle_write = socks5_handle_write, .handle_close = socks5_handle_close,
 	// todo handle the other cases
 };
 
@@ -255,7 +280,6 @@ static void socks5_handle_read(struct selector_key *key) {
 
 static void socks5_handle_write(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
-	printf("DEBUG: session=%p, state=%d\n", session, session->current_state);
 	switch (session->current_state) {
 		case STATE_HELLO_WRITE:
 			hello_write(key);
@@ -270,10 +294,8 @@ static void socks5_handle_write(struct selector_key *key) {
 }
 
 static void socks5_handle_close(struct selector_key *key) {
-	printf("DEBUG: Closing connection fd=%d\n", key->fd);
 	client_session *session = (client_session *) key->data;
 	if (session) {
-		printf("DEBUG: Freeing session %p\n", session);
 		free(session);
 	}
 	// no need to close(key->fd) here - selector does it
