@@ -1,8 +1,8 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -g
+CFLAGS = -Wall -Wextra -g -std=c11 -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
 # added -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L because of "implicit declaration of pselect"
 # https://barnowl.mit.edu/ticket/166
-# -std=c11 -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
+# 
 LDFLAGS = -pthread
 
 SRC_DIR = src

@@ -10,6 +10,7 @@
 
 #include "../include/selector.h"
 #include <fcntl.h>
+#include <signal.h> // macOS compiling :p
 #include <stdint.h> // SIZE_MAX
 #include <sys/select.h>
 #include <sys/signal.h>
@@ -47,6 +48,7 @@ const char *selector_error(const selector_status status) {
 }
 
 static void wake_handler(const int signal) {
+	(void) signal;
 	// nada que hacer. está solo para interrumpir el select
 }
 
