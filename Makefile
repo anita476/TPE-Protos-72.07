@@ -51,11 +51,11 @@ client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(LIBS_OBJS)
 # compile all libs and tests (each test is its own binary)
 test: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(TEST_BINS)
 
-# Compile Server-specific main
+# Compile server main
 $(OBJ_DIR)/server-main.o: $(SERVER_DIR)/main.c
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
-# Compile Client-specific main
+# Compile client main
 $(OBJ_DIR)/client-main.o: $(CLIENT_DIR)/main.c
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
