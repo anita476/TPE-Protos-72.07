@@ -447,7 +447,8 @@ static void handle_iteration(fd_selector s) {
 					}
 				}
 			}
-			if (FD_ISSET(i, &s->slave_w)) {
+			// TODO: check! CHANGED THIS but not sure if its correct (FD_ISSET(i, &s->slave_w)) {
+			if (FD_ISSET(item->fd, &s->slave_w)) {
 				if (OP_WRITE & item->interest) {
 					if (0 == item->handler->handle_write) {
 						assert(("OP_WRITE arrived but no handler. bug!" == 0));
@@ -551,7 +552,8 @@ finally:
 
 int selector_fd_set_nio(const int fd) {
 	int ret = 0;
-	int flags = fcntl(fd, F_GETFD, 0);
+	//TODO: Check! Changed this: int flags = fcntl(fd, F_GETFD, 0);
+	int flags = fcntl(fd, F_GETFL, 0);
 	if (flags == -1) {
 		ret = -1;
 	} else {

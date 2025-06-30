@@ -11,6 +11,11 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <time.h>
+#include <errno.h>
+#include <string.h>
+#include <arpa/inet.h>
+
 #include "selector.h"
 #include "buffer.h"
 #include "logger.h"
@@ -29,22 +34,6 @@ typedef enum {
 	STATE_ERROR,
 } socks5_state;
 
-// Then we define a struct that holds *all* information for a SINGLE client connection
-typedef struct {
-	socks5_state current_state;
-
-	socks5_request current_request;
-    socks5_response current_response;
-
-	// Buffers to handle reading and writing
-	buffer read_buffer;
-	buffer write_buffer;
-
-	int clientSocket; // socket for CLIENT CONNECTION
-} client_session;
-
-// capaz se le puede agregar el clientSocket aca en vez de en el main pero X
-
 // REQUEST AND RESPONSE STRUCTURES
 typedef struct socks5_request {
 	uint8_t cmd; // command
@@ -62,6 +51,25 @@ typedef struct socks5_response {
 	uint16_t boundPort;		// bound port
 	uint8_t remoteSocketFd; // active socket between server and destination
 } socks5_response;
+
+// Then we define a struct that holds *all* information for a SINGLE client connection
+typedef struct {
+	socks5_state current_state;
+
+	socks5_request current_request;
+    socks5_response current_response;
+
+	uint8_t raw_read_buffer[256];
+	uint8_t raw_write_buffer[256];
+
+	// Buffers to handle reading and writing
+	buffer read_buffer;
+	buffer write_buffer;
+
+	int clientSocket; // socket for CLIENT CONNECTION
+} client_session;
+
+// capaz se le puede agregar el clientSocket aca en vez de en el main pero X
 
 void socks5_handle_new_connection(struct selector_key *key);
 

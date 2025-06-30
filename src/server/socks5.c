@@ -9,6 +9,11 @@
 #define SOCKS5_ATYP_DOMAIN 0x03
 #define SOCKS5_ATYP_IPV6 0x04
 #define SOCKS5_NO_ACCEPTABLE_METHODS 0xFF
+#define REJECTION_TIMEOUT_SECONDS 2
+
+static void socks5_handle_read(struct selector_key *key);
+static void socks5_handle_write(struct selector_key *key);
+static void socks5_handle_close(struct selector_key *key);
 
 // remember that the selector key has the selector , the fd we write to and the data itself
 // this is the FIRST message, it looks like:
@@ -40,10 +45,11 @@ static void hello_read(struct selector_key *key) {
 	// Read all available data from the socket into our buffer
 	ssize_t bytes_read = recv(key->fd, ptr, wbytes, 0);
 	if (bytes_read < 0) {
-		// if (errno == EAGAIN || errno == EWOULDBLOCK) {
-		//     return; // No data available - normal for non-blocking
-		// }
-		log(ERROR, "[HELLO_READ] recv() error");
+		errno = 0;
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			return; // no data available - normal for non-blocking
+		}
+		log(ERROR, "[HELLO_READ] recv() error: %s", strerror(errno));
 		session->current_state = STATE_ERROR;
 		return;
 	} else if (bytes_read == 0) {
@@ -61,7 +67,6 @@ static void hello_read(struct selector_key *key) {
 	if (available < 2)
 		return;
 
-	// Don't consume bytes until we have the complete message
 	uint8_t version = data[0]; // Peek, don't consume
 	uint8_t nmethods = data[1];
 
@@ -72,25 +77,17 @@ static void hello_read(struct selector_key *key) {
 		session->current_state = STATE_ERROR;
 		return;
 	}
-	
+
 	if (nmethods == 0) {
-        log(ERROR, "[HELLO_READ] Invalid nmethods: 0");
-        session->current_state = STATE_ERROR;
-        return;
-    }
+		log(ERROR, "[HELLO_READ] Invalid nmethods: 0");
+		session->current_state = STATE_ERROR;
+		return;
+	}
 
 	if (available < (size_t) (2 + nmethods)) {
 		log(DEBUG, "[HELLO_READ] Not enough data yet. Waiting for more.");
-		return; 
+		return;
 	}
-
-	// TODO maybe we can safely consume ? check out no peek later --> yes since we already checked with buffer_can_read
-	// i dont see buffer_peek in buffer.h... so will be commenting this
-	// version = buffer_peek(rb, 0);
-	// nmethods = buffer_peek(rb, 1);
-
-	// uint8_t version = buffer_read(rb);	// consume the byte
-	// uint8_t nmethods = buffer_read(rb); // consume the byte
 
 	// // consume header
 	buffer_read_adv(rb, 2);
@@ -102,12 +99,14 @@ static void hello_read(struct selector_key *key) {
 			no_auth_supported = true;
 		}
 	}
-	// should we check if there is more data to read? 
+	// should we check if there is more data to read?
 
 	// prepare reply and change interest to WRITE (we want to send the hello response)
+	// TODO: what should we do if there is no space to write the response? for now we are just returning
 	buffer *wb = &session->write_buffer;
 	if (buffer_writeable_bytes(wb) < 2) {
-		log(ERROR, "[HELLO_READ] No space to write response."); // shouldnt we wait until there is more space left maybe?
+		log(ERROR,
+			"[HELLO_READ] No space to write response."); // shouldnt we wait until there is more space left maybe?
 		// session->current_state = STATE_ERROR;
 		return; // no space to write the response
 	}
@@ -122,10 +121,9 @@ static void hello_read(struct selector_key *key) {
 	} else {
 		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS); // FF means error
 		log(ERROR, "[HELLO_READ] No acceptable methods. Moving to STATE_ERROR.");
-		
-		session->current_state = STATE_HELLO_WRITE; // close
-		// TODO shutdown after write or another state ?
-		// shutdown 
+		session->current_state = STATE_HELLO_NO_ACCEPTABLE_METHODS; // close
+																	// TODO shutdown after write or another state ?
+																	// shutdown
 		// session->will_close_after_write = true <- somehting like this maybe?
 	}
 
@@ -152,50 +150,61 @@ disconnect?
 
 */
 
-static void hello_write(struct selector_key *key) {
+static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	client_session *session = (client_session *) key->data;
 	buffer *wb = &session->write_buffer;
-
-	log(DEBUG, "[HELLO_WRITE] Entered hello_write.");
 
 	size_t bytes_to_write;
 	uint8_t *ptr = buffer_read_ptr(wb, &bytes_to_write);
 
 	if (bytes_to_write == 0) {
-		log(ERROR, "[HELLO_WRITE] No data to write. Closing connection.");
+		log(ERROR, "[WRITE_TO_CLIENT] No data to write.");
 		session->current_state = STATE_ERROR;
 		return;
 	}
 
-	// ISSUE 1: missing non-blocking socket error handling
-	// ISSUE 2: missing MSG_NOSIGNAL flag (prevents SIGPIPE)
-	// ISSUE 3: not handling partial writes correctly in non-blocking mode
-	// ISSUE 4: no handling of STATE_ERROR case after write
-
-	// Send data to client
-	ssize_t bytes_written = send(key->fd, ptr, bytes_to_write, 0);
-	if (bytes_written <= 0) {
-		log(ERROR, "[HELLO_WRITE] Error writing to socket or connection closed.");
+	ssize_t bytes_written = send(key->fd, ptr, bytes_to_write, MSG_NOSIGNAL);
+	if (bytes_written < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			log(DEBUG, "[WRITE_TO_CLIENT] send() would block, waiting for next write event.");
+			return; // Try again later when selector notifies
+		}
+		log(ERROR, "[WRITE_TO_CLIENT] send() error: %s", strerror(errno));
+		session->current_state = STATE_ERROR;
+		return;
+	} else if (bytes_written == 0) {
+		log(INFO, "[WRITE_TO_CLIENT] Connection closed by peer during send");
 		session->current_state = STATE_ERROR;
 		return;
 	}
-
 	buffer_read_adv(wb, bytes_written);
-	log(DEBUG, "[HELLO_WRITE] Sent %zd bytes to client.", bytes_written);
+	log(DEBUG, "[WRITE_TO_CLIENT] Sent %zd/%zu bytes to client.", bytes_written, bytes_to_write);
 
-	// Check if there’s still data to send
 	if (buffer_readable_bytes(wb) > 0) {
-		log(DEBUG, "[HELLO_WRITE] Not all data was sent. Waiting for next write event.");
-		// Stay in OP_WRITE to continue sending next time
+		log(DEBUG, "[WRITE_TO_CLIENT] Partial write, waiting for next event.");
+		return; // More data pending
+	}
+
+	if (should_shutdown) {
+		log(DEBUG, "[WRITE_TO_CLIENT] All data sent. Shutting down socket.");
+		shutdown(key->fd, SHUT_RDWR);
+		selector_unregister_fd(key->s, key->fd);
 		return;
 	}
 
-	// ISSUE 5: Should handle STATE_ERROR case (when FF was sent)
-	// All data was sent, switch back to OP_READ
+	// If we're not shutting down, update to next state
 	session->current_state = STATE_REQUEST_READ;
 	selector_set_interest(key->s, key->fd, OP_READ);
+	log(DEBUG, "[WRITE_TO_CLIENT] All handshake data sent. Switching to STATE_REQUEST_READ.");
+}
 
-	log(DEBUG, "[HELLO_WRITE] All handshake data sent. Switching to STATE_REQUEST_READ.");
+static void hello_write(struct selector_key *key) {
+	write_to_client(key, false);
+}
+
+static void hello_write_error(struct selector_key *key) {
+	log(DEBUG, "[HELLO_WRITE_ERROR] Entered - sending rejection response");
+	write_to_client(key, true);
 }
 
 /** A socks request looks like this:
@@ -211,7 +220,7 @@ static void request_read(struct selector_key *key) {
 	buffer *rb = &session->read_buffer;
 
 	log(DEBUG, "[REQUEST_READ] Entered request_read.");
-	
+
 	// Buffer
 	size_t wbytes;
 	uint8_t *ptr = buffer_write_ptr(rb, &wbytes);
@@ -240,7 +249,7 @@ static void request_read(struct selector_key *key) {
 
 	// Actualizo buffer de escritura
 	buffer_write_adv(rb, bytes_read);
-    log(DEBUG, "[REQUEST_READ] Read %zd bytes from client.", bytes_read);
+	log(DEBUG, "[REQUEST_READ] Read %zd bytes from client.", bytes_read);
 
 	// Verifico que estén todos los headers fijos
 	if (buffer_readable_bytes(rb) < 4) {
@@ -254,8 +263,7 @@ static void request_read(struct selector_key *key) {
 	uint8_t rsv = buffer_read(rb);
 	uint8_t atyp = buffer_read(rb);
 
-	log(DEBUG, "[REQUEST_READ] Header: VER=0x%02x CMD=0x%02x RSV=0x%02x ATYP=0x%02x", 
-		version, cmd, rsv, atyp);
+	log(DEBUG, "[REQUEST_READ] Header: VER=0x%02x CMD=0x%02x RSV=0x%02x ATYP=0x%02x", version, cmd, rsv, atyp);
 
 	// Validación de versión
 	if (version != SOCKS5_VERSION) {
@@ -291,7 +299,7 @@ static void request_read(struct selector_key *key) {
 				return;
 			}
 			size_t available_for_peek;
-        	uint8_t *peek_data = buffer_read_ptr(rb, &available_for_peek);
+			uint8_t *peek_data = buffer_read_ptr(rb, &available_for_peek);
 			uint8_t domain_len = peek_data[0];
 			addr_len = 1 + domain_len;
 			break;
@@ -303,7 +311,8 @@ static void request_read(struct selector_key *key) {
 
 	// Verificar que estén el puerto y la dirección destino
 	if (buffer_readable_bytes(rb) < addr_len + 2) {
-		log(DEBUG, "[REQUEST_READ] Need %zu bytes for address and port, have %zu", addr_len + 2, buffer_readable_bytes(rb));
+		log(DEBUG, "[REQUEST_READ] Need %zu bytes for address and port, have %zu", addr_len + 2,
+			buffer_readable_bytes(rb));
 		return;
 	}
 
@@ -313,17 +322,17 @@ static void request_read(struct selector_key *key) {
 		case SOCKS5_ATYP_IPV4: {
 			uint32_t addr4;
 			for (int i = 0; i < 4; i++) {
-                ((uint8_t*)&addr4)[i] = buffer_read(rb);
-            }
-            inet_ntop(AF_INET, &addr4, dst_addr, sizeof(dst_addr));
+				((uint8_t *) &addr4)[i] = buffer_read(rb);
+			}
+			inet_ntop(AF_INET, &addr4, dst_addr, sizeof(dst_addr));
 			break;
 		}
 		case SOCKS5_ATYP_IPV6: {
 			uint8_t addr6[16];
 			for (int i = 0; i < 16; i++) {
-                addr6[i] = buffer_read(rb);
-            }
-            inet_ntop(AF_INET6, &addr6, dst_addr, sizeof(dst_addr));
+				addr6[i] = buffer_read(rb);
+			}
+			inet_ntop(AF_INET6, &addr6, dst_addr, sizeof(dst_addr));
 			break;
 		}
 		case SOCKS5_ATYP_DOMAIN: {
@@ -353,15 +362,8 @@ static void request_read(struct selector_key *key) {
 	// TODO: Falta la conexión
 }
 
-
 static void handle_error(struct selector_key *key) {
-	
 }
-
-
-static void socks5_handle_read(struct selector_key *key);
-static void socks5_handle_write(struct selector_key *key);
-static void socks5_handle_close(struct selector_key *key);
 
 // reg the new client socket with the selector
 // OBS: this has to be static to ensure the memory remains valid throughout the whole program
@@ -404,7 +406,8 @@ void socks5_handle_new_connection(struct selector_key *key) {
 
 	selector_register(key->s, client_fd, &client_handler, OP_READ, session);
 
-	log(DEBUG, "[HANDLE_CONNECTION] Accepted new client: fd=%d", client_fd);
+	log(INFO, "===============================================================");
+	log(INFO, "[HANDLE_CONNECTION] Accepted new client: fd=%d", client_fd);
 }
 
 /**
@@ -437,7 +440,6 @@ static void socks5_handle_read(struct selector_key *key) {
 			break;
 		default:
 			// Should not happen
-			
 			break;
 	}
 }
@@ -450,6 +452,9 @@ static void socks5_handle_write(struct selector_key *key) {
 		case STATE_HELLO_WRITE:
 			hello_write(key);
 			break;
+		case STATE_HELLO_NO_ACCEPTABLE_METHODS:
+			hello_write_error(key);
+			break;
 		case STATE_REQUEST_WRITE:
 			// todo complete
 			break;
@@ -460,10 +465,11 @@ static void socks5_handle_write(struct selector_key *key) {
 }
 
 static void socks5_handle_close(struct selector_key *key) {
+	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] *** CLOSE HANDLER CALLED *** for fd=%d", key->fd);
 	client_session *session = (client_session *) key->data;
 	if (session) {
 		free(session);
 	}
-	// no need to close(key->fd) here - selector does it
-	selector_unregister_fd(key->s, key->fd); //?
+	// IMPORTANT: Do NOT call selector_unregister_fd here!
+	// The selector is already in the process of unregistering when it calls this function
 }
