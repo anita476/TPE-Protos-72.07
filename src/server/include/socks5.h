@@ -36,8 +36,6 @@ typedef struct {
 	buffer read_buffer;
 	buffer write_buffer;
 
-	uint8_t raw_read_buffer[256];
-	uint8_t raw_write_buffer[256];
 	int clientSocket; // socket for CLIENT CONNECTION
 } client_session;
 

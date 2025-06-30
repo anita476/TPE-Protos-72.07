@@ -73,6 +73,12 @@ static void hello_read(struct selector_key *key) {
 	}
 
 	if (nmethods == 0) {
+		log(ERROR, "[HELLO_READ] Client sent 0 authentication methods. Closing connection.");
+		session->current_state = STATE_ERROR;
+		return;
+	}
+
+	if (nmethods == 0) {
         log(ERROR, "[HELLO_READ] Invalid nmethods: 0");
         session->current_state = STATE_ERROR;
         return;
@@ -195,6 +201,56 @@ static void hello_write(struct selector_key *key) {
 	log(DEBUG, "[HELLO_WRITE] All handshake data sent. Switching to STATE_REQUEST_READ.");
 }
 
+/** A socks request looks like this:
+		+----+-----+-------+------+----------+----------+
+		|VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
+		+----+-----+-------+------+----------+----------+
+		| 1  |  1  | X'00' |  1   | Variable |    2     |
+		+----+-----+-------+------+----------+----------+
+**
+*/
+static void request_read(struct selector_key *key) {
+	client_session *session = (client_session *) key->data;
+	buffer *rb = &session->read_buffer;
+
+	log(DEBUG, "[REQUEST_READ] Entered request_read.");
+	
+	// Buffer
+	size_t wbytes;
+	uint8_t *ptr = buffer_write_ptr(rb, &wbytes);
+	if (wbytes <= 0) {
+		log(DEBUG, "[REQUEST_READ] No space to write, trying to compact buffer");
+		buffer_compact(rb);
+		ptr = buffer_write_ptr(rb, &wbytes);
+		if (wbytes <= 0) {
+			log(ERROR, "[REQUEST_READ] No space to write even after compaction. Closing connection.");
+			session->current_state = STATE_ERROR;
+			return;
+		}
+	}
+
+	// Socket
+	ssize_t bytes_read = recv(key->fd, ptr, wbytes, 0);
+	if (bytes_read <= 0) {
+		if (bytes_read == 0) {
+			log(DEBUG, "[REQUEST_READ] Connection closed by client.");
+		} else {
+			perror("[REQUEST_READ] Error reading from socket");
+		}
+		session->current_state = STATE_ERROR;
+		return;
+	}
+	buffer_write_adv(rb, bytes_read);
+    log(DEBUG, "[REQUEST_READ] Read %zd bytes from client.", bytes_read);
+
+	// called on a request when the state is STATE_REQUEST_READ && client fd is readable
+
+
+	// parsear y validar header 
+
+	// connect ¡?? 
+}
+
 static void socks5_handle_read(struct selector_key *key);
 static void socks5_handle_write(struct selector_key *key);
 static void socks5_handle_close(struct selector_key *key);
@@ -268,6 +324,7 @@ static void socks5_handle_read(struct selector_key *key) {
 			hello_read(key);
 			break;
 		case STATE_REQUEST_READ:
+			request_read(key);
 			// todo complete
 			break;
 		default:
