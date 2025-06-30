@@ -21,6 +21,7 @@
 typedef enum {
 	STATE_HELLO_READ,
 	STATE_HELLO_WRITE,
+	STATE_HELLO_NO_ACCEPTABLE_METHODS, // o lo llamo HELLO_ERROR?
 	STATE_REQUEST_READ,
 	STATE_REQUEST_WRITE,
 	// todo others..
@@ -31,6 +32,9 @@ typedef enum {
 // Then we define a struct that holds *all* information for a SINGLE client connection
 typedef struct {
 	socks5_state current_state;
+
+	socks5_request current_request;
+    socks5_response current_response;
 
 	// Buffers to handle reading and writing
 	buffer read_buffer;

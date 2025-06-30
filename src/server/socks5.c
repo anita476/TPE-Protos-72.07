@@ -7,6 +7,7 @@
 #define SOCKS5_CMD_CONNECT 0x01
 #define SOCKS5_ATYP_IPV4 0x01
 #define SOCKS5_ATYP_DOMAIN 0x03
+#define SOCKS5_ATYP_IPV6 0x04
 #define SOCKS5_NO_ACCEPTABLE_METHODS 0xFF
 
 // remember that the selector key has the selector , the fd we write to and the data itself
@@ -71,13 +72,7 @@ static void hello_read(struct selector_key *key) {
 		session->current_state = STATE_ERROR;
 		return;
 	}
-
-	if (nmethods == 0) {
-		log(ERROR, "[HELLO_READ] Client sent 0 authentication methods. Closing connection.");
-		session->current_state = STATE_ERROR;
-		return;
-	}
-
+	
 	if (nmethods == 0) {
         log(ERROR, "[HELLO_READ] Invalid nmethods: 0");
         session->current_state = STATE_ERROR;
@@ -86,7 +81,7 @@ static void hello_read(struct selector_key *key) {
 
 	if (available < (size_t) (2 + nmethods)) {
 		log(DEBUG, "[HELLO_READ] Not enough data yet. Waiting for more.");
-		return; // Not enough data yet, wait for more
+		return; 
 	}
 
 	// TODO maybe we can safely consume ? check out no peek later --> yes since we already checked with buffer_can_read
@@ -103,7 +98,6 @@ static void hello_read(struct selector_key *key) {
 	// client supports 0x00 ? no auth
 	bool no_auth_supported = false;
 	for (int i = 0; i < nmethods; i++) {
-		uint8_t method = buffer_read(rb);
 		if (buffer_read(rb) == SOCKS5_NO_AUTH) { // consume the byte
 			no_auth_supported = true;
 		}
@@ -113,12 +107,12 @@ static void hello_read(struct selector_key *key) {
 	// prepare reply and change interest to WRITE (we want to send the hello response)
 	buffer *wb = &session->write_buffer;
 	if (buffer_writeable_bytes(wb) < 2) {
-		log(ERROR, "[HELLO_READ] No space to write response. Closing connection."); // shouldnt we wait until there is more space left maybe?
-		session->current_state = STATE_ERROR;
+		log(ERROR, "[HELLO_READ] No space to write response."); // shouldnt we wait until there is more space left maybe?
+		// session->current_state = STATE_ERROR;
 		return; // no space to write the response
 	}
 
-	// safe to write the response
+	// now safe to write the response
 	buffer_write(wb, SOCKS5_VERSION); // SOCKS version TODO: should we be checking if there is space to write? --> it
 									  // will silently fail if there is no space, so we should handle that somehow
 	if (no_auth_supported) {
@@ -128,7 +122,10 @@ static void hello_read(struct selector_key *key) {
 	} else {
 		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS); // FF means error
 		log(ERROR, "[HELLO_READ] No acceptable methods. Moving to STATE_ERROR.");
+		
 		session->current_state = STATE_HELLO_WRITE; // close
+		// TODO shutdown after write or another state ?
+		// shutdown 
 		// session->will_close_after_write = true <- somehting like this maybe?
 	}
 
@@ -240,16 +237,127 @@ static void request_read(struct selector_key *key) {
 		session->current_state = STATE_ERROR;
 		return;
 	}
+
+	// Actualizo buffer de escritura
 	buffer_write_adv(rb, bytes_read);
     log(DEBUG, "[REQUEST_READ] Read %zd bytes from client.", bytes_read);
 
-	// called on a request when the state is STATE_REQUEST_READ && client fd is readable
+	// Verifico que estén todos los headers fijos
+	if (buffer_readable_bytes(rb) < 4) {
+		log(DEBUG, "[REQUEST_READ] Need 4 bytes for header, have %zu", buffer_readable_bytes(rb));
+		return;
+	}
 
+	// Consumo los primeros headers
+	uint8_t version = buffer_read(rb);
+	uint8_t cmd = buffer_read(rb);
+	uint8_t rsv = buffer_read(rb);
+	uint8_t atyp = buffer_read(rb);
 
-	// parsear y validar header 
+	log(DEBUG, "[REQUEST_READ] Header: VER=0x%02x CMD=0x%02x RSV=0x%02x ATYP=0x%02x", 
+		version, cmd, rsv, atyp);
 
-	// connect ¡?? 
+	// Validación de versión
+	if (version != SOCKS5_VERSION) {
+		log(ERROR, "[HELLO_READ] Unsupported SOCKS version: 0x%02x. Closing connection.", version);
+		session->current_state = STATE_ERROR;
+		return;
+	}
+
+	if (cmd != SOCKS5_CMD_CONNECT) {
+		log(ERROR, "[REQUEST_READ] Unsupported command: 0x%02x (only CONNECT supported)", cmd);
+		session->current_state = STATE_ERROR;
+		return;
+	}
+
+	// Validación del campo reservado
+	if (rsv != 0x00) {
+		log(ERROR, "[REQUEST_READ] Invalid RSV: 0x%02x. Closing connection.", rsv);
+		session->current_state = STATE_ERROR;
+		return;
+	}
+
+	// Longitud de la dirección
+	size_t addr_len;
+	switch (atyp) {
+		case SOCKS5_ATYP_IPV4:
+			addr_len = 4;
+			break;
+		case SOCKS5_ATYP_IPV6:
+			addr_len = 16;
+			break;
+		case SOCKS5_ATYP_DOMAIN:
+			if (buffer_readable_bytes(rb) < 1) {
+				return;
+			}
+			size_t available_for_peek;
+        	uint8_t *peek_data = buffer_read_ptr(rb, &available_for_peek);
+			uint8_t domain_len = peek_data[0];
+			addr_len = 1 + domain_len;
+			break;
+		default:
+			log(ERROR, "[REQUEST_READ] Unsupported ATYP: 0x%02x. Closing connection.", atyp);
+			session->current_state = STATE_ERROR;
+			return;
+	}
+
+	// Verificar que estén el puerto y la dirección destino
+	if (buffer_readable_bytes(rb) < addr_len + 2) {
+		log(DEBUG, "[REQUEST_READ] Need %zu bytes for address and port, have %zu", addr_len + 2, buffer_readable_bytes(rb));
+		return;
+	}
+
+	// Parseo de dirección
+	char dst_addr[INET6_ADDRSTRLEN + 1] = {0};
+	switch (atyp) {
+		case SOCKS5_ATYP_IPV4: {
+			uint32_t addr4;
+			for (int i = 0; i < 4; i++) {
+                ((uint8_t*)&addr4)[i] = buffer_read(rb);
+            }
+            inet_ntop(AF_INET, &addr4, dst_addr, sizeof(dst_addr));
+			break;
+		}
+		case SOCKS5_ATYP_IPV6: {
+			uint8_t addr6[16];
+			for (int i = 0; i < 16; i++) {
+                addr6[i] = buffer_read(rb);
+            }
+            inet_ntop(AF_INET6, &addr6, dst_addr, sizeof(dst_addr));
+			break;
+		}
+		case SOCKS5_ATYP_DOMAIN: {
+			uint8_t domain_len = buffer_read(rb);
+			for (int i = 0; i < domain_len; i++) {
+				dst_addr[i] = buffer_read(rb);
+			}
+			dst_addr[domain_len] = '\0';
+			break;
+		}
+	}
+
+	// Parseo de puerto
+	uint16_t dst_port = 0;
+	dst_port = (buffer_read(rb) << 8) | buffer_read(rb); // >¡Big Endian!
+	log(DEBUG, "[REQUEST_READ] Parsed address: %s, port: %d", dst_addr, dst_port);
+
+	// Actualizo la sesión
+	session->current_request.cmd = cmd;
+	session->current_request.atyp = atyp;
+	if (session->current_request.dstAddress) {
+		free(session->current_request.dstAddress);
+	}
+	session->current_request.dstAddress = strdup(dst_addr);
+	session->current_request.dstPort = dst_port;
+
+	// TODO: Falta la conexión
 }
+
+
+static void handle_error(struct selector_key *key) {
+	
+}
+
 
 static void socks5_handle_read(struct selector_key *key);
 static void socks5_handle_write(struct selector_key *key);
@@ -329,6 +437,7 @@ static void socks5_handle_read(struct selector_key *key) {
 			break;
 		default:
 			// Should not happen
+			
 			break;
 	}
 }
@@ -356,4 +465,5 @@ static void socks5_handle_close(struct selector_key *key) {
 		free(session);
 	}
 	// no need to close(key->fd) here - selector does it
+	selector_unregister_fd(key->s, key->fd); //?
 }
