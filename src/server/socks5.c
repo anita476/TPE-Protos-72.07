@@ -258,7 +258,6 @@ static void socks5_handle_write(struct selector_key *key) {
 	printf("DEBUG: session=%p, state=%d\n", session, session->current_state);
 	switch (session->current_state) {
 		case STATE_HELLO_WRITE:
-			printf("DEBUG: Calling hello_write\n");
 			hello_write(key);
 			break;
 		case STATE_REQUEST_WRITE:
