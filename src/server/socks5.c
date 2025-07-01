@@ -440,7 +440,7 @@ static void request_read(struct selector_key *key) {
 
 	// Port parsing
 	uint16_t dst_port = 0;
-	dst_port = (buffer_read(rb) << 8) | buffer_read(rb); // >¡Big Endian!
+	dst_port = (buffer_read(rb) << 8) | buffer_read(rb); // Big Endian!
 	log(DEBUG, "[REQUEST_READ] Parsed address: %s, port: %d", dst_addr, dst_port);
 
 	// Updating session
