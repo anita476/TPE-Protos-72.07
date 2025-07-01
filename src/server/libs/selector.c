@@ -563,3 +563,38 @@ int selector_fd_set_nio(const int fd) {
 	}
 	return ret;
 }
+
+selector_status selector_unregister_fd_noclose(fd_selector s, const int fd) {
+    selector_status ret = SELECTOR_SUCCESS;
+
+    if (NULL == s || INVALID_FD(fd)) {
+        ret = SELECTOR_IARGS;
+        goto finally;
+    }
+
+    struct item *item = s->fds + fd;
+    if (!ITEM_USED(item)) {
+        ret = SELECTOR_IARGS;
+        goto finally;
+    }
+
+    // Key difference: NO call to handle_close()
+    // if (item->handler->handle_close != NULL) {
+    //     struct selector_key key = {
+    //         .s = s,
+    //         .fd = item->fd,
+    //         .data = item->data,
+    //     };
+    //     item->handler->handle_close(&key);
+    // }
+
+    item->interest = OP_NOOP;
+    items_update_fdset_for_fd(s, item);
+
+    memset(item, 0x00, sizeof(*item));
+    item_init(item);
+    s->max_fd = items_max_fd(s);
+
+finally:
+    return ret;
+}
