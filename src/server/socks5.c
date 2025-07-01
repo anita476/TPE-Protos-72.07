@@ -830,8 +830,8 @@ static void request_connect(struct selector_key *key) {
 		}
 
 		session->current_state = STATE_REQUEST_CONNECT;
-		// selector_set_interest_key(key, OP_NOOP);
-		selector_set_interest_key(key, OP_READ);
+		selector_set_interest_key(key, OP_NOOP);
+		// selector_set_interest_key(key, OP_READ);
 		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
 		return;
 	}
