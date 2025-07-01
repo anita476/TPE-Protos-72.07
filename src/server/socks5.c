@@ -145,14 +145,8 @@ we need to process based on the state (only hello read for now) for that client.
 So: The client socket's handle_read
 does not create new sockets. It only processes data for the already-accepted client.
 **/
-
-static void socks5_handle_read(struct selector_key *key) {
-	session->current_state = STATE_ERROR;
-	log(DEBUG, "[SET_ERROR_STATE] Setting error state with code: 0x%02x", error_code);
-}
-
 // Helper function to send SOCKS5 error response
-static bool send_socks5_error_response(struct selector_key *key) {
+static void socks5_handle_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 	switch (session->current_state) {
 		case STATE_HELLO_READ:
@@ -446,9 +440,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	metrics_add_bytes_out(bytes_written);
 
 	buffer_read_adv(wb, bytes_written);
-	log(DEBUG, "[WRITE_TO_CLIENT] Sent %zd/%zu bytes to client.", bytes_written, bytes_to_write);
-	log(INFO, "[WRITE_TO_CLIENT] String sent to client: %.*s",
-		(int) bytes_written, (char *) ptr); // Log the string sent to client
+	log(INFO, "[WRITE_TO_CLIENT] Sent %zd/%zu bytes to client.", bytes_written, bytes_to_write);
 
 	if (buffer_readable_bytes(wb) > 0) {
 		log(DEBUG, "[WRITE_TO_CLIENT] Partial write, waiting for next event.");
