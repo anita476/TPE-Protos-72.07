@@ -1,7 +1,7 @@
 #include "../include/args.h"
 #include "../include/logger.h"
-#include "../include/selector.h"
 #include "../include/metrics.h"
+#include "../include/selector.h"
 #include "include/socks5.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -21,27 +21,6 @@ static bool done = false; // Flag to indicate when the server should stop
 
 static void sigterm_handler(const int signal);
 static void exit_error(const char *error_msg, int errnum);
-
-/************* PLACEHOLDER FUNCTIONS CHANGE LATEEER */
-
-static void handle_write(struct selector_key *key) {
-	// placeholder for write
-	log(INFO, "Write event on fd %d", key->fd);
-}
-static void handle_close(struct selector_key *key) {
-	// Placeholder for close handler
-	log(INFO, "Close event on fd %d", key->fd);
-	// Clean up any data associated with this fd
-    if (key->data) {
-        free(key->data);
-        key->data = NULL;
-    }
-    
-    // DO NOT call selector_unregister_fd(key->s, key->fd); ← This causes infinite recursion!
-    // DO NOT call close(key->fd); ← The selector will handle this
-    
-    log(DEBUG, "Cleanup complete for fd %d", key->fd)
-}
 
 // TODO expand parse args to include log level and eventually log file
 int main(int argc, char **argv) {
@@ -119,10 +98,8 @@ int main(int argc, char **argv) {
 		exit_error(error_msg, 2);
 	}
 
-	const struct fd_handler socks5Handler = {// TODO complete the handler on close and so on
-											 .handle_read = socks5_handle_new_connection,
-											 .handle_write = handle_write,
-											 .handle_close = handle_close};
+	const struct fd_handler socks5Handler = {
+		.handle_read = socks5_handle_new_connection, .handle_write = NULL, .handle_close = NULL};
 	selectorStatus = selector_register(selector, socksFd, &socks5Handler, OP_READ, NULL);
 	if (selectorStatus != SELECTOR_SUCCESS) {
 		error_msg = "Error registering SOCKS5 server socket with selector";
