@@ -990,7 +990,7 @@ static void relay_client_to_remote(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
 	// Read from client, write to remote
-	char buffer[4096];
+	char buffer[16384];
 	ssize_t bytes_read = recv(session->client_fd, buffer, sizeof(buffer), 0);
 
 	if (bytes_read <= 0) {
@@ -1013,7 +1013,7 @@ static void relay_remote_to_client(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
 	// Read from remote, write to client
-	char buffer[4096];
+	char buffer[16384];
 	ssize_t bytes_read = recv(session->remote_fd, buffer, sizeof(buffer), 0);
 
 	if (bytes_read <= 0) {
