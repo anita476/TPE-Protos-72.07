@@ -31,6 +31,7 @@ typedef enum {
 	STATE_REQUEST_WRITE,
 	STATE_ERROR_WRITE, // New state for writing error responses
 	// todo others..
+	STATE_CLIENT_CLOSE,
 	STATE_DONE,
 	STATE_ERROR,
 } socks5_state;

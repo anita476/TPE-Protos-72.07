@@ -81,6 +81,8 @@ static bool send_socks5_error_response(struct selector_key *key) {
 	return true;
 }
 
+static void close_client(struct selector_key *key);
+
 // remember that the selector key has the selector , the fd we write to and the data itself
 // this is the FIRST message, it looks like:
 /*
@@ -202,7 +204,6 @@ static void hello_read(struct selector_key *key) {
 	// Obs!!!! change interest to WRITE, selector wakes up WHEN we can write
 	// selector_set_interest(key->s, key->fd, OP_WRITE);
 	selector_set_interest_key(key, OP_WRITE); // change interest to write
-	log(DEBUG, "[HELLO_READ] Switching to STATE_HELLO_WRITE and setting interest to OP_WRITE.");
 }
 
 /*
@@ -218,8 +219,7 @@ sends a METHOD selection message:
 
 If the selected METHOD is X'FF', none of the methods listed by the
 client are acceptable, and the CLIENT MUST close the connection. -> shutdown from server side and wait for client to
-disconnect?
-
+disconnect
 */
 
 static void write_to_client(struct selector_key *key, bool should_shutdown) {
@@ -266,12 +266,15 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 		return; // More data pending
 	}
 
+	// The shutdown is justified because the RFC specifies that the CLIENT must close the connection.
+	// However, gracefully shutting down from the server side is considered good practice and is commonly done by
+	// industry standards such as nginx. By calling shutdown(), we signal we won’t send or receive more data, allowing
+	// for a clean connection teardown.
 	if (should_shutdown) {
 		log(DEBUG, "[WRITE_TO_CLIENT] All data sent. Shutting down socket.");
 		shutdown(key->fd, SHUT_RDWR);
 		selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
-		log(DEBUG, "[WRITE_TO_CLIENT] Socket fd=%d closed", key->fd);
 		return;
 	}
 
@@ -624,4 +627,28 @@ static void socks5_handle_close(struct selector_key *key) {
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Session cleanup complete for fd=%d", key->fd);
 	// IMPORTANT: Do NOT call selector_unregister_fd here!
 	// The selector is already in the process of unregistering when it calls this function
+}
+
+// Basically: never forcing client to close in order to follow RFC standards.
+// Idk how to implement the timeout
+// Maybe should just selector_unregister_fd in hello_write_error
+static void close_client(struct selector_key *key) {
+	client_session *session = (client_session *) key->data;
+
+	char dummy[256];
+	ssize_t bytes_read = recv(key->fd, dummy, sizeof(dummy), 0);
+
+	if (bytes_read == 0) {
+		log(DEBUG, "[CLOSE_CLIENT] Client closed connection gracefully.");
+		selector_unregister_fd(key->s, key->fd); // This will trigger handle_close
+	} else if (bytes_read < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			return;
+		} else {
+			log(ERROR, "[CLOSE_CLIENT] recv() error: %s", strerror(errno));
+			selector_unregister_fd(key->s, key->fd);
+		}
+	} else {
+		log(DEBUG, "[CLOSE_CLIENT] Unexpected data from client during close. Ignoring and waiting for proper close.");
+	}
 }
