@@ -1,8 +1,8 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -g
+CFLAGS = -Wall -Wextra -g -std=c11 -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
 # added -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L because of "implicit declaration of pselect"
 # https://barnowl.mit.edu/ticket/166
-# -std=c11 -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
+# 
 LDFLAGS = -pthread
 
 SRC_DIR = src
@@ -16,15 +16,16 @@ BIN_DIR = bin
 
 # server src files
 SERVER_SRCS = $(SERVER_DIR)/main.c $(SERVER_DIR)/socks5.c
-SERVER_OBJS = $(SERVER_SRCS:$(SERVER_DIR)/%.c=$(OBJ_DIR)/%.o)
+SERVER_OBJS = $(OBJ_DIR)/server-main.o $(patsubst $(SERVER_DIR)/%.c,$(OBJ_DIR)/%.o,$(filter-out $(SERVER_DIR)/main.c,$(SERVER_SRCS)))
 
 # libraries source files
-LIBS_SRCS = $(wildcard $(LIBS_DIR)/*.c)
-LIBS_OBJS = $(LIBS_SRCS:$(LIBS_DIR)/%.c=$(OBJ_DIR)/%.o)
+# todo delete socks5-PLACEHOLDER.c when socks5 is implemented
+LIBS_SRCS = $(filter-out $(LIBS_DIR)/socks5-PLACEHOLDER.c, $(wildcard $(LIBS_DIR)/*.c))
+LIBS_OBJS = $(patsubst $(LIBS_DIR)/%.c,$(OBJ_DIR)/%.o,$(LIBS_SRCS))
 
 # client source files
 CLIENT_SRCS = $(CLIENT_DIR)/main.c
-CLIENT_OBJS = $(CLIENT_SRCS:$(CLIENT_DIR)/%.c=$(OBJ_DIR)/%.o)
+CLIENT_OBJS = $(OBJ_DIR)/client-main.o
 
 # tests
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
@@ -45,24 +46,27 @@ server: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(SERVER_OBJS)
 	$(CC) $(SERVER_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/server
 
 
-client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS)
-	$(CC) $(CLIENT_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
+client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(LIBS_OBJS)
+	$(CC) $(CLIENT_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
 
 # compile all libs and tests (each test is its own binary)
 test: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(TEST_BINS)
 
-# compile SERVER object files
+# Compile server main
+$(OBJ_DIR)/server-main.o: $(SERVER_DIR)/main.c
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+
+# Compile client main
+$(OBJ_DIR)/client-main.o: $(CLIENT_DIR)/main.c
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+
+# compile everything else for the server
 $(OBJ_DIR)/%.o: $(SERVER_DIR)/%.c
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
 # compile LIBRARY object files
 $(OBJ_DIR)/%.o: $(LIBS_DIR)/%.c
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
-
-
-$(OBJ_DIR)/%.o: $(CLIENT_DIR)/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
 
 $(BIN_DIR)/%: $(TEST_DIR)/%.c $(LIBS_OBJS)
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(LIBS_OBJS) $(LDFLAGS) -lcheck -lm -lsubunit -o $@

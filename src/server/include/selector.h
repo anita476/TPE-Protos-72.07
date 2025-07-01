@@ -97,11 +97,13 @@ selector_destroy(fd_selector s);
  * de bits.
  *
  * OP_NOOP es útil para cuando no se tiene ningún interés.
+ * 
+ * TODO:  check!!  changed this:   OP_WRITE   = 1 << 2,
  */
 typedef enum {
     OP_NOOP    = 0,
     OP_READ    = 1 << 0,
-    OP_WRITE   = 1 << 2,
+    OP_WRITE   = 1 << 1,
 } fd_interest ;
 
 /**

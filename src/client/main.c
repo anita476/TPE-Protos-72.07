@@ -1,7 +1,8 @@
 
 #include <stdio.h>
-void main(void) {
+int main(void) {
 	// Client
 
 	printf("Im a client\n");
+	return 0;
 }
