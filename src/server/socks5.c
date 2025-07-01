@@ -13,6 +13,25 @@ static void socks5_handle_write(struct selector_key *key);
 static void socks5_handle_close(struct selector_key *key);
 static void socks5_handle_block(struct selector_key *key);
 
+/**************** -Remote connection handlers- *****************/
+static void remote_connect_complete(struct selector_key *key);
+static void socks5_remote_read(struct selector_key *key);
+static void relay_client_to_remote(struct selector_key *key);
+static void relay_remote_to_client(struct selector_key *key);
+
+/**************** -Static client handlers structure- *****************/
+
+static const struct fd_handler client_handler = {.handle_read = socks5_handle_read,
+												 .handle_write = socks5_handle_write,
+												 .handle_close = socks5_handle_close,
+												 .handle_block = socks5_handle_block};
+
+static const struct fd_handler remote_handler = {.handle_read = socks5_remote_read,
+												 .handle_write = remote_connect_complete,
+												 .handle_close = socks5_handle_close,
+												 .handle_block = NULL};
+
+/******************* -State machine handlers- *******************/
 static void hello_read(struct selector_key *key);
 static void hello_write(struct selector_key *key);
 static void hello_write_error(struct selector_key *key);
@@ -22,18 +41,10 @@ static void request_resolve(struct selector_key *key);
 static void request_connect(struct selector_key *key);
 static void close_client(struct selector_key *key);
 static void relay_data(struct selector_key *key);
-
-// Remote connection handlers
-static void remote_connect_complete(struct selector_key *key);
-static void socks5_remote_read(struct selector_key *key);
-static void relay_client_to_remote(struct selector_key *key);
-static void relay_remote_to_client(struct selector_key *key);
-
-// Error handling
 static void error_write(struct selector_key *key);
 static void handle_error(struct selector_key *key);
 
-// Helper functions
+// Helpers
 static void set_error_state(client_session *session, uint8_t error_code);
 static bool send_socks5_error_response(struct selector_key *key);
 static void log_resolved_addresses(const char *domain,
@@ -46,16 +57,6 @@ static bool build_socks5_success_response(client_session *session);
 
 // Destructor
 static void cleanup_session(client_session *session);
-
-static const struct fd_handler client_handler = {.handle_read = socks5_handle_read,
-												 .handle_write = socks5_handle_write,
-												 .handle_close = socks5_handle_close,
-												 .handle_block = socks5_handle_block};
-
-static const struct fd_handler remote_handler = {.handle_read = socks5_remote_read,
-												 .handle_write = remote_connect_complete,
-												 .handle_close = socks5_handle_close,
-												 .handle_block = NULL};
 
 void socks5_handle_new_connection(struct selector_key *key) {
 	int listen_fd = key->fd;
@@ -328,13 +329,8 @@ static void hello_read(struct selector_key *key) {
 		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS); // FF means error
 		log(ERROR, "[HELLO_READ] No acceptable methods. Moving to STATE_ERROR.");
 		session->current_state = STATE_HELLO_NO_ACCEPTABLE_METHODS; // close
-																	// TODO shutdown after write or another state ?
-																	// shutdown
-		// session->will_close_after_write = true <- somehting like this maybe?
 	}
 
-	// Obs!!!! change interest to WRITE, selector wakes up WHEN we can write
-	// selector_set_interest(key->s, key->fd, OP_WRITE);
 	selector_set_interest_key(key, OP_WRITE); // change interest to write
 }
 
@@ -649,7 +645,6 @@ static void request_write(struct selector_key *key) {
 	}
 }
 
-// Step 4: DNS resolution & connection
 static void request_resolve(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
@@ -677,8 +672,7 @@ static void request_resolve(struct selector_key *key) {
 	session->current_state = STATE_REQUEST_RESOLVE;
 
 	// suspend processing until DNS resolution completes
-	// selector_set_interest_key(key, OP_NOOP);
-	selector_set_interest_key(key, OP_READ); // to handle client disconnects? not sure what to do here...
+	selector_set_interest_key(key, OP_READ);
 }
 
 static void *dns_resolution_thread(void *arg) {
@@ -707,7 +701,6 @@ static void *dns_resolution_thread(void *arg) {
 	} else {
 		log_resolved_addresses(session->current_request.domain_to_resolve, res);
 		session->dns_failed = false;
-		// session->dns_error_code = SOCKS5_REPLY_SUCCESS;
 		session->current_request.dst_address = res;
 	}
 
@@ -977,9 +970,6 @@ static void close_client(struct selector_key *key) {
 	}
 }
 
-// Step 5: Relay -- all of these functions have been half assed just to test the flow, they need to be properly
-// implemented and NON-bLOCKING
-
 static void relay_data(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
@@ -1063,7 +1053,6 @@ static void error_write(struct selector_key *key) {
 	write_to_client(key, true);
 }
 
-// Helper function to set error state with specific SOCKS5 error code
 static void set_error_state(client_session *session, uint8_t error_code) {
 	session->has_error = true;
 	session->error_code = error_code;
@@ -1073,7 +1062,6 @@ static void set_error_state(client_session *session, uint8_t error_code) {
 	log(DEBUG, "[SET_ERROR_STATE] Setting error state with code: 0x%02x", error_code);
 }
 
-// Helper function to send SOCKS5 error response
 static bool send_socks5_error_response(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 	buffer *wb = &session->write_buffer;
@@ -1133,7 +1121,6 @@ static void handle_error(struct selector_key *key) {
 	close(key->fd); // always close the fd, selector does NOT handle it
 }
 
-// Helper function to log resolved addresses
 static void log_resolved_addresses(const char *domain, struct addrinfo *addr_list) {
 	if (!addr_list) {
 		log(INFO, "[DNS_RESOLVE] No addresses resolved for domain: %s", domain);
