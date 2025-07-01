@@ -160,9 +160,9 @@ static void socks5_handle_read(struct selector_key *key) {
 		case STATE_REQUEST_RESOLVE:
 			request_resolve(key);
 			break;
-		case STATE_REQUEST_CONNECT:
-			request_connect(key);
-			break;
+		// case STATE_REQUEST_CONNECT:
+		// 	request_connect(key);
+		// 	break;
 		case STATE_RELAY:
 			relay_data(key);
 			break;
@@ -730,8 +730,8 @@ static void request_resolve(struct selector_key *key) {
 	session->current_state = STATE_REQUEST_RESOLVE;
 
 	// suspend processing until DNS resolution completes
-	// selector_set_interest_key(key, OP_NOOP);
-	selector_set_interest_key(key, OP_READ); // to handle client disconnects? not sure what to do here...
+	selector_set_interest_key(key, OP_NOOP);
+	// selector_set_interest_key(key, OP_READ); // to handle client disconnects? not sure what to do here...
 }
 
 static void *dns_resolution_thread(void *arg) {
@@ -831,8 +831,8 @@ static void request_connect(struct selector_key *key) {
 		}
 
 		session->current_state = STATE_REQUEST_CONNECT;
-		// selector_set_interest_key(key, OP_NOOP);
-		selector_set_interest_key(key, OP_READ);
+		selector_set_interest_key(key, OP_NOOP);
+		// selector_set_interest_key(key, OP_READ);
 		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
 		return;
 	}
@@ -1225,31 +1225,31 @@ static void handle_error(struct selector_key *key) {
 
 // Helper function to log resolved addresses
 static void log_resolved_addresses(const char *domain, struct addrinfo *addr_list) {
-	if (!addr_list) {
-		log(INFO, "[DNS_RESOLVE] No addresses resolved for domain: %s", domain);
-		return;
-	}
+	// if (!addr_list) {
+	// 	log(INFO, "[DNS_RESOLVE] No addresses resolved for domain: %s", domain);
+	// 	return;
+	// }
 
-	log(INFO, "[DNS_RESOLVE] Resolved addresses for domain '%s':", domain);
+	// log(INFO, "[DNS_RESOLVE] Resolved addresses for domain '%s':", domain);
 
-	int count = 0;
-	char addr_buf[INET6_ADDRSTRLEN + 8]; // Extra space for port
+	// int count = 0;
+	// char addr_buf[INET6_ADDRSTRLEN + 8]; // Extra space for port
 
-	for (struct addrinfo *addr = addr_list; addr != NULL; addr = addr->ai_next) {
-		sockaddr_to_human(addr_buf, sizeof(addr_buf), addr->ai_addr);
+	// for (struct addrinfo *addr = addr_list; addr != NULL; addr = addr->ai_next) {
+	// 	sockaddr_to_human(addr_buf, sizeof(addr_buf), addr->ai_addr);
 
-		const char *family_str = "Unknown";
-		if (addr->ai_family == AF_INET) {
-			family_str = "IPv4";
-		} else if (addr->ai_family == AF_INET6) {
-			family_str = "IPv6";
-		}
+	// 	const char *family_str = "Unknown";
+	// 	if (addr->ai_family == AF_INET) {
+	// 		family_str = "IPv4";
+	// 	} else if (addr->ai_family == AF_INET6) {
+	// 		family_str = "IPv6";
+	// 	}
 
-		log(INFO, "[DNS_RESOLVE]   [%d] %s: %s", count + 1, family_str, addr_buf);
-		count++;
-	}
+	// 	log(INFO, "[DNS_RESOLVE]   [%d] %s: %s", count + 1, family_str, addr_buf);
+	// 	count++;
+	// }
 
-	log(INFO, "[DNS_RESOLVE] Total addresses resolved: %d", count);
+	// log(INFO, "[DNS_RESOLVE] Total addresses resolved: %d", count);
 }
 
 static void cleanup_session(client_session *session) {
