@@ -8,6 +8,8 @@
 #include <arpa/inet.h>
 #include <buffer.h>
 #include <errno.h>
+#include <netdb.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -15,18 +17,11 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
-#include <time.h>
-#include <errno.h>
-#include <string.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <pthread.h>
-
 
 #include "buffer.h"
 #include "logger.h"
-#include "selector.h"
 #include "netutils.h"
+#include "selector.h"
 
 /* Since the send, recv etc. are blocking, we can use a state machine to transition between states and ensure no
  * blocking occurs */
@@ -50,14 +45,14 @@ typedef enum {
 
 // REQUEST AND RESPONSE STRUCTURES
 typedef struct socks5_request {
-	uint8_t cmd; // command <- not needed
+	uint8_t cmd;  // command <- not needed
 	uint8_t atyp; // not needed
 	// char *dstAddress; // destination address
 	// struct sockaddr_storage addr; // resolved address (always IPv4 or IPv6)
 	// socklen_t addr_len;            // address length for connect()
-	
+
 	// temporary variables to hold the address and port
-	uint16_t dst_port; // destination port
+	uint16_t dst_port;		 // destination port
 	char *domain_to_resolve; // temporary domain to resolve if atyp == SOCKS5_ATYP_DOMAIN
 
 	struct addrinfo *dst_address;
@@ -92,8 +87,14 @@ typedef struct {
 	// bool should_close; // TODO: maybe do this instead of STATE_CLIENT_CLOSE (mizrahi does this)
 	int clientSocket; // socket for CLIENT CONNECTION
 
-	bool dns_failed;           // Add this field
-    uint8_t dns_error_code;
+	bool dns_failed; // Add this field
+	uint8_t dns_error_code;
+
+	uint8_t raw_destination_read_buffer[256];
+	uint8_t raw_destination_write_buffer[256];
+
+	buffer destination_read_buffer;
+	buffer destination_write_buffer;
 
 	bool has_error;
 	uint8_t error_code;
