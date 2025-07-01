@@ -549,7 +549,8 @@ static void request_read(struct selector_key *key) {
 
 		// Port 0 is reserved and means "any available port" in some contexts (like bind())
 		// For outbound connections, port 0 doesn't make sense - you can't connect TO port 0
-		if (port == 0 || port > 65535) {
+		// Port cant be bigger than 65535, so no need to check that
+		if (port == 0) {
 			log(ERROR, "[REQUEST_READ] Invalid port number: %d", port);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE); // X'01' - General server failure
 			handle_error(key);
@@ -572,7 +573,7 @@ static void request_read(struct selector_key *key) {
 		}
 		uint16_t port = (buffer_read(rb) << 8) | buffer_read(rb);
 
-		if (port == 0 || port > 65535) {
+		if (port == 0) {
 			log(ERROR, "[REQUEST_READ] Invalid port number: %d", port);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE); // X'01' - General server failure
 			handle_error(key);
@@ -599,7 +600,7 @@ static void request_read(struct selector_key *key) {
 		domain_name[domain_len] = '\0';
 
 		uint16_t port = (buffer_read(rb) << 8) | buffer_read(rb);
-		if (port == 0 || port > 65535) {
+		if (port == 0) {
 			log(ERROR, "[REQUEST_READ] Invalid port number: %d", port);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE); // X'01' - General server failure
 			handle_error(key);

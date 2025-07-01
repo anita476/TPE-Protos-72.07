@@ -1,5 +1,6 @@
 #include "../include/metrics.h"
 #include "../include/logger.h"
+#include <inttypes.h>           // To ensure the uint64_t format is correct in every OS  
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
@@ -47,11 +48,11 @@ server_metrics* metrics_get(void) {
 void metrics_cleanup(void) {
     time_t uptime = time(NULL) - metrics.start_time;
     log(INFO, "[METRICS] Server shutdown - Final statistics:");
-    log(INFO, "[METRICS] Total connections: %llu", metrics.total_connections);
+    log(INFO, "[METRICS] Total connections: %" PRIu64, metrics.total_connections);
     log(INFO, "[METRICS] Max concurrent: %u", metrics.max_concurrent_connections);
-    log(INFO, "[METRICS] Bytes received: %llu", metrics.bytes_transferred_in);
-    log(INFO, "[METRICS] Bytes sent: %llu", metrics.bytes_transferred_out);
-    log(INFO, "[METRICS] Total bytes transferred: %llu", metrics.total_bytes_transferred);
+    log(INFO, "[METRICS] Bytes received: %" PRIu64, metrics.bytes_transferred_in);
+    log(INFO, "[METRICS] Bytes sent: %" PRIu64, metrics.bytes_transferred_out);
+    log(INFO, "[METRICS] Total bytes transferred: %" PRIu64, metrics.total_bytes_transferred);
     log(INFO, "[METRICS] Metrics system cleaned up");
     log(INFO, "[METRICS] Error count: %u", metrics.errors);
     log(INFO, "[METRICS] Server uptime: %ld seconds", uptime);
