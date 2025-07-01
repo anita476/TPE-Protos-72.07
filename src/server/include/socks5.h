@@ -6,7 +6,6 @@
 #define _SOCKS5_H_
 
 #include <arpa/inet.h>
-#include <buffer.h>
 #include <errno.h>
 #include <netdb.h>
 #include <pthread.h>

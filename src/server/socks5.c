@@ -1,30 +1,11 @@
 #include "include/socks5.h"
 #include "include/metrics.h"
 #include "include/selector.h"
+#include "include/socks5_utils.h"
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
-
-#define SOCKS5_VERSION 0x05
-#define SOCKS5_NO_AUTH 0x00
-#define SOCKS5_CMD_CONNECT 0x01
-#define SOCKS5_ATYP_IPV4 0x01
-#define SOCKS5_ATYP_DOMAIN 0x03
-#define SOCKS5_ATYP_IPV6 0x04
-#define SOCKS5_NO_ACCEPTABLE_METHODS 0xFF
-#define REJECTION_TIMEOUT_SECONDS 2
-
-// SOCKS5 reply codes
-#define SOCKS5_REPLY_SUCCESS 0x00
-#define SOCKS5_REPLY_GENERAL_FAILURE 0x01
-#define SOCKS5_REPLY_CONNECTION_NOT_ALLOWED 0x02
-#define SOCKS5_REPLY_NETWORK_UNREACHABLE 0x03
-#define SOCKS5_REPLY_HOST_UNREACHABLE 0x04
-#define SOCKS5_REPLY_CONNECTION_REFUSED 0x05
-#define SOCKS5_REPLY_TTL_EXPIRED 0x06
-#define SOCKS5_REPLY_COMMAND_NOT_SUPPORTED 0x07
-#define SOCKS5_REPLY_ADDRESS_TYPE_NOT_SUPPORTED 0x08
 
 void socks5_handle_new_connection(struct selector_key *key);
 static void socks5_handle_read(struct selector_key *key);
@@ -52,9 +33,6 @@ static void relay_remote_to_client(struct selector_key *key);
 static void error_write(struct selector_key *key);
 static void handle_error(struct selector_key *key);
 
-static uint8_t map_getaddrinfo_error_to_socks5(int gai_error);
-static uint8_t map_connect_error_to_socks5(int connect_errno);
-
 // Helper functions
 static void set_error_state(client_session *session, uint8_t error_code);
 static bool send_socks5_error_response(struct selector_key *key);
@@ -65,12 +43,10 @@ static void handle_connect_failure(struct selector_key *key, int error);
 static void handle_connect_success(struct selector_key *key);
 
 static bool build_socks5_success_response(client_session *session);
+
+// Destructor
 static void cleanup_session(client_session *session);
 
-static struct addrinfo *create_ipv6_addrinfo(const uint8_t ip[16], uint16_t port);
-static struct addrinfo *create_ipv4_addrinfo(uint32_t ip_host_order, uint16_t port);
-
-// OBS: this has to be static to ensure the memory remains valid throughout the whole program
 static const struct fd_handler client_handler = {.handle_read = socks5_handle_read,
 												 .handle_write = socks5_handle_write,
 												 .handle_close = socks5_handle_close,
@@ -82,7 +58,6 @@ static const struct fd_handler remote_handler = {.handle_read = socks5_remote_re
 												 .handle_block = NULL};
 
 void socks5_handle_new_connection(struct selector_key *key) {
-	// Called by the socks5 handler when a new client connects
 	int listen_fd = key->fd;
 	struct sockaddr_storage client_addr;
 	socklen_t client_addr_len = sizeof(client_addr);
@@ -129,24 +104,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	metrics_increment_connections();
 }
 
-/**
-Explanation:
-LISTENIN SOCKET handle_read -> in main
-called when the selector tells you the listening socket (the one you called listen() on) is readable.
-It means one or more new clients are waiting to be accepted.
-What should you do?
-We call accept(). This creates a new socket (CLIENT SOCKET) for the new connection.
-You register this new client socket with the selector, using a handler (socks5_handle_read) for protocol
-processing. So: The listening socket's handle_read is responsible for creating new sockets for each client (via
-accept()).
-
-CLIENT SOCKET socks5_handle_read
-called when the selector tells you a client socket is readable. It means the client has read it.
-we need to process based on the state (only hello read for now) for that client.
-So: The client socket's handle_read
-does not create new sockets. It only processes data for the already-accepted client.
-**/
-// Helper function to send SOCKS5 error response
+// TODO: should use stm to handle the states...
 static void socks5_handle_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 	switch (session->current_state) {
@@ -177,8 +135,6 @@ static void socks5_handle_read(struct selector_key *key) {
 			break;
 	}
 }
-
-// TODO: should use stm to handle the states...
 
 static void socks5_handle_write(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
@@ -257,7 +213,6 @@ static void socks5_handle_block(struct selector_key *key) {
 	}
 }
 
-// remember that the selector key has the selector , the fd we write to and the data itself
 // this is the FIRST message, it looks like:
 /*
 |VER | NMETHODS | METHODS  |
@@ -464,8 +419,6 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	// If we're not shutting down, update to next state
 	session->current_state = STATE_REQUEST_READ;
 	selector_set_interest(key->s, key->fd, OP_READ);
-	// log(DEBUG, "[WRITE_TO_CLIENT] All handshake data sent. Switching to STATE_REQUEST_READ."); // TODO: this debug is
-	// now misleading
 }
 
 static void hello_write(struct selector_key *key) {
@@ -536,11 +489,6 @@ static void request_read(struct selector_key *key) {
 	uint8_t cmd = peek[1];
 	uint8_t rsv = peek[2];
 	uint8_t atyp = peek[3];
-
-	// uint8_t version = buffer_read(rb);
-	// uint8_t cmd = buffer_read(rb);
-	// uint8_t rsv = buffer_read(rb);
-	// uint8_t atyp = buffer_read(rb);
 
 	log(DEBUG, "[REQUEST_READ] Header: VER=0x%02x CMD=0x%02x RSV=0x%02x ATYP=0x%02x", version, cmd, rsv, atyp);
 
@@ -1006,41 +954,6 @@ static bool build_socks5_success_response(client_session *session) {
 	return true;
 }
 
-static uint8_t map_getaddrinfo_error_to_socks5(int gai_error) {
-	switch (gai_error) {
-		case EAI_NONAME: // Name or service not known
-		case EAI_AGAIN:	 // Temporary failure in name resolution
-		case EAI_FAIL:	 // Non-recoverable failure in name resolution
-			return SOCKS5_REPLY_HOST_UNREACHABLE;
-		case EAI_FAMILY: // Address family not supported
-			return SOCKS5_REPLY_ADDRESS_TYPE_NOT_SUPPORTED;
-		case EAI_SERVICE:  // Service not supported for socket type
-		case EAI_SOCKTYPE: // Socket type not supported
-		case EAI_MEMORY:   // Memory allocation failure
-		case EAI_SYSTEM:   // System error (check errno)
-		default:
-			return SOCKS5_REPLY_GENERAL_FAILURE;
-	}
-}
-
-static uint8_t map_connect_error_to_socks5(int connect_errno) {
-	switch (connect_errno) {
-		case ECONNREFUSED:
-			return SOCKS5_REPLY_CONNECTION_REFUSED;
-		case EHOSTUNREACH:
-			return SOCKS5_REPLY_HOST_UNREACHABLE;
-		case ENETUNREACH:
-			return SOCKS5_REPLY_NETWORK_UNREACHABLE;
-		case ETIMEDOUT:
-			return SOCKS5_REPLY_TTL_EXPIRED;
-		case EACCES:
-		case EPERM:
-			return SOCKS5_REPLY_CONNECTION_NOT_ALLOWED;
-		default:
-			return SOCKS5_REPLY_GENERAL_FAILURE;
-	}
-}
-
 // Not being used atm
 static void close_client(struct selector_key *key) {
 	char dummy[256];
@@ -1282,57 +1195,4 @@ static void cleanup_session(client_session *session) {
 
 	buffer_reset(&session->read_buffer);
 	buffer_reset(&session->write_buffer);
-}
-
-static struct addrinfo *create_ipv4_addrinfo(uint32_t ip_host_order, uint16_t port) {
-	struct addrinfo *ai = malloc(sizeof(struct addrinfo));
-	struct sockaddr_in *sa = malloc(sizeof(struct sockaddr_in));
-
-	if (!ai || !sa) {
-		free(ai);
-		free(sa);
-		return NULL;
-	}
-
-	memset(sa, 0, sizeof(struct sockaddr_in));
-	sa->sin_family = AF_INET;
-	sa->sin_addr.s_addr = htonl(ip_host_order);
-	sa->sin_port = htons(port);
-
-	memset(ai, 0, sizeof(struct addrinfo));
-	ai->ai_family = AF_INET;
-	ai->ai_socktype = SOCK_STREAM;
-	ai->ai_protocol = IPPROTO_TCP;
-	ai->ai_addr = (struct sockaddr *) sa;
-	ai->ai_addrlen = sizeof(struct sockaddr_in);
-	ai->ai_next = NULL;
-
-	return ai;
-}
-
-// Helper to create addrinfo from binary IPv6
-static struct addrinfo *create_ipv6_addrinfo(const uint8_t ip[16], uint16_t port) {
-	struct addrinfo *ai = malloc(sizeof(struct addrinfo));
-	struct sockaddr_in6 *sa = malloc(sizeof(struct sockaddr_in6));
-
-	if (!ai || !sa) {
-		free(ai);
-		free(sa);
-		return NULL;
-	}
-
-	memset(sa, 0, sizeof(struct sockaddr_in6));
-	sa->sin6_family = AF_INET6;
-	memcpy(&sa->sin6_addr, ip, 16);
-	sa->sin6_port = htons(port);
-
-	memset(ai, 0, sizeof(struct addrinfo));
-	ai->ai_family = AF_INET6;
-	ai->ai_socktype = SOCK_STREAM;
-	ai->ai_protocol = IPPROTO_TCP;
-	ai->ai_addr = (struct sockaddr *) sa;
-	ai->ai_addrlen = sizeof(struct sockaddr_in6);
-	ai->ai_next = NULL;
-
-	return ai;
 }

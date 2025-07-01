@@ -1,7 +1,7 @@
-#include "../include/args.h"
-#include "../include/logger.h"
-#include "../include/metrics.h"
-#include "../include/selector.h"
+#include "include/args.h"
+#include "include/logger.h"
+#include "include/metrics.h"
+#include "include/selector.h"
 #include "include/socks5.h"
 #include <arpa/inet.h>
 #include <errno.h>
