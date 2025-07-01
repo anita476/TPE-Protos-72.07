@@ -70,6 +70,13 @@ typedef struct {
 
 	int clientSocket; // socket for CLIENT CONNECTION
 
+
+	uint8_t raw_destination_read_buffer[256];
+	uint8_t raw_destination_write_buffer[256];
+
+	buffer destination_read_buffer;
+	buffer destination_write_buffer;
+
 	bool has_error;
 	uint8_t error_code;
 	bool error_response_sent;
