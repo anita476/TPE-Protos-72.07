@@ -2,6 +2,7 @@
 #include "include/logger.h"
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 static server_metrics metrics = {0};
 
