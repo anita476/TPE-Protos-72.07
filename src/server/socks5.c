@@ -1,5 +1,6 @@
 #include "include/socks5.h"
 #include "include/selector.h"
+#include "include/metrics.h"
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
@@ -129,6 +130,9 @@ static void hello_read(struct selector_key *key) {
 		handle_error(key);
 		return;
 	}
+
+	metrics_add_bytes_in(bytes_read);
+
 	buffer_write_adv(rb, bytes_read);
 	log(DEBUG, "[HELLO_READ] Read %zd bytes from client.", bytes_read);
 
@@ -258,6 +262,9 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		return;
 	}
+
+	metrics_add_bytes_out(bytes_written);
+
 	buffer_read_adv(wb, bytes_written);
 	log(DEBUG, "[WRITE_TO_CLIENT] Sent %zd/%zu bytes to client.", bytes_written, bytes_to_write);
 
@@ -334,6 +341,8 @@ static void request_read(struct selector_key *key) {
 		handle_error(key);
 		return;
 	}
+
+	metrics_add_bytes_in(bytes_read);
 
 	// Updating buffer
 	buffer_write_adv(rb, bytes_read);
@@ -550,6 +559,8 @@ void socks5_handle_new_connection(struct selector_key *key) {
 
 	log(INFO, "===============================================================");
 	log(INFO, "[HANDLE_CONNECTION] Accepted new client: fd=%d", client_fd);
+
+	metrics_increment_connections();
 }
 
 /**
@@ -625,6 +636,8 @@ static void socks5_handle_close(struct selector_key *key) {
 		free(session);
 	}
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Session cleanup complete for fd=%d", key->fd);
+
+	metrics_decrement_connections();
 	// IMPORTANT: Do NOT call selector_unregister_fd here!
 	// The selector is already in the process of unregistering when it calls this function
 }

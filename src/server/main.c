@@ -1,6 +1,7 @@
 #include "../include/args.h"
 #include "../include/logger.h"
 #include "../include/selector.h"
+#include "../include/metrics.h"
 #include "include/socks5.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -41,6 +42,9 @@ int main(int argc, char **argv) {
 	printf("Starting server...\n");
 	// parse args is in charge of initializing the args struct, all info will be there (already should be rfc compliant)
 	parse_args(argc, argv, &args);
+
+	metrics_init();
+
 	unsigned long socksPort = args.socks_port;
 	// TODO delete
 	log(DEBUG, "Using SOCKS5 port %lu", socksPort);
@@ -126,6 +130,8 @@ int main(int argc, char **argv) {
 			exit_error(error_msg, selectorStatus);
 		}
 	}
+
+	metrics_cleanup();
 
 	exit(0);
 }
