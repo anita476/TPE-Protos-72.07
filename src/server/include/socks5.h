@@ -15,10 +15,18 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
+#include <time.h>
+#include <errno.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <pthread.h>
+
 
 #include "buffer.h"
 #include "logger.h"
 #include "selector.h"
+#include "netutils.h"
 
 /* Since the send, recv etc. are blocking, we can use a state machine to transition between states and ensure no
  * blocking occurs */
@@ -29,6 +37,10 @@ typedef enum {
 	STATE_HELLO_NO_ACCEPTABLE_METHODS, // o lo llamo HELLO_ERROR?
 	STATE_REQUEST_READ,
 	STATE_REQUEST_WRITE,
+
+	STATE_REQUEST_RESOLVE, // ATYP == DOMAIN
+	STATE_REQUEST_CONNECT,
+	STATE_RELAY,
 	STATE_ERROR_WRITE, // New state for writing error responses
 	// todo others..
 	STATE_CLIENT_CLOSE,
@@ -40,8 +52,12 @@ typedef enum {
 typedef struct socks5_request {
 	uint8_t cmd; // command
 	uint8_t atyp;
-	char *dstAddress; // destination address
+	// char *dstAddress; // destination address
+	struct sockaddr_storage addr; // resolved address (always IPv4 or IPv6)
+	socklen_t addr_len;            // address length for connect()
 	uint16_t dstPort; // destination port
+
+	char *domain_to_resolve; // domain to resolve if atyp == SOCKS5_ATYP_DOMAIN
 
 } socks5_request;
 
@@ -68,6 +84,14 @@ typedef struct {
 	buffer read_buffer;
 	buffer write_buffer;
 
+	struct addrinfo *remote_addr; // linked list of remote addresses to connect to
+
+	int remote_fd;
+	int client_fd; // socket for CLIENT CONNECTION
+
+	bool dns_failed;
+
+	// bool should_close; // TODO: maybe do this instead of STATE_CLIENT_CLOSE (mizrahi does this)
 	int clientSocket; // socket for CLIENT CONNECTION
 
 	bool has_error;

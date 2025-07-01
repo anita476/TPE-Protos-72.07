@@ -31,8 +31,16 @@ static void handle_write(struct selector_key *key) {
 static void handle_close(struct selector_key *key) {
 	// Placeholder for close handler
 	log(INFO, "Close event on fd %d", key->fd);
-	selector_unregister_fd(key->s, key->fd);
-	close(key->fd);
+	// Clean up any data associated with this fd
+    if (key->data) {
+        free(key->data);
+        key->data = NULL;
+    }
+    
+    // DO NOT call selector_unregister_fd(key->s, key->fd); ← This causes infinite recursion!
+    // DO NOT call close(key->fd); ← The selector will handle this
+    
+    log(DEBUG, "Cleanup complete for fd %d", key->fd)
 }
 
 // TODO expand parse args to include log level and eventually log file
@@ -122,6 +130,7 @@ int main(int argc, char **argv) {
 	}
 
 	// Until sigterm or sigint, run server loop
+	// TODO: dont close on client disconnect (SELECTOR_IO)
 	for (; !done;) {
 		error_msg = NULL;
 		selectorStatus = selector_select(selector);
