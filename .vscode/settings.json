@@ -1,7 +1,0 @@
-{
-    "files.associations": {
-        "socks5.h": "c",
-        "ios": "c",
-        "socket.h": "c"
-    }
-}
