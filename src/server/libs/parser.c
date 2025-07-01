@@ -53,11 +53,11 @@ const struct parser_event *parser_feed(struct parser *p, const uint8_t c) {
 
 	for (unsigned i = 0; i < n; i++) {
 		const int when = state[i].when;
-		if (state[i].when <= 0xFF) {
+		if (when <= 0xFF) {
 			matched = (c == when);
-		} else if (state[i].when == (int) ANY) {
+		} else if (when == (int) ANY) {
 			matched = true;
-		} else if (state[i].when > 0xFF) {
+		} else if (when > 0xFF) {
 			matched = (type & when);
 		} else {
 			matched = false;
