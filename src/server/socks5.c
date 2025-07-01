@@ -58,6 +58,8 @@ static uint8_t map_connect_error_to_socks5(int connect_errno);
 // Helper functions
 static void set_error_state(client_session *session, uint8_t error_code);
 static bool send_socks5_error_response(struct selector_key *key);
+static void log_resolved_addresses(const char *domain,
+								   struct addrinfo *addr_list); // This could be deleted since its just for debugging
 static void *dns_resolution_thread(void *arg);
 static void handle_connect_failure(struct selector_key *key, int error);
 static void handle_connect_success(struct selector_key *key);
@@ -157,9 +159,9 @@ static void socks5_handle_read(struct selector_key *key) {
 		case STATE_REQUEST_RESOLVE:
 			request_resolve(key);
 			break;
-		// case STATE_REQUEST_CONNECT:
-		// 	request_connect(key);
-		// 	break;
+		case STATE_REQUEST_CONNECT:
+			request_connect(key);
+			break;
 		case STATE_RELAY:
 			relay_data(key);
 			break;
@@ -727,8 +729,8 @@ static void request_resolve(struct selector_key *key) {
 	session->current_state = STATE_REQUEST_RESOLVE;
 
 	// suspend processing until DNS resolution completes
-	selector_set_interest_key(key, OP_NOOP);
-	// selector_set_interest_key(key, OP_READ); // to handle client disconnects? not sure what to do here...
+	// selector_set_interest_key(key, OP_NOOP);
+	selector_set_interest_key(key, OP_READ); // to handle client disconnects? not sure what to do here...
 }
 
 static void *dns_resolution_thread(void *arg) {
@@ -755,6 +757,7 @@ static void *dns_resolution_thread(void *arg) {
 		session->dns_error_code = map_getaddrinfo_error_to_socks5(err);
 		session->current_request.dst_address = NULL;
 	} else {
+		log_resolved_addresses(session->current_request.domain_to_resolve, res);
 		session->dns_failed = false;
 		// session->dns_error_code = SOCKS5_REPLY_SUCCESS;
 		session->current_request.dst_address = res;
@@ -827,8 +830,8 @@ static void request_connect(struct selector_key *key) {
 		}
 
 		session->current_state = STATE_REQUEST_CONNECT;
-		selector_set_interest_key(key, OP_NOOP);
-		// selector_set_interest_key(key, OP_READ);
+		// selector_set_interest_key(key, OP_NOOP);
+		selector_set_interest_key(key, OP_READ);
 		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
 		return;
 	}
@@ -1046,6 +1049,7 @@ static void close_client(struct selector_key *key) {
 	if (bytes_read == 0) {
 		log(DEBUG, "[CLOSE_CLIENT] Client closed connection gracefully.");
 		selector_unregister_fd(key->s, key->fd); // This will trigger handle_close
+		close(key->fd);
 	} else if (bytes_read < 0) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
 			return;
@@ -1053,6 +1057,7 @@ static void close_client(struct selector_key *key) {
 			log(ERROR, "[CLOSE_CLIENT] recv() error: %s", strerror(errno));
 			metrics_increment_errors();
 			selector_unregister_fd(key->s, key->fd);
+			close(key->fd);
 		}
 	} else {
 		log(DEBUG, "[CLOSE_CLIENT] Unexpected data from client during close. Ignoring and waiting for proper close.");
@@ -1211,176 +1216,43 @@ static void handle_error(struct selector_key *key) {
 			return;
 		}
 	}
-
-	// Either no error response needed or failed to prepare it - clean up
-	if (session) {
-		cleanup_session(session);
-	}
-
 	selector_unregister_fd(key->s, key->fd);
-	// close(key->fd); // is there a need to close the fd here? selector_unregister_fd should handle it
+	close(key->fd); // always close the fd, selector does NOT handle it
 }
 
-/**
-Explanation:
-LISTENIN SOCKET handle_read -> in main
-called when the selector tells you the listening socket (the one you called listen() on) is readable.
-It means one or more new clients are waiting to be accepted.
-What should you do?
-We call accept(). This creates a new socket (CLIENT SOCKET) for the new connection.
-You register this new client socket with the selector, using a handler (socks5_handle_read) for protocol
-processing. So: The listening socket's handle_read is responsible for creating new sockets for each client (via
-accept()).
+// Helper function to log resolved addresses
+static void log_resolved_addresses(const char *domain, struct addrinfo *addr_list) {
+	if (!addr_list) {
+		log(INFO, "[DNS_RESOLVE] No addresses resolved for domain: %s", domain);
+		return;
+	}
 
-CLIENT SOCKET socks5_handle_read
-called when the selector tells you a client socket is readable. It means the client has read it.
-we need to process based on the state (only hello read for now) for that client.
-So: The client socket's handle_read
-does not create new sockets. It only processes data for the already-accepted client.
-**/
+	log(INFO, "[DNS_RESOLVE] Resolved addresses for domain '%s':", domain);
 
-static uint8_t transmit_data_read(buffer *rb, buffer *wb, int read_fd) {
-	// Buffer
-	size_t wbytes;
-	uint8_t *ptr = buffer_write_ptr(rb, &wbytes);
-	if (wbytes <= 0) {
-		log(DEBUG, "[REQUEST_READ] No space to write, trying to compact buffer");
-		buffer_compact(rb);
-		ptr = buffer_write_ptr(rb, &wbytes);
-		if (wbytes <= 0) {
-			log(ERROR, "[REQUEST_READ] No space to write even after compaction. Closing connection.");
-			// set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			// handle_error(key);
-			return SOCKS5_REPLY_GENERAL_FAILURE;
+	int count = 0;
+	char addr_buf[INET6_ADDRSTRLEN + 8]; // Extra space for port
+
+	for (struct addrinfo *addr = addr_list; addr != NULL; addr = addr->ai_next) {
+		sockaddr_to_human(addr_buf, sizeof(addr_buf), addr->ai_addr);
+
+		const char *family_str = "Unknown";
+		if (addr->ai_family == AF_INET) {
+			family_str = "IPv4";
+		} else if (addr->ai_family == AF_INET6) {
+			family_str = "IPv6";
 		}
+
+		log(INFO, "[DNS_RESOLVE]   [%d] %s: %s", count + 1, family_str, addr_buf);
+		count++;
 	}
 
-	// Socket
-	ssize_t bytes_read = recv(read_fd, ptr, wbytes, 0);
-	if (bytes_read <= 0) {
-		if (bytes_read == 0) {
-			log(DEBUG, "[REQUEST_READ] Connection closed by client.");
-		} else {
-			perror("[REQUEST_READ] Error reading from socket");
-		}
-		// set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		// handle_error(key);
-		return SOCKS5_REPLY_GENERAL_FAILURE;
-	}
-
-	// Updating buffer
-	buffer_write_adv(rb, bytes_read);
-	log(DEBUG, "[REQUEST_READ] Read %zd bytes from client.", bytes_read);
-
-	// move client data to the destination write buffer to send to destination
-	//  buffer * wb = &session->destination_write_buffer;
-	uint8_t *wptr = buffer_write_ptr(wb, &wbytes);
-	if (wbytes < bytes_read) {
-		buffer_compact(wb);
-		if (wbytes < bytes_read) {
-			log(ERROR, "[REQUEST_READ] No space to write in Write Buffer. Closing connection.");
-			// set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			// handle_error(key);
-			return SOCKS5_REPLY_GENERAL_FAILURE;
-		}
-	}
-	// move to write buffer for sending
-	snprintf((char *) wptr, bytes_read, "%s", (char *) ptr);
-	buffer_write_adv(wb, bytes_read);
-	return 0;
-}
-
-static void transmit_to_destination_read(struct selector_key *key) {
-	client_session *session = (client_session *) key->data;
-	// buffer *rb = &session->read_buffer;
-	uint8_t code = transmit_data_read(&session->read_buffer, &session->destination_write_buffer, key->fd);
-	if (code == SOCKS5_REPLY_GENERAL_FAILURE) {
-		log(ERROR, "[REQUEST_READ] Error reading from client. Setting error state.");
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		handle_error(key);
-	}
-}
-static uint8_t transmit_data_write(buffer *wb, struct selector_key *key) {
-	size_t bytes_to_write;
-	uint8_t *ptr = buffer_read_ptr(wb, &bytes_to_write);
-
-	if (bytes_to_write == 0) {
-		return SOCKS5_REPLY_GENERAL_FAILURE;
-	}
-
-	ssize_t bytes_written = send(key->fd, ptr, bytes_to_write, MSG_NOSIGNAL);
-	if (bytes_written < 0) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			log(DEBUG, "[REQUEST_WRITE] send() would block, waiting for next write event.");
-			return 0; // maybe this should be a special code to indicate "try again later"
-		}
-		if (errno == EPIPE) {
-			// destination has closed the connection -> do not write (broken pipe exception in send)
-			log(INFO, "[REQUEST_WRITE] Destination already closed connection (EPIPE), closing socket.");
-			log(DEBUG, "[REQUEST_WRITE] Unregistering fd=%d from selector", key->fd);
-			selector_unregister_fd(key->s, key->fd);
-			close(key->fd);
-			log(DEBUG, "[REQUEST_WRITE] EPIPE cleanup complete for fd=%d", key->fd);
-			return 0;
-		}
-		// log(ERROR, "[REQUEST_WRITE] send() error: %s", strerror(errno));
-		// set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		return SOCKS5_REPLY_GENERAL_FAILURE;
-	} else if (bytes_written == 0) {
-		// log(INFO, "[REQUEST_WRITE] Connection closed by peer during send");
-		// set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		return SOCKS5_REPLY_GENERAL_FAILURE;
-	}
-	buffer_read_adv(wb, bytes_written);
-	log(DEBUG, "[REQUEST_WRITE] Sent %zd/%zu bytes to destination.", bytes_written, bytes_to_write);
-
-	if (buffer_readable_bytes(wb) > 0) {
-		log(DEBUG, "[REQUEST_WRITE] Partial write, waiting for next event.");
-		return 0; // More data pending maybe should return special code
-	}
-
-	// session->current_state = STATE_REQUEST_READ; should add a TRANSMITION state or similar
-	selector_set_interest(key->s, key->fd, OP_READ);
-	/*
-	 for now I will asume, if we send a package to the server, we will await for a response before sending
-	 another, si the interest will be set to READ
-	 */
-	log(DEBUG, "[REQUEST_WRITE] All data sent to destination.");
-}
-
-static void transmit_to_destination_write(struct selector_key *key) {
-	client_session *session = (client_session *) key->data;
-	uint8_t code = transmit_data_write(&session->destination_write_buffer, key);
-	if (code == SOCKS5_REPLY_GENERAL_FAILURE) {
-		log(ERROR, "[REQUEST_WRITE] Error writing to destination. Setting error state.");
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		handle_error(key);
-	}
-}
-
-static void transmit_to_client_read(struct selector_key *key) {
-	client_session *session = (client_session *) key->data;
-	uint8_t code = transmit_data_read(&session->destination_read_buffer, &session->write_buffer, key->fd);
-	if (code == SOCKS5_REPLY_GENERAL_FAILURE) {
-		log(ERROR, "[REQUEST_READ] Error reading from destination. Setting error state.");
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		handle_error(key);
-	}
-}
-
-static void transmit_to_client_write(struct selector_key *key) {
-	client_session *session = (client_session *) key->data;
-	uint8_t code = transmit_data_write(&session->write_buffer, key);
-	if (code == SOCKS5_REPLY_GENERAL_FAILURE) {
-		log(ERROR, "[REQUEST_WRITE] Error writing to client. Setting error state.");
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		handle_error(key);
-	}
+	log(INFO, "[DNS_RESOLVE] Total addresses resolved: %d", count);
 }
 
 static void cleanup_session(client_session *session) {
-	if (!session)
+	if (!session || session->cleaned_up)
 		return;
+	session->cleaned_up = true;
 
 	if (session->current_request.dst_address) {
 		if (session->current_request.atyp == SOCKS5_ATYP_DOMAIN) {

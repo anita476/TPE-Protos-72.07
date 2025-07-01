@@ -99,6 +99,9 @@ typedef struct {
 	bool has_error;
 	uint8_t error_code;
 	bool error_response_sent;
+
+	bool cleaned_up; // to avoid double cleanup
+
 } client_session;
 
 // capaz se le puede agregar el clientSocket aca en vez de en el main pero X
