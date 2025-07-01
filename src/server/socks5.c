@@ -41,6 +41,7 @@ static void set_error_state(client_session *session, uint8_t error_code) {
 	session->error_code = error_code;
 	session->error_response_sent = false;
 	session->current_state = STATE_ERROR;
+	metrics_increment_errors();
 	log(DEBUG, "[SET_ERROR_STATE] Setting error state with code: 0x%02x", error_code);
 }
 
@@ -248,6 +249,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 		if (errno == EPIPE) {
 			// client has closed the connection -> do not write (broken pipe exception in send)
 			log(INFO, "[WRITE_TO_CLIENT] Client already closed connection (EPIPE), closing socket.");
+			metrics_increment_errors();
 			log(DEBUG, "[WRITE_TO_CLIENT] Unregistering fd=%d from selector", key->fd);
 			selector_unregister_fd(key->s, key->fd);
 			close(key->fd);
@@ -530,6 +532,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	int client_fd = accept(listen_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	if (client_fd < 0) {
 		perror("accept error"); // todo more robust error handling...
+		metrics_increment_errors();
 		return;
 	}
 
@@ -659,6 +662,7 @@ static void close_client(struct selector_key *key) {
 			return;
 		} else {
 			log(ERROR, "[CLOSE_CLIENT] recv() error: %s", strerror(errno));
+			metrics_increment_errors();
 			selector_unregister_fd(key->s, key->fd);
 		}
 	} else {
