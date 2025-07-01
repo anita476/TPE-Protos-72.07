@@ -157,9 +157,9 @@ static void socks5_handle_read(struct selector_key *key) {
 		case STATE_REQUEST_RESOLVE:
 			request_resolve(key);
 			break;
-		case STATE_REQUEST_CONNECT:
-			request_connect(key);
-			break;
+		// case STATE_REQUEST_CONNECT:
+		// 	request_connect(key);
+		// 	break;
 		case STATE_RELAY:
 			relay_data(key);
 			break;
@@ -727,8 +727,8 @@ static void request_resolve(struct selector_key *key) {
 	session->current_state = STATE_REQUEST_RESOLVE;
 
 	// suspend processing until DNS resolution completes
-	// selector_set_interest_key(key, OP_NOOP);
-	selector_set_interest_key(key, OP_READ); // to handle client disconnects? not sure what to do here...
+	selector_set_interest_key(key, OP_NOOP);
+	// selector_set_interest_key(key, OP_READ); // to handle client disconnects? not sure what to do here...
 }
 
 static void *dns_resolution_thread(void *arg) {
@@ -827,8 +827,8 @@ static void request_connect(struct selector_key *key) {
 		}
 
 		session->current_state = STATE_REQUEST_CONNECT;
-		// selector_set_interest_key(key, OP_NOOP);
-		selector_set_interest_key(key, OP_READ);
+		selector_set_interest_key(key, OP_NOOP);
+		// selector_set_interest_key(key, OP_READ);
 		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
 		return;
 	}
