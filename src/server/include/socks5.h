@@ -50,15 +50,17 @@ typedef enum {
 
 // REQUEST AND RESPONSE STRUCTURES
 typedef struct socks5_request {
-	uint8_t cmd; // command
-	uint8_t atyp;
+	uint8_t cmd; // command <- not needed
+	uint8_t atyp; // not needed
 	// char *dstAddress; // destination address
-	struct sockaddr_storage addr; // resolved address (always IPv4 or IPv6)
-	socklen_t addr_len;            // address length for connect()
-	uint16_t dstPort; // destination port
+	// struct sockaddr_storage addr; // resolved address (always IPv4 or IPv6)
+	// socklen_t addr_len;            // address length for connect()
+	
+	// temporary variables to hold the address and port
+	uint16_t dst_port; // destination port
+	char *domain_to_resolve; // temporary domain to resolve if atyp == SOCKS5_ATYP_DOMAIN
 
-	char *domain_to_resolve; // domain to resolve if atyp == SOCKS5_ATYP_DOMAIN
-
+	struct addrinfo *dst_address;
 } socks5_request;
 
 typedef struct socks5_response {
@@ -84,15 +86,14 @@ typedef struct {
 	buffer read_buffer;
 	buffer write_buffer;
 
-	struct addrinfo *remote_addr; // linked list of remote addresses to connect to
-
 	int remote_fd;
 	int client_fd; // socket for CLIENT CONNECTION
 
-	bool dns_failed;
-
 	// bool should_close; // TODO: maybe do this instead of STATE_CLIENT_CLOSE (mizrahi does this)
 	int clientSocket; // socket for CLIENT CONNECTION
+
+	bool dns_failed;           // Add this field
+    uint8_t dns_error_code;
 
 	bool has_error;
 	uint8_t error_code;
