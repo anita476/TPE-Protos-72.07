@@ -590,7 +590,7 @@ static void socks5_handle_read(struct selector_key *key) {
 	}
 }
 
-static int transmit_data_read(buffer * rb, buffer * wb, int read_fd) {
+static uint8_t transmit_data_read(buffer * rb, buffer * wb, int read_fd) {
 	// Buffer
 	size_t wbytes;
 	uint8_t *ptr = buffer_write_ptr(rb, &wbytes);
@@ -638,228 +638,96 @@ static int transmit_data_read(buffer * rb, buffer * wb, int read_fd) {
 	//move to write buffer for sending
 	snprintf((char *)wptr, bytes_read, "%s", (char *)ptr);
 	buffer_write_adv(wb, bytes_read);
+	return 0;
 }
 
 static void transmit_to_destination_read(struct  selector_key * key) {
 	client_session *session = (client_session *) key->data;
-	buffer *rb = &session->read_buffer;
-
-	log(DEBUG, "[REQUEST_READ] Entered request_read.");
-
-	// Buffer
-	size_t wbytes;
-	uint8_t *ptr = buffer_write_ptr(rb, &wbytes);
-	if (wbytes <= 0) {
-		log(DEBUG, "[REQUEST_READ] No space to write, trying to compact buffer");
-		buffer_compact(rb);
-		ptr = buffer_write_ptr(rb, &wbytes);
-		if (wbytes <= 0) {
-			log(ERROR, "[REQUEST_READ] No space to write even after compaction. Closing connection.");
-			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			handle_error(key);
-			return;
-		}
-	}
-
-	// Socket
-	ssize_t bytes_read = recv(key->fd, ptr, wbytes, 0);
-	if (bytes_read <= 0) {
-		if (bytes_read == 0) {
-			log(DEBUG, "[REQUEST_READ] Connection closed by client.");
-		} else {
-			perror("[REQUEST_READ] Error reading from socket");
-		}
+	// buffer *rb = &session->read_buffer;
+	uint8_t code = transmit_data_read(&session->read_buffer, &session->destination_write_buffer, key->fd);
+	if (code == SOCKS5_REPLY_GENERAL_FAILURE) {
+		log(ERROR, "[REQUEST_READ] Error reading from client. Setting error state.");
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
-		return;
+	}
+}
+static uint8_t transmit_data_write( buffer * wb, struct selector_key * key) {
+	size_t bytes_to_write;
+	uint8_t *ptr = buffer_read_ptr(wb, &bytes_to_write);
+
+	if (bytes_to_write == 0) {
+		return SOCKS5_REPLY_GENERAL_FAILURE;
 	}
 
-	// Updating buffer
-	buffer_write_adv(rb, bytes_read);
-	log(DEBUG, "[REQUEST_READ] Read %zd bytes from client.", bytes_read);
-
-	//move client data to the destination write buffer to send to destination
-	buffer * wb = &session->destination_write_buffer;
-	uint8_t *wptr = buffer_write_ptr(wb, &wbytes);
-	if (wbytes < bytes_read) {
-		buffer_compact(wb);
-		if (wbytes < bytes_read) {
-			log(ERROR, "[REQUEST_READ] No space to write in Write Buffer. Closing connection.");
-			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			handle_error(key);
-			return;
+	ssize_t bytes_written = send(key->fd, ptr, bytes_to_write, MSG_NOSIGNAL);
+	if (bytes_written < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			log(DEBUG, "[REQUEST_WRITE] send() would block, waiting for next write event.");
+			return 0; // maybe this should be a special code to indicate "try again later"
 		}
+		if (errno == EPIPE) {
+			// destination has closed the connection -> do not write (broken pipe exception in send)
+			log(INFO, "[REQUEST_WRITE] Destination already closed connection (EPIPE), closing socket.");
+			log(DEBUG, "[REQUEST_WRITE] Unregistering fd=%d from selector", key->fd);
+			selector_unregister_fd(key->s, key->fd);
+			close(key->fd);
+			log(DEBUG, "[REQUEST_WRITE] EPIPE cleanup complete for fd=%d", key->fd);
+			return 0;
+		}
+		// log(ERROR, "[REQUEST_WRITE] send() error: %s", strerror(errno));
+		// set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		return SOCKS5_REPLY_GENERAL_FAILURE;
+	} else if (bytes_written == 0) {
+		// log(INFO, "[REQUEST_WRITE] Connection closed by peer during send");
+		// set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		return SOCKS5_REPLY_GENERAL_FAILURE;
 	}
-	//move to write buffer for sending
-	snprintf((char *)wptr, bytes_read, "%s", (char *)ptr);
-	buffer_write_adv(wb, bytes_read);
+	buffer_read_adv(wb, bytes_written);
+	log(DEBUG, "[REQUEST_WRITE] Sent %zd/%zu bytes to destination.", bytes_written, bytes_to_write);
 
+	if (buffer_readable_bytes(wb) > 0) {
+		log(DEBUG, "[REQUEST_WRITE] Partial write, waiting for next event.");
+		return 0; // More data pending maybe should return special code
+	}
+
+	//session->current_state = STATE_REQUEST_READ; should add a TRANSMITION state or similar
+	selector_set_interest(key->s, key->fd, OP_READ);
+	/*
+	 for now I will asume, if we send a package to the server, we will await for a response before sending
+	 another, si the interest will be set to READ
+	 */
+	log(DEBUG, "[REQUEST_WRITE] All data sent to destination.");
 }
 
 static void transmit_to_destination_write(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
-	buffer *wb = &session->destination_write_buffer;
-
-	log(DEBUG, "[REQUEST_WRITE] Entered request_write.");
-
-	size_t bytes_to_write;
-	uint8_t *ptr = buffer_read_ptr(wb, &bytes_to_write);
-
-	if (bytes_to_write == 0) {
-		log(ERROR, "[REQUEST_WRITE] No data to write.");
+	uint8_t code = transmit_data_write(&session->destination_write_buffer, key);
+	if (code == SOCKS5_REPLY_GENERAL_FAILURE) {
+		log(ERROR, "[REQUEST_WRITE] Error writing to destination. Setting error state.");
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		return;
+		handle_error(key);
 	}
-
-	ssize_t bytes_written = send(key->fd, ptr, bytes_to_write, MSG_NOSIGNAL);
-	if (bytes_written < 0) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			log(DEBUG, "[REQUEST_WRITE] send() would block, waiting for next write event.");
-			return; // Try again later when selector notifies
-		}
-		if (errno == EPIPE) {
-			// destination has closed the connection -> do not write (broken pipe exception in send)
-			log(INFO, "[REQUEST_WRITE] Destination already closed connection (EPIPE), closing socket.");
-			log(DEBUG, "[REQUEST_WRITE] Unregistering fd=%d from selector", key->fd);
-			selector_unregister_fd(key->s, key->fd);
-			close(key->fd);
-			log(DEBUG, "[REQUEST_WRITE] EPIPE cleanup complete for fd=%d", key->fd);
-			return;
-		}
-		log(ERROR, "[REQUEST_WRITE] send() error: %s", strerror(errno));
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		return;
-	} else if (bytes_written == 0) {
-		log(INFO, "[REQUEST_WRITE] Connection closed by peer during send");
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		return;
-	}
-	buffer_read_adv(wb, bytes_written);
-	log(DEBUG, "[REQUEST_WRITE] Sent %zd/%zu bytes to destination.", bytes_written, bytes_to_write);
-
-	if (buffer_readable_bytes(wb) > 0) {
-		log(DEBUG, "[REQUEST_WRITE] Partial write, waiting for next event.");
-		return; // More data pending
-	}
-
-	//session->current_state = STATE_REQUEST_READ; should add a TRANSMITION state or similar
-	selector_set_interest(key->s, key->fd, OP_READ);
-	/*
-	 for now i will asume, if we send a package to the server, we will await for a response before sending
-	 another, si the interest will be set to READ
-	 */
-	log(DEBUG, "[REQUEST_WRITE] All data sent to destination.");
 }
 
 static void transmit_to_client_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
-	buffer *rb = &session->destination_read_buffer;
-
-	log(DEBUG, "[REQUEST_READ] Entered request_read.");
-
-	// Buffer
-	size_t wbytes;
-	uint8_t *ptr = buffer_write_ptr(rb, &wbytes);
-	if (wbytes <= 0) {
-		log(DEBUG, "[REQUEST_READ] No space to write, trying to compact buffer");
-		buffer_compact(rb);
-		ptr = buffer_write_ptr(rb, &wbytes);
-		if (wbytes <= 0) {
-			log(ERROR, "[REQUEST_READ] No space to write even after compaction. Closing connection.");
-			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			handle_error(key);
-			return;
-		}
-	}
-
-	// Socket
-	ssize_t bytes_read = recv(key->fd, ptr, wbytes, 0);
-	if (bytes_read <= 0) {
-		if (bytes_read == 0) {
-			log(DEBUG, "[REQUEST_READ] Connection closed by client.");
-		} else {
-			perror("[REQUEST_READ] Error reading from socket");
-		}
+	uint8_t code = transmit_data_read(&session->destination_read_buffer, &session->write_buffer, key->fd);
+	if (code == SOCKS5_REPLY_GENERAL_FAILURE) {
+		log(ERROR, "[REQUEST_READ] Error reading from destination. Setting error state.");
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
-		return;
+
 	}
-
-	// Updating buffer
-	buffer_write_adv(rb, bytes_read);
-	log(DEBUG, "[REQUEST_READ] Read %zd bytes from client.", bytes_read);
-
-	//move client data to the destination write buffer to send to destination
-	buffer * wb = &session->write_buffer;
-	uint8_t *wptr = buffer_write_ptr(wb, &wbytes);
-	if (wbytes < bytes_read) {
-		buffer_compact(wb);
-		if (wbytes < bytes_read) {
-			log(ERROR, "[REQUEST_READ] No space to write in Write Buffer. Closing connection.");
-			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			handle_error(key);
-			return;
-		}
-	}
-	//move to write buffer for sending
-	snprintf((char *)wptr, bytes_read, "%s", (char *)ptr);
-	buffer_write_adv(wb, bytes_read);
-
 }
 
 static void transmit_to_client_write(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
-	buffer *wb = &session->write_buffer;
-
-	log(DEBUG, "[REQUEST_WRITE] Entered request_write.");
-
-	size_t bytes_to_write;
-	uint8_t *ptr = buffer_read_ptr(wb, &bytes_to_write);
-
-	if (bytes_to_write == 0) {
-		log(ERROR, "[REQUEST_WRITE] No data to write.");
+	uint8_t code = transmit_data_write(&session->write_buffer, key);
+	if (code == SOCKS5_REPLY_GENERAL_FAILURE) {
+		log(ERROR, "[REQUEST_WRITE] Error writing to client. Setting error state.");
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		return;
+		handle_error(key);
 	}
-
-	ssize_t bytes_written = send(key->fd, ptr, bytes_to_write, MSG_NOSIGNAL);
-	if (bytes_written < 0) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			log(DEBUG, "[REQUEST_WRITE] send() would block, waiting for next write event.");
-			return; // Try again later when selector notifies
-		}
-		if (errno == EPIPE) {
-			// destination has closed the connection -> do not write (broken pipe exception in send)
-			log(INFO, "[REQUEST_WRITE] Destination already closed connection (EPIPE), closing socket.");
-			log(DEBUG, "[REQUEST_WRITE] Unregistering fd=%d from selector", key->fd);
-			selector_unregister_fd(key->s, key->fd);
-			close(key->fd);
-			log(DEBUG, "[REQUEST_WRITE] EPIPE cleanup complete for fd=%d", key->fd);
-			return;
-		}
-		log(ERROR, "[REQUEST_WRITE] send() error: %s", strerror(errno));
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		return;
-	} else if (bytes_written == 0) {
-		log(INFO, "[REQUEST_WRITE] Connection closed by peer during send");
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		return;
-	}
-	buffer_read_adv(wb, bytes_written);
-	log(DEBUG, "[REQUEST_WRITE] Sent %zd/%zu bytes to destination.", bytes_written, bytes_to_write);
-
-	if (buffer_readable_bytes(wb) > 0) {
-		log(DEBUG, "[REQUEST_WRITE] Partial write, waiting for next event.");
-		return; // More data pending
-	}
-
-	//session->current_state = STATE_REQUEST_READ; should add a TRANSMITION state or similar
-	selector_set_interest(key->s, key->fd, OP_READ);
-	/*
-	 for now i will asume, if we send a package to the server, we will await for a response before sending
-	 another, si the interest will be set to READ
-	 */
-	log(DEBUG, "[REQUEST_WRITE] All data sent to destination.");
 }
 
 // TODO: should use stm to handle the states...
