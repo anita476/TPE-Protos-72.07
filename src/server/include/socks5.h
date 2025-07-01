@@ -5,20 +5,20 @@
 #ifndef _SOCKS5_H_
 #define _SOCKS5_H_
 
+#include <arpa/inet.h>
 #include <buffer.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <time.h>
-#include <errno.h>
 #include <string.h>
-#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <time.h>
+#include <unistd.h>
 
-#include "selector.h"
 #include "buffer.h"
 #include "logger.h"
+#include "selector.h"
 
 /* Since the send, recv etc. are blocking, we can use a state machine to transition between states and ensure no
  * blocking occurs */
@@ -29,6 +29,7 @@ typedef enum {
 	STATE_HELLO_NO_ACCEPTABLE_METHODS, // o lo llamo HELLO_ERROR?
 	STATE_REQUEST_READ,
 	STATE_REQUEST_WRITE,
+	STATE_ERROR_WRITE, // New state for writing error responses
 	// todo others..
 	STATE_DONE,
 	STATE_ERROR,
@@ -57,7 +58,7 @@ typedef struct {
 	socks5_state current_state;
 
 	socks5_request current_request;
-    socks5_response current_response;
+	socks5_response current_response;
 
 	uint8_t raw_read_buffer[256];
 	uint8_t raw_write_buffer[256];
@@ -67,6 +68,10 @@ typedef struct {
 	buffer write_buffer;
 
 	int clientSocket; // socket for CLIENT CONNECTION
+
+	bool has_error;
+	uint8_t error_code;
+	bool error_response_sent;
 } client_session;
 
 // capaz se le puede agregar el clientSocket aca en vez de en el main pero X

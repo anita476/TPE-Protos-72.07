@@ -1,5 +1,8 @@
 #include "include/socks5.h"
 #include "include/selector.h"
+#include <arpa/inet.h>
+#include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 
 #define SOCKS5_VERSION 0x05
@@ -11,9 +14,72 @@
 #define SOCKS5_NO_ACCEPTABLE_METHODS 0xFF
 #define REJECTION_TIMEOUT_SECONDS 2
 
+// SOCKS5 reply codes
+#define SOCKS5_REPLY_SUCCESS 0x00
+#define SOCKS5_REPLY_GENERAL_FAILURE 0x01
+#define SOCKS5_REPLY_CONNECTION_NOT_ALLOWED 0x02
+#define SOCKS5_REPLY_NETWORK_UNREACHABLE 0x03
+#define SOCKS5_REPLY_HOST_UNREACHABLE 0x04
+#define SOCKS5_REPLY_CONNECTION_REFUSED 0x05
+#define SOCKS5_REPLY_TTL_EXPIRED 0x06
+#define SOCKS5_REPLY_COMMAND_NOT_SUPPORTED 0x07
+#define SOCKS5_REPLY_ADDRESS_TYPE_NOT_SUPPORTED 0x08
+
 static void socks5_handle_read(struct selector_key *key);
 static void socks5_handle_write(struct selector_key *key);
 static void socks5_handle_close(struct selector_key *key);
+
+static int connect_to_destination() {
+	return 0;
+}
+static void handle_error(struct selector_key *key);
+
+// Helper function to set error state with specific SOCKS5 error code
+static void set_error_state(client_session *session, uint8_t error_code) {
+	session->has_error = true;
+	session->error_code = error_code;
+	session->error_response_sent = false;
+	session->current_state = STATE_ERROR;
+	log(DEBUG, "[SET_ERROR_STATE] Setting error state with code: 0x%02x", error_code);
+}
+
+// Helper function to send SOCKS5 error response
+static bool send_socks5_error_response(struct selector_key *key) {
+	client_session *session = (client_session *) key->data;
+	buffer *wb = &session->write_buffer;
+
+	// Check if we already sent the error response
+	if (session->error_response_sent) {
+		return true;
+	}
+
+	// todo should always reset before writing?
+	buffer_reset(wb);
+
+	if (buffer_writeable_bytes(wb) < 10) { // Minimum size for error response
+		log(ERROR, "[SEND_SOCKS5_ERROR] No space in write buffer");
+		return false;
+	}
+
+	buffer_write(wb, SOCKS5_VERSION);	   // VER
+	buffer_write(wb, session->error_code); // REP (error code)
+	buffer_write(wb, 0x00);				   // RSV
+	buffer_write(wb, SOCKS5_ATYP_IPV4);	   // ATYP (IPv4)
+
+	// BND.ADDR (0.0.0.0)
+	buffer_write(wb, 0x00);
+	buffer_write(wb, 0x00);
+	buffer_write(wb, 0x00);
+	buffer_write(wb, 0x00);
+
+	// BND.PORT (0)
+	buffer_write(wb, 0x00);
+	buffer_write(wb, 0x00);
+
+	session->error_response_sent = true;
+	log(DEBUG, "[SEND_SOCKS5_ERROR] Prepared error response with code: 0x%02x", session->error_code);
+	return true;
+}
 
 // remember that the selector key has the selector , the fd we write to and the data itself
 // this is the FIRST message, it looks like:
@@ -37,7 +103,8 @@ static void hello_read(struct selector_key *key) {
 		ptr = buffer_write_ptr(rb, &wbytes); // get the new pointer and size
 		if (wbytes <= 0) {					 // still no space to write
 			log(ERROR, "[HELLO_READ] No space to write even after compaction. Closing connection.");
-			session->current_state = STATE_ERROR;
+			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			handle_error(key);
 			return;
 		}
 	}
@@ -50,11 +117,14 @@ static void hello_read(struct selector_key *key) {
 			return; // no data available - normal for non-blocking
 		}
 		log(ERROR, "[HELLO_READ] recv() error: %s", strerror(errno));
-		session->current_state = STATE_ERROR;
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
 		return;
 	} else if (bytes_read == 0) {
 		log(INFO, "[HELLO_READ] Connection closed by peer");
-		session->current_state = STATE_ERROR;
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		// Immediately handle the error instead of just returning
+		handle_error(key);
 		return;
 	}
 	buffer_write_adv(rb, bytes_read);
@@ -74,13 +144,15 @@ static void hello_read(struct selector_key *key) {
 
 	if (version != SOCKS5_VERSION) {
 		log(ERROR, "[HELLO_READ] Unsupported SOCKS version: 0x%02x. Closing connection.", version);
-		session->current_state = STATE_ERROR;
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
 		return;
 	}
 
 	if (nmethods == 0) {
 		log(ERROR, "[HELLO_READ] Invalid nmethods: 0");
-		session->current_state = STATE_ERROR;
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
 		return;
 	}
 
@@ -159,7 +231,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 
 	if (bytes_to_write == 0) {
 		log(ERROR, "[WRITE_TO_CLIENT] No data to write.");
-		session->current_state = STATE_ERROR;
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		return;
 	}
 
@@ -169,12 +241,21 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 			log(DEBUG, "[WRITE_TO_CLIENT] send() would block, waiting for next write event.");
 			return; // Try again later when selector notifies
 		}
+		if (errno == EPIPE) {
+			// client has closed the connection -> do not write (broken pipe exception in send)
+			log(INFO, "[WRITE_TO_CLIENT] Client already closed connection (EPIPE), closing socket.");
+			log(DEBUG, "[WRITE_TO_CLIENT] Unregistering fd=%d from selector", key->fd);
+			selector_unregister_fd(key->s, key->fd);
+			close(key->fd);
+			log(DEBUG, "[WRITE_TO_CLIENT] EPIPE cleanup complete for fd=%d", key->fd);
+			return;
+		}
 		log(ERROR, "[WRITE_TO_CLIENT] send() error: %s", strerror(errno));
-		session->current_state = STATE_ERROR;
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		return;
 	} else if (bytes_written == 0) {
 		log(INFO, "[WRITE_TO_CLIENT] Connection closed by peer during send");
-		session->current_state = STATE_ERROR;
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		return;
 	}
 	buffer_read_adv(wb, bytes_written);
@@ -189,6 +270,8 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 		log(DEBUG, "[WRITE_TO_CLIENT] All data sent. Shutting down socket.");
 		shutdown(key->fd, SHUT_RDWR);
 		selector_unregister_fd(key->s, key->fd);
+		close(key->fd);
+		log(DEBUG, "[WRITE_TO_CLIENT] Socket fd=%d closed", key->fd);
 		return;
 	}
 
@@ -230,7 +313,8 @@ static void request_read(struct selector_key *key) {
 		ptr = buffer_write_ptr(rb, &wbytes);
 		if (wbytes <= 0) {
 			log(ERROR, "[REQUEST_READ] No space to write even after compaction. Closing connection.");
-			session->current_state = STATE_ERROR;
+			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			handle_error(key);
 			return;
 		}
 	}
@@ -243,7 +327,8 @@ static void request_read(struct selector_key *key) {
 		} else {
 			perror("[REQUEST_READ] Error reading from socket");
 		}
-		session->current_state = STATE_ERROR;
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
 		return;
 	}
 
@@ -267,22 +352,25 @@ static void request_read(struct selector_key *key) {
 
 	// Version validation
 	if (version != SOCKS5_VERSION) {
-		log(ERROR, "[HELLO_READ] Unsupported SOCKS version: 0x%02x. Closing connection.", version);
-		session->current_state = STATE_ERROR;
+		log(ERROR, "[REQUEST_READ] Unsupported SOCKS version: 0x%02x. Closing connection.", version);
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
 		return;
 	}
 
 	// Command validation
 	if (cmd != SOCKS5_CMD_CONNECT) {
 		log(ERROR, "[REQUEST_READ] Unsupported command: 0x%02x (only CONNECT supported)", cmd);
-		session->current_state = STATE_ERROR;
+		set_error_state(session, SOCKS5_REPLY_COMMAND_NOT_SUPPORTED);
+		handle_error(key);
 		return;
 	}
 
 	// Reserved field validation
 	if (rsv != 0x00) {
 		log(ERROR, "[REQUEST_READ] Invalid RSV: 0x%02x. Closing connection.", rsv);
-		session->current_state = STATE_ERROR;
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
 		return;
 	}
 
@@ -306,7 +394,8 @@ static void request_read(struct selector_key *key) {
 			break;
 		default:
 			log(ERROR, "[REQUEST_READ] Unsupported ATYP: 0x%02x. Closing connection.", atyp);
-			session->current_state = STATE_ERROR;
+			set_error_state(session, SOCKS5_REPLY_ADDRESS_TYPE_NOT_SUPPORTED);
+			handle_error(key);
 			return;
 	}
 
@@ -367,13 +456,49 @@ static void request_read(struct selector_key *key) {
 		printf("Connected...\n");
 		log(DEBUG, "[REQUEST_READ] Connected successfully, sending response");
 	} else {
-		log(ERROR, "[REQUEST_READ] No space to write even after compaction");
-		session->current_state = STATE_ERROR;
+		log(ERROR, "[REQUEST_READ] Connection to destination failed");
+		set_error_state(session, SOCKS5_REPLY_CONNECTION_REFUSED);
 		return;
 	}
 }
 
+static void error_write(struct selector_key *key) {
+	client_session *session = (client_session *) key->data;
+
+	log(DEBUG, "[ERROR_WRITE] Sending error response to client");
+
+	// Use the existing write_to_client function with shutdown=true
+	write_to_client(key, true);
+}
+
 static void handle_error(struct selector_key *key) {
+	client_session *session = (client_session *) key->data;
+
+	log(DEBUG, "[HANDLE_ERROR] Handling error state for fd=%d", key->fd);
+
+	if (session && session->has_error && !session->error_response_sent) {
+		// We need to send an error response first
+		if (send_socks5_error_response(key)) {
+			// Switch to error write state and write mode to send the error response
+			session->current_state = STATE_ERROR_WRITE;
+			selector_set_interest(key->s, key->fd, OP_WRITE);
+			log(DEBUG, "[HANDLE_ERROR] Switching to STATE_ERROR_WRITE to send error response");
+			return;
+		}
+	}
+
+	// Either no error response needed or failed to prepare it - clean up
+	if (session) {
+		if (session->current_request.dstAddress) {
+			free(session->current_request.dstAddress);
+			session->current_request.dstAddress = NULL;
+		}
+		buffer_reset(&session->read_buffer);
+		buffer_reset(&session->write_buffer);
+	}
+
+	selector_unregister_fd(key->s, key->fd);
+	close(key->fd);
 }
 
 // reg the new client socket with the selector
@@ -412,6 +537,9 @@ void socks5_handle_new_connection(struct selector_key *key) {
 		return;
 	}
 	session->current_state = STATE_HELLO_READ;
+	session->has_error = false;
+	session->error_code = SOCKS5_REPLY_SUCCESS;
+	session->error_response_sent = false;
 	buffer_init(&session->read_buffer, sizeof(session->raw_read_buffer), session->raw_read_buffer);
 	buffer_init(&session->write_buffer, sizeof(session->raw_write_buffer), session->raw_write_buffer);
 
@@ -429,13 +557,13 @@ It means one or more new clients are waiting to be accepted.
 What should you do?
 We call accept(). This creates a new socket (CLIENT SOCKET) for the new connection.
 You register this new client socket with the selector, using a handler (socks5_handle_read) for protocol
-processing. So: The listening socket’s handle_read is responsible for creating new sockets for each client (via
+processing. So: The listening socket's handle_read is responsible for creating new sockets for each client (via
 accept()).
 
 CLIENT SOCKET socks5_handle_read
 called when the selector tells you a client socket is readable. It means the client has read it.
 we need to process based on the state (only hello read for now) for that client.
-So: The client socket’s handle_read
+So: The client socket's handle_read
 does not create new sockets. It only processes data for the already-accepted client.
 **/
 
@@ -449,8 +577,12 @@ static void socks5_handle_read(struct selector_key *key) {
 			request_read(key);
 			// todo complete
 			break;
+		case STATE_ERROR:
+			handle_error(key);
+			break;
 		default:
 			// Should not happen
+			log(ERROR, "[SOCKS5_HANDLE_READ] Unexpected state: %d", session->current_state);
 			break;
 	}
 }
@@ -469,8 +601,15 @@ static void socks5_handle_write(struct selector_key *key) {
 		case STATE_REQUEST_WRITE:
 			// todo complete
 			break;
+		case STATE_ERROR_WRITE:
+			error_write(key);
+			break;
+		case STATE_ERROR:
+			handle_error(key);
+			break;
 		default:
 			log(ERROR, "[SOCKS5_HANDLE_WRITE] Unexpected write state: %d", session->current_state);
+			handle_error(key);
 			break;
 	}
 }
@@ -479,8 +618,10 @@ static void socks5_handle_close(struct selector_key *key) {
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] *** CLOSE HANDLER CALLED *** for fd=%d", key->fd);
 	client_session *session = (client_session *) key->data;
 	if (session) {
+		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Freeing session for fd=%d", key->fd);
 		free(session);
 	}
+	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Session cleanup complete for fd=%d", key->fd);
 	// IMPORTANT: Do NOT call selector_unregister_fd here!
 	// The selector is already in the process of unregistering when it calls this function
 }

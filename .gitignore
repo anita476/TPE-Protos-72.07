@@ -58,6 +58,7 @@ script/image.sh
 src/foo.png
 .bash_history
 .lesshst
+/.vscode
 
 #Project binary or object folders
 /bin

@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
 		exit_error(error_msg, errno);
 	}
 	const struct selector_init configuration = {
-		.signal = SIGALRM, // TODO: ask what is sigALRM for? 
+		.signal = SIGALRM, // TODO: ask what is sigALRM for?
 		.select_timeout =
 			{
 				.tv_sec = 10,
@@ -107,11 +107,10 @@ int main(int argc, char **argv) {
 		exit_error(error_msg, 2);
 	}
 
-	const struct fd_handler socks5Handler = {
-		// TODO complete the handler on close and so on
-		.handle_read = socks5_handle_new_connection, // This is the first handler, it will handle the new connections
-		.handle_write = handle_write,
-		.handle_close = handle_close};
+	const struct fd_handler socks5Handler = {// TODO complete the handler on close and so on
+											 .handle_read = socks5_handle_new_connection,
+											 .handle_write = handle_write,
+											 .handle_close = handle_close};
 	selectorStatus = selector_register(selector, socksFd, &socks5Handler, OP_READ, NULL);
 	if (selectorStatus != SELECTOR_SUCCESS) {
 		error_msg = "Error registering SOCKS5 server socket with selector";
