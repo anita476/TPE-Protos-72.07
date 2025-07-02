@@ -8,6 +8,7 @@ LDFLAGS = -pthread
 SRC_DIR = src
 SERVER_DIR = $(SRC_DIR)/server
 CLIENT_DIR = $(SRC_DIR)/client
+ADMIN_DIR = $(SERVER_DIR)/admin
 LIBS_DIR = $(SERVER_DIR)/libs
 TEST_DIR = $(SERVER_DIR)/test
 INCLUDE_DIR = $(SERVER_DIR)/include
@@ -27,12 +28,16 @@ LIBS_OBJS = $(patsubst $(LIBS_DIR)/%.c,$(OBJ_DIR)/%.o,$(LIBS_SRCS))
 CLIENT_SRCS = $(CLIENT_DIR)/main.c
 CLIENT_OBJS = $(OBJ_DIR)/client-main.o
 
+# admin source files
+ADMIN_SRCS = $(ADMIN_DIR)/admin_gui.c
+ADMIN_OBJS = $(OBJ_DIR)/admin_gui.o
+
 # tests
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
 TEST_BINS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(BIN_DIR)/%)
 
 
-all: server client
+all: server client admin
 
 
 $(OBJ_DIR):
@@ -49,6 +54,9 @@ server: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(SERVER_OBJS)
 client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(LIBS_OBJS)
 	$(CC) $(CLIENT_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
 
+admin: $(BIN_DIR) $(OBJ_DIR) $(ADMIN_OBJS)
+	$(CC) $(ADMIN_OBJS) $(LDFLAGS) -o $(BIN_DIR)/admin_gui
+
 # compile all libs and tests (each test is its own binary)
 test: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(TEST_BINS)
 
@@ -59,6 +67,10 @@ $(OBJ_DIR)/server-main.o: $(SERVER_DIR)/main.c
 # Compile client main
 $(OBJ_DIR)/client-main.o: $(CLIENT_DIR)/main.c
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+
+# Compile admin GUI
+$(OBJ_DIR)/admin_gui.o: $(ADMIN_DIR)/admin_gui.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # compile everything else for the server
 $(OBJ_DIR)/%.o: $(SERVER_DIR)/%.c
@@ -82,4 +94,4 @@ $(BIN_DIR)/selector_test: $(TEST_DIR)/selector_test.c $(filter-out obj/selector.
 clean:
 	rm -rf $(BIN_DIR) $(OBJ_DIR)
 
-.PHONY: all server client test clean
+.PHONY: all server client admin test clean
