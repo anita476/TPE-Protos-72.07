@@ -34,6 +34,8 @@ static const struct fd_handler remote_handler = {.handle_read = socks5_remote_re
 /******************* -State machine handlers- *******************/
 static void hello_read(struct selector_key *key);
 static void hello_write(struct selector_key *key);
+static void auth_read(struct selector_key * key);
+static void auth_write(struct selector_key *key, bool should_shutdown);
 static void hello_write_error(struct selector_key *key);
 static void request_read(struct selector_key *key);
 static void request_write(struct selector_key *key);
@@ -52,7 +54,7 @@ static void log_resolved_addresses(const char *domain,
 static void *dns_resolution_thread(void *arg);
 static void handle_connect_failure(struct selector_key *key, int error);
 static void handle_connect_success(struct selector_key *key);
-
+static bool valid_user(char * username, char * password);
 static bool build_socks5_success_response(client_session *session);
 
 // Destructor
@@ -112,6 +114,9 @@ static void socks5_handle_read(struct selector_key *key) {
 		case STATE_HELLO_READ:
 			hello_read(key);
 			break;
+		case STATE_AUTH_READ:
+			auth_read(key);
+			break;
 		case STATE_REQUEST_READ:
 			request_read(key);
 			break;
@@ -145,6 +150,9 @@ static void socks5_handle_write(struct selector_key *key) {
 			break;
 		case STATE_HELLO_NO_ACCEPTABLE_METHODS:
 			hello_write_error(key);
+			break;
+		case STATE_AUTH_WRITE:
+			auth_write(key,false);
 			break;
 		case STATE_REQUEST_WRITE:
 			request_write(key);
@@ -301,9 +309,13 @@ static void hello_read(struct selector_key *key) {
 
 	// client supports 0x00 ? no auth
 	bool no_auth_supported = false;
+	bool auth_supported = false;
 	for (int i = 0; i < nmethods; i++) {
-		if (buffer_read(rb) == SOCKS5_NO_AUTH) { // consume the byte
+		uint8_t method = buffer_read(rb);
+		if (method == SOCKS5_NO_AUTH) { // consume the byte
 			no_auth_supported = true;
+		} else if (method == SOCKS5_USER_PASS_AUTH) {
+			auth_supported = true;
 		}
 	}
 	// should we check if there is more data to read?
@@ -321,10 +333,17 @@ static void hello_read(struct selector_key *key) {
 	// now safe to write the response
 	buffer_write(wb, SOCKS5_VERSION); // SOCKS version TODO: should we be checking if there is space to write? --> it
 									  // will silently fail if there is no space, so we should handle that somehow
-	if (no_auth_supported) {
+	if (auth_supported) {
+		buffer_write(wb, SOCKS5_USER_PASS_AUTH); // no auth
+		log(DEBUG, "[HELLO_READ] USER_PASSWORD AUTH supported Moving to STATE_AUTH_READ.");
+		session->authenticated = true; // Mark session as authenticated
+		session->current_state = STATE_HELLO_WRITE;
+	}
+	else if (no_auth_supported) {
 		buffer_write(wb, SOCKS5_NO_AUTH); // no auth
 		log(DEBUG, "[HELLO_READ] No auth supported. Moving to STATE_HELLO_WRITE.");
 		session->current_state = STATE_HELLO_WRITE;
+		session->authenticated = false;
 	} else {
 		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS); // FF means error
 		log(ERROR, "[HELLO_READ] No acceptable methods. Moving to STATE_ERROR.");
@@ -406,6 +425,184 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	// for a clean connection teardown.
 	if (should_shutdown) {
 		log(DEBUG, "[WRITE_TO_CLIENT] All data sent. Shutting down socket.");
+		shutdown(key->fd, SHUT_RDWR);
+		selector_unregister_fd(key->s, key->fd);
+		close(key->fd);
+		return;
+	}
+
+	// If we're not shutting down, update to next state
+	if (session->authenticated) {
+		session->current_state = STATE_AUTH_READ;
+	}
+	else {
+		session->current_state = STATE_REQUEST_READ;
+	}
+
+	selector_set_interest(key->s, key->fd, OP_READ);
+}
+
+
+static void auth_read(struct selector_key *key) {
+	client_session *session = (client_session *) key->data;
+	buffer *rb = &session->read_buffer;
+
+	log(DEBUG, "[AUTH_READ] Entered auth_read.");
+
+	size_t wbytes;
+	uint8_t *ptr = buffer_write_ptr(rb, &wbytes);
+	if (wbytes <= 0) {
+		log(DEBUG, "[AUTH_READ] No space to write, trying to compact buffer");
+		buffer_compact(rb);
+		ptr = buffer_write_ptr(rb, &wbytes);
+		if (wbytes <= 0) {
+			log(ERROR, "[AUTH_READ] No space to write even after compaction. Closing connection.");
+			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			handle_error(key);
+			return;
+		}
+	}
+
+	ssize_t bytes_read = recv(key->fd, ptr, wbytes, 0);
+	if (bytes_read <= 0) {
+		if (bytes_read == 0) {
+			log(DEBUG, "[AUTH_READ] Connection closed by client.");
+		} else {
+			perror("[AUTH_READ] Error reading from socket");
+		}
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
+		return;
+	}
+
+	metrics_add_bytes_in(bytes_read);
+
+	 buffer_write_adv(rb, bytes_read);
+	log(DEBUG, "[AUTH_READ] Read %zd bytes from client.", bytes_read);
+
+	size_t available;
+	uint8_t *peek = buffer_read_ptr(rb, &available);
+	if (available < 2) {
+		log(DEBUG, "[AUTH_READ] Need at least 2 bytes for header, have %zu", available);
+		return; // Not enough data yet
+	}
+
+	uint8_t version = peek[0];
+	uint8_t ulen = peek[1];
+
+
+	log(DEBUG, "[AUTH_READ] Header: VER=0x%02x ULEN=%d", version, ulen);
+
+	if (version != SOCKS5_AUTH_VERSION) {
+		log(ERROR, "[AUTH_READ] Unsupported Subnegotiation version: 0x%02x. Closing connection.", version);
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
+		return;
+	}
+
+	//check if plen field has been sent
+	if ( available < (size_t)(2 + ulen)) {
+		log(DEBUG, "[AUTH_READ] Not enough data yet. Waiting for more.");
+		return; // Not enough data yet
+	}
+	uint8_t plen = peek[2 + ulen];
+	if (available < (size_t) (3 + ulen + plen)) {
+		log(DEBUG, "[AUTH_READ] Not enough data yet. Waiting for more.");
+		return; // Not enough data yet
+	}
+	// Consume the header
+	buffer_read_adv(rb, 2); // Consume version and ulen
+	peek = buffer_read_ptr(rb, &available);
+	char username[ulen + 1];
+	strncpy(username,(char *)peek , ulen);
+	username[ulen] = '\0'; // Null-terminate the username string
+	buffer_read_adv(rb, ulen + 1); // Consume username and plen field
+	peek = buffer_read_ptr(rb, &available);
+	char password[plen + 1];
+	strncpy(password, (char *)peek, plen);
+	password[plen] = '\0'; // Null-terminate the password string
+	log(DEBUG, "[AUTH_READ] Username: '%s', Password: '%s'", username, password);
+	buffer_read_adv(rb, plen);
+
+	// prepare reply and change interest to WRITE (we want to send the auth response)
+	// TODO: what should we do if there is no space to write the response? for now we are just returning
+
+	buffer * wb = &session->write_buffer;
+	if (buffer_writeable_bytes(wb) < 2) {
+		log(ERROR,
+			"[AUTH_READ] No space to write response."); // shouldnt we wait until there is more space left maybe?
+		// session->current_state = STATE_ERROR;
+		return; // no space to write the response
+	}
+
+	// now safe to write the response
+	buffer_write(wb, SOCKS5_AUTH_VERSION);
+	if (!valid_user(username,password)) {
+		buffer_write(wb, SOCKS5_REPLY_GENERAL_FAILURE);
+		session->current_state = STATE_HELLO_NO_ACCEPTABLE_METHODS; ///maybe user a different state for auth error?
+	} else {
+		buffer_write(wb, SOCKS5_AUTH_SUCCESS);
+
+		session->current_state = STATE_AUTH_WRITE;
+	}
+	selector_set_interest_key(key, OP_WRITE);
+
+}
+
+static void auth_write(struct selector_key * key, bool should_shutdown) {
+	client_session *session = (client_session *) key->data;
+	buffer *wb = &session->write_buffer;
+
+	size_t bytes_to_write;
+	uint8_t *ptr = buffer_read_ptr(wb, &bytes_to_write);
+
+	if (bytes_to_write == 0) {
+		log(ERROR, "[AUTH_WRITE] No data to write.");
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		return;
+	}
+
+	ssize_t bytes_written = send(key->fd, ptr, bytes_to_write, MSG_NOSIGNAL);
+	if (bytes_written < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			log(DEBUG, "[AUTH_WRITE] send() would block, waiting for next write event.");
+			return; // Try again later when selector notifies
+		}
+		if (errno == EPIPE) {
+			// client has closed the connection -> do not write (broken pipe exception in send)
+			log(INFO, "[AUTH_WRITE] Client already closed connection (EPIPE), closing socket.");
+			metrics_increment_errors();
+			log(DEBUG, "[AUTH_WRITE] Unregistering fd=%d from selector", key->fd);
+			selector_unregister_fd(key->s, key->fd);
+			close(key->fd);
+			log(DEBUG, "[AUTH_WRITE] EPIPE cleanup complete for fd=%d", key->fd);
+			return;
+		}
+		log(ERROR, "[AUTH_WRITE] send() error: %s", strerror(errno));
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		return;
+	} else if (bytes_written == 0) {
+		log(INFO, "[AUTH_WRITE] Connection closed by peer during send");
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		return;
+	}
+
+	metrics_add_bytes_out(bytes_written);
+
+	buffer_read_adv(wb, bytes_written);
+	log(INFO, "[AUTH_WRITE] Sent %zd/%zu bytes to client.", bytes_written, bytes_to_write);
+
+	if (buffer_readable_bytes(wb) > 0) {
+		log(DEBUG, "[AUTH_WRITE] Partial write, waiting for next event.");
+		return; // More data pending
+	}
+
+	// The shutdown is justified because the RFC specifies that the CLIENT must close the connection.
+	// Gracefully shutting down from the server side is considered good practice and is commonly done by
+	// industry standards such as nginx. By calling shutdown(), we signal we won’t send or receive more data, allowing
+	// for a clean connection teardown.
+	if (should_shutdown) {
+		log(DEBUG, "[AUTH_WRITE] All data sent. Shutting down socket.");
 		shutdown(key->fd, SHUT_RDWR);
 		selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
@@ -1148,6 +1345,11 @@ static void log_resolved_addresses(const char *domain, struct addrinfo *addr_lis
 	}
 
 	log(INFO, "[DNS_RESOLVE] Total addresses resolved: %d", count);
+}
+
+static bool valid_user(char * username, char * password) {
+	return strcmp(username, "nep") == 0 && strcmp(password, "nep") == 0;
+	///TODO implement proper validation
 }
 
 static void cleanup_session(client_session *session) {

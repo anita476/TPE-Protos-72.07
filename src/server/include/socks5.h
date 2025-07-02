@@ -22,12 +22,17 @@
 #include "netutils.h"
 #include "selector.h"
 
+
+
+
 /* Since the send, recv etc. are blocking, we can use a state machine to transition between states and ensure no
  * blocking occurs */
 // First we define the states for a SOCKS5 connection
 typedef enum {
 	STATE_HELLO_READ,
 	STATE_HELLO_WRITE,
+	STATE_AUTH_READ,
+	STATE_AUTH_WRITE,
 	STATE_HELLO_NO_ACCEPTABLE_METHODS, // o lo llamo HELLO_ERROR?
 	STATE_REQUEST_READ,
 	STATE_REQUEST_WRITE,
@@ -98,6 +103,8 @@ typedef struct {
 	bool has_error;
 	uint8_t error_code;
 	bool error_response_sent;
+
+	bool authenticated;
 
 	bool cleaned_up; // to avoid double cleanup
 
