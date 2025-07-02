@@ -3,6 +3,7 @@
 #include "include/metrics.h"
 #include "include/selector.h"
 #include "include/socks5.h"
+#include "util.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
@@ -25,6 +26,103 @@ static void exit_error(const char *error_msg, int errnum);
 // TODO expand parse args to include log level and eventually log file
 static struct socks5args args;
 
+// For IPv6 addresses -> setup is dual-stack (accepts both IPv4 and IPv6 connections)
+// For IPv4 addresses -> setup is IPv4-only (accepts only IPv4 connections)
+// If no address is specified, it defaults to "::" (IPv6 wildcard)
+// TODO: delete all unnecessary logs later 
+int setupServerSocket(const char *service, const char *addr) {
+    struct addrinfo addrCriteria;
+    memset(&addrCriteria, 0, sizeof(addrCriteria));
+    
+    addrCriteria.ai_family = AF_UNSPEC;     // Allow IPv4 or IPv6
+    addrCriteria.ai_flags = AI_PASSIVE;     // For bind()
+    addrCriteria.ai_socktype = SOCK_STREAM;
+    addrCriteria.ai_protocol = IPPROTO_TCP;
+
+    struct addrinfo *servAddr;
+    int rtnVal = getaddrinfo(addr, service, &addrCriteria, &servAddr);
+    if (rtnVal != 0) {
+        log(ERROR, "getaddrinfo() failed: %s", gai_strerror(rtnVal));
+        // Set errno based on getaddrinfo error for consistency
+        switch (rtnVal) {
+            case EAI_NONAME:  errno = ENOENT; break;
+            case EAI_SERVICE: errno = EINVAL; break;
+            case EAI_MEMORY:  errno = ENOMEM; break;
+            default:          errno = EINVAL; break;
+        }
+        return -1;
+    }
+
+    int servSock = -1;
+    int saved_errno = 0;
+    char addrBuffer[INET6_ADDRSTRLEN + 16]; // Extra space for port
+
+    // Try each address until one succeeds
+    for (struct addrinfo *ai = servAddr; ai != NULL; ai = ai->ai_next) {
+        servSock = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (servSock < 0) {
+            saved_errno = errno;
+            continue;
+        }
+
+        // Set SO_REUSEADDR to avoid "Address already in use" errors
+        int opt = 1;
+        if (setsockopt(servSock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+            saved_errno = errno;
+            log(DEBUG, "setsockopt(SO_REUSEADDR) failed: %s", strerror(errno));
+            close(servSock);
+            servSock = -1;
+            continue;
+        }
+
+        // For IPv6, try to enable dual-stack (accept IPv4 connections too)
+        if (ai->ai_family == AF_INET6) {
+            int v6only = 0;
+            if (setsockopt(servSock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) < 0) {
+                // Not fatal - continue with IPv6-only
+                log(DEBUG, "Cannot enable dual-stack mode: %s", strerror(errno));
+            }
+        }
+
+        if (bind(servSock, ai->ai_addr, ai->ai_addrlen) == 0) {
+            if (listen(servSock, SOMAXCONN) == 0) {
+                log(INFO, "Server listening on %s", 
+                    sockaddr_to_human(addrBuffer, sizeof(addrBuffer), ai->ai_addr));
+                
+                // If IPv6 dual-stack is enabled, mention it
+                if (ai->ai_family == AF_INET6) {
+                    int v6only;
+                    socklen_t optlen = sizeof(v6only);
+                    if (getsockopt(servSock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, &optlen) == 0) {
+                        if (!v6only) {
+                            log(INFO, "Dual-stack mode enabled (accepts IPv4 and IPv6)");
+                        }
+                    }
+                }
+                
+                freeaddrinfo(servAddr);
+                return servSock;
+            }
+            saved_errno = errno;
+            log(DEBUG, "listen() failed on %s: %s", 
+                sockaddr_to_human(addrBuffer, sizeof(addrBuffer), ai->ai_addr), 
+                strerror(errno));
+        } else {
+            saved_errno = errno;
+            log(DEBUG, "bind() failed on %s: %s", 
+                sockaddr_to_human(addrBuffer, sizeof(addrBuffer), ai->ai_addr), 
+                strerror(errno));
+        }
+
+        close(servSock);
+        servSock = -1;
+    }
+
+    freeaddrinfo(servAddr);
+    errno = saved_errno;
+    log(ERROR, "Failed to create server socket");
+    return -1;
+}
 int main(int argc, char **argv) {
 	/********************************************** SETTING UP THE SERVER  ***********************/
 
@@ -32,12 +130,7 @@ int main(int argc, char **argv) {
 	// parse args is in charge of initializing the args struct, all info will be there (already should be rfc compliant)
 	parse_args(argc, argv, &args);
 	load_users(args.users, args.nusers);
-
 	metrics_init();
-
-	unsigned long socksPort = args.socks_port;
-	// TODO delete
-	log(DEBUG, "Using SOCKS5 port %lu", socksPort);
 
 	close(0); // Close stdin to have one more fd available
 
@@ -45,33 +138,19 @@ int main(int argc, char **argv) {
 	const char *error_msg = NULL;
 	selector_status selectorStatus = SELECTOR_SUCCESS;
 
-	// TODO must attend to IPv6 addr also
-	struct sockaddr_in socksAddr;
-	memset(&socksAddr, 0, sizeof(socksAddr));
-	socksAddr.sin_family = AF_INET;
-	socksAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	socksAddr.sin_port = htons(socksPort);
+	char portStr[16];
+	snprintf(portStr, sizeof(portStr), "%hu", args.socks_port);
 
-	// open the socket (first one)
-	int socksFd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	int socksFd = setupServerSocket(portStr, args.socks_addr);
 	if (socksFd < 0) {
-		error_msg = "Error creating SOCKS5 server socket";
+		error_msg = "Failed to setup SOCKS5 server socket";
 		exit_error(error_msg, errno);
-	}
-	setsockopt(socksFd, SOL_SOCKET, SO_REUSEADDR, &(int) {1}, sizeof(int));
-	if (bind(socksFd, (struct sockaddr *) &socksAddr, sizeof(socksAddr)) < 0) {
-		error_msg = "Error binding SOCKS5 server socket";
-		exit_error(error_msg, errno);
-	}
+	};
 	/*
 	** It takes a socket (srv file descriptor)
 	** that was previously set up with socket() and bind() and marks it as a passive socket
 	** n is the queue max length -> we use SOMAXCONN to set it to the SO dfined max
 	*/
-	if (listen(socksFd, SOMAXCONN) < 0) {
-		error_msg = "Error listening on SOCKS5 server socket";
-		exit_error(error_msg, errno);
-	}
 
 	// Register the handlers for sigterm and sigint to then exit nicely
 	signal(SIGTERM, sigterm_handler);
@@ -131,11 +210,18 @@ static void sigterm_handler(const int signal) {
 	done = true;
 }
 static void exit_error(const char *error_msg, int errnum) {
-	fprintf(stderr, "Error message: %s\nError code: %s\n", error_msg, strerror(errnum));
+	if (errnum != 0) {
+        fprintf(stderr, "Error: %s - %s (errno=%d)\n", error_msg, strerror(errnum), errnum);
+    } else {
+        fprintf(stderr, "Error: %s\n", error_msg);
+    }
+
 	// cleanup
-	if (selector != NULL) {
-		selector_destroy(selector);
-	}
-	selector_close();
-	exit(errnum);
+    if (selector != NULL) {
+        selector_destroy(selector);
+    }
+    selector_close();
+    metrics_cleanup(); 
+    
+    exit(errnum != 0 ? errnum : 1);
 }
