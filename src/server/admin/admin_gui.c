@@ -7,6 +7,28 @@
 
 #define MAX_INPUT 256
 #define MAX_COMMAND 4096
+#define MAX_USERS 10
+#define MAX_USERNAME 24
+
+typedef struct {
+    char username[MAX_USERNAME];
+    char role[16];
+} User;
+
+User users[MAX_USERS] = {
+    {"nep", "Administrator"},
+    {"user1", "User"},
+    {"user2", "User"},
+    {"guest", "User"},
+    {"", ""},
+    {"", ""},
+    {"", ""},
+    {"", ""},
+    {"", ""},
+    {"", ""}
+};
+
+int user_count = 4;
 
 int execute_dialog(const char* dialog_cmd, char* result, size_t result_size);
 void clear_screen(void);
@@ -24,6 +46,8 @@ int authenticate(void);
 int add_user(void);
 int remove_user(void);
 int change_user_password(void);
+int find_user(const char* username);
+int get_user_count(void);
 
 int execute_dialog(const char* dialog_cmd, char* result, size_t result_size) {
     FILE* fp;
@@ -97,8 +121,8 @@ void show_metrics() {
         "Total connections: 1,234\\n"
         "Bytes transferred: 2.5 GB\\n"
         "Server uptime: 5 days, 12 hours\\n"
-        "Active users: 8\\n\\n"
-        "Press OK to continue");
+        "Active users: %d\\n\\n"
+        "Press OK to continue", user_count);
     
     snprintf(cmd, sizeof(cmd), 
         "dialog --title \"View metrics\" --msgbox \"%s\" 15 60", status_info);
@@ -118,7 +142,6 @@ void manage_users() {
             "4 \"Change user password\" "
             "5 \"Back to main menu\" 3>&1 1>&2 2>&3");
         
-        // Cancelled
         if (execute_dialog(cmd, choice, sizeof(choice)) != 0) {
             break;
         }
@@ -126,13 +149,18 @@ void manage_users() {
         switch (atoi(choice)) {
             case 1: {
                 char users_info[1024];
+                char user_list[512] = "";
+                
+                for (int i = 0; i < user_count; i++) {
+                    char user_line[64];
+                    snprintf(user_line, sizeof(user_line), "%d. %s (%s)\\n", 
+                            i + 1, users[i].username, users[i].role);
+                    strcat(user_list, user_line);
+                }
+                
                 snprintf(users_info, sizeof(users_info),
-                    "\\n1. nep (Administrator)\\n"
-                    "2. user1 (Active)\\n"
-                    "3. user2 (Inactive)\\n"
-                    "4. guest (Temporary)\\n\\n"
-                    "Total users: 4\\n\\n"
-                    "Press OK to continue");
+                    "\\n%s\\nTotal users: %d\\n\\n"
+                    "Press OK to continue", user_list, user_count);
                 
                 snprintf(cmd, sizeof(cmd), 
                     "dialog --title \"User list\" --msgbox \"%s\" 14 50", users_info);
@@ -217,7 +245,6 @@ void admin_menu() {
             "3 \"Manage settings\" "
             "4 \"Exit\" 3>&1 1>&2 2>&3");
         
-        // Cancelled
         if (execute_dialog(cmd, choice, sizeof(choice)) != 0) {
             break;
         }
@@ -259,7 +286,6 @@ int authenticate() {
     const int max_attempts = 3;
     
     while (attempts < max_attempts) {
-        // Cancelled
         if (get_username(username, sizeof(username)) != 0) {
             return 0;
         }
@@ -269,7 +295,6 @@ int authenticate() {
             continue;
         }
         
-        // Cancelled
         if (get_password(password, sizeof(password)) != 0) {
             return 0;
         }
@@ -287,7 +312,7 @@ int authenticate() {
             if (attempts < max_attempts) {
                 char error_msg[256];
                 snprintf(error_msg, sizeof(error_msg), 
-                    "Incorrect credentials. Attempts remaining: %d", 
+                    "\\nIncorrect credentials. Attempts remaining: %d", 
                     max_attempts - attempts);
                 show_error(error_msg);
             }
@@ -325,9 +350,7 @@ int add_user() {
         return 0;
     }
     
-    // TODO: Check if username already exists
-    if (strcmp(username, "nep") == 0 || strcmp(username, "user1") == 0 || 
-        strcmp(username, "user2") == 0 || strcmp(username, "guest") == 0) {
+    if (find_user(username) != -1) {
         show_error("Username already exists. Please choose a different username.");
         return 0;
     }
@@ -364,11 +387,18 @@ int add_user() {
         return 0;
     }
     
-    // TODO: Add user
-    char success_msg[512];
-    snprintf(success_msg, sizeof(success_msg), 
-        "User '%.20s' has been successfully added to the system.", username);
-    show_info(success_msg);
+    if (user_count < MAX_USERS) {
+        strcpy(users[user_count].username, username);
+        strcpy(users[user_count].role, "User");
+        user_count++;
+        
+        char success_msg[512];
+        snprintf(success_msg, sizeof(success_msg), 
+            "User '%.20s' has been successfully added to the system.", username);
+        show_info(success_msg);
+    } else {
+        show_error("Maximum number of users reached. Cannot add more users.");
+    }
     
     memset(password, 0, sizeof(password));
     memset(confirm_password, 0, sizeof(confirm_password));
@@ -380,33 +410,47 @@ int remove_user() {
     char cmd[MAX_COMMAND];
     char choice[16];
     
-    // List of users to remove (excluding admin)
-    snprintf(cmd, sizeof(cmd),
-        "dialog --title \"Remove user\" --menu \"\\nSelect user to remove:\" 14 50 4 "
-        "1 \"user1\" "
-        "2 \"user2\" "
-        "3 \"guest\" "
-        "4 \"Cancel\" 3>&1 1>&2 2>&3");
+    char menu_options[512] = "";
+    int option_map[MAX_USERS];
+    int option_count = 0;
     
-    if (execute_dialog(cmd, choice, sizeof(choice)) != 0 || atoi(choice) == 4) {
+    for (int i = 0; i < user_count; i++) {
+        if (strcmp(users[i].username, "nep") != 0) {
+            char option[64];
+            snprintf(option, sizeof(option), "%d \"%s\" ", 
+                    option_count + 1, users[i].username);
+            strcat(menu_options, option);
+            option_map[option_count] = i;
+            option_count++;
+        }
+    }
+    
+    if (option_count == 0) {
+        show_error("No users available to remove.");
         return 0;
     }
     
-    char selected_user[32];
-    switch (atoi(choice)) {
-        case 1:
-            strcpy(selected_user, "user1");
-            break;
-        case 2:
-            strcpy(selected_user, "user2");
-            break;
-        case 3:
-            strcpy(selected_user, "guest");
-            break;
-        default:
-            show_error("Invalid selection");
-            return 0;
+    char cancel_option[32];
+    snprintf(cancel_option, sizeof(cancel_option), "%d \"Cancel\"", option_count + 1);
+    strcat(menu_options, cancel_option);
+    
+    snprintf(cmd, sizeof(cmd),
+        "dialog --title \"Remove user\" --menu \"\\nSelect user to remove:\" 14 50 %d %s 3>&1 1>&2 2>&3", 
+        option_count + 1, menu_options);
+    
+    if (execute_dialog(cmd, choice, sizeof(choice)) != 0 || atoi(choice) == option_count + 1) {
+        return 0;
     }
+    
+    int selected_index = atoi(choice) - 1;
+    if (selected_index < 0 || selected_index >= option_count) {
+        show_error("Invalid selection");
+        return 0;
+    }
+    
+    int user_index = option_map[selected_index];
+    char selected_user[MAX_USERNAME];
+    strcpy(selected_user, users[user_index].username);
     
     char confirm_msg[256];
     snprintf(confirm_msg, sizeof(confirm_msg),
@@ -415,8 +459,15 @@ int remove_user() {
     snprintf(cmd, sizeof(cmd),
         "dialog --title \"Confirm removal\" --yesno \"%s\" 10 50", confirm_msg);
 
-    // TODO: Actually remove user from system
     if (system(cmd) == 0) {
+        for (int i = user_index; i < user_count - 1; i++) {
+            users[i] = users[i + 1];
+        }
+        
+        strcpy(users[user_count - 1].username, "");
+        strcpy(users[user_count - 1].role, "");
+        user_count--;
+        
         char success_msg[256];
         snprintf(success_msg, sizeof(success_msg), 
             "User '%.20s' has been successfully removed from the system.", selected_user);
@@ -432,36 +483,44 @@ int change_user_password() {
     char cmd[MAX_COMMAND];
     char choice[16];
     
-    snprintf(cmd, sizeof(cmd),
-        "dialog --title \"Change password\" --menu \"\\nSelect user to change password:\" 14 50 5 "
-        "1 \"nep (Administrator)\" "
-        "2 \"user1\" "
-        "3 \"user2\" "
-        "4 \"guest\" "
-        "5 \"Cancel\" 3>&1 1>&2 2>&3");
+    char menu_options[512] = "";
+    int option_map[MAX_USERS];
+    int option_count = 0;
     
-    if (execute_dialog(cmd, choice, sizeof(choice)) != 0 || atoi(choice) == 5) {
+    for (int i = 0; i < user_count; i++) {
+        char option[64];
+        snprintf(option, sizeof(option), "%d \"%s (%s)\" ", 
+                option_count + 1, users[i].username, users[i].role);
+        strcat(menu_options, option);
+        option_map[option_count] = i;
+        option_count++;
+    }
+    
+    if (option_count == 0) {
+        show_error("No users available.");
         return 0;
     }
     
-    char selected_user[32];
-    switch (atoi(choice)) {
-        case 1:
-            strcpy(selected_user, "nep");
-            break;
-        case 2:
-            strcpy(selected_user, "user1");
-            break;
-        case 3:
-            strcpy(selected_user, "user2");
-            break;
-        case 4:
-            strcpy(selected_user, "guest");
-            break;
-        default:
-            show_error("Invalid selection");
-            return 0;
+    char cancel_option[32];
+    snprintf(cancel_option, sizeof(cancel_option), "%d \"Cancel\"", option_count + 1);
+    strcat(menu_options, cancel_option);
+    
+    snprintf(cmd, sizeof(cmd),
+        "dialog --title \"Change password\" --menu \"\\nSelect user to change password:\" %d 50 %d %s 3>&1 1>&2 2>&3",
+        14 + option_count, option_count + 1, menu_options);
+    
+    if (execute_dialog(cmd, choice, sizeof(choice)) != 0 || atoi(choice) == option_count + 1) {
+        return 0;
     }
+    
+    int selected_index = atoi(choice) - 1;
+    if (selected_index < 0 || selected_index >= option_count) {
+        show_error("Invalid selection");
+        return 0;
+    }
+    
+    int user_index = option_map[selected_index];
+    char* selected_user = users[user_index].username;
     
     char new_password[MAX_INPUT];
     char confirm_password[MAX_INPUT];
@@ -515,6 +574,19 @@ int change_user_password() {
     return 1;
 }
 
+int find_user(const char* username) {
+    for (int i = 0; i < user_count; i++) {
+        if (strcmp(users[i].username, username) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int get_user_count() {
+    return user_count;
+}
+
 int main() {
     if (system("which dialog > /dev/null 2>&1") != 0) {
         fprintf(stderr, "Error: The 'dialog' library is not installed.\n");
@@ -527,7 +599,7 @@ int main() {
     // Welcome message
     char welcome_cmd[MAX_COMMAND];
     snprintf(welcome_cmd, sizeof(welcome_cmd),
-        "dialog --title \"Welcome\" --msgbox \"SOCKS5 Server\\nAdmin Interface\\n\\nPress OK to continue\" 8 40");
+        "dialog --title \"Welcome\" --msgbox \"\\nSOCKS5 Server\\nAdmin Interface\\n\\nPress OK to continue\" 10 40");
     system(welcome_cmd);
     
     // Authentication
