@@ -51,21 +51,21 @@ void clear_screen() {
 void show_error(const char* message) {
     char cmd[MAX_COMMAND];
     snprintf(cmd, sizeof(cmd), 
-        "dialog --title \"Error\" --msgbox \"%s\" 8 50", message);
+        "dialog --title \"Error\" --msgbox \"\\n%s\" 8 50", message);
     system(cmd);
 }
 
 void show_info(const char* message) {
     char cmd[MAX_COMMAND];
     snprintf(cmd, sizeof(cmd), 
-        "dialog --title \"Information\" --msgbox \"%s\" 8 50", message);
+        "dialog --title \"Information\" --msgbox \"\\n%s\" 8 50", message);
     system(cmd);
 }
 
 int get_username(char* username, size_t size) {
     char cmd[MAX_COMMAND];
     snprintf(cmd, sizeof(cmd), 
-        "dialog --title \"Username\" --inputbox \"Enter your username:\" 8 40 3>&1 1>&2 2>&3 3>&-");
+        "dialog --title \"Username\" --inputbox \"\\nEnter your username:\" 9 40 3>&1 1>&2 2>&3 3>&-");
     
     return execute_dialog(cmd, username, size);
 }
@@ -73,7 +73,7 @@ int get_username(char* username, size_t size) {
 int get_password(char* password, size_t size) {
     char cmd[MAX_COMMAND];
     snprintf(cmd, sizeof(cmd), 
-        "dialog --title \"Password\" --clear --insecure --passwordbox \"Enter your password:\" 8 40 3>&1 1>&2 2>&3 3>&-");
+        "dialog --title \"Password\" --clear --insecure --passwordbox \"\\nEnter your password:\" 9 40 3>&1 1>&2 2>&3 3>&-");
     
     return execute_dialog(cmd, password, size);
 }
@@ -87,18 +87,18 @@ void show_metrics() {
     char status_info[2048];
     
     snprintf(status_info, sizeof(status_info),
-        "Server status: Running\\n"
+        "\\nServer status: Running\\n"
         "SOCKS5 port: Active\\n"
         "Admin port: Active\\n"
         "Current connections: 15\\n"
         "Total connections: 1,234\\n"
         "Bytes transferred: 2.5 GB\\n"
         "Server uptime: 5 days, 12 hours\\n"
-        "Active users: 8\\n"
+        "Active users: 8\\n\\n"
         "Press OK to continue");
     
     snprintf(cmd, sizeof(cmd), 
-        "dialog --title \"View metrics\" --msgbox \"%s\" 20 60", status_info);
+        "dialog --title \"View metrics\" --msgbox \"%s\" 15 60", status_info);
     system(cmd);
 }
 
@@ -108,7 +108,7 @@ void manage_users() {
         char choice[16];
         
         snprintf(cmd, sizeof(cmd),
-            "dialog --title \"Manage users\" --menu \"Select an option:\" 15 50 5 "
+            "dialog --title \"Manage users\" --menu \"\\nSelect an option:\" 13 50 5 "
             "1 \"List all users\" "
             "2 \"Add new user\" "
             "3 \"Remove user\" "
@@ -124,8 +124,7 @@ void manage_users() {
             case 1: {
                 char users_info[1024];
                 snprintf(users_info, sizeof(users_info),
-                    "=== USER LIST ===\\n\\n"
-                    "1. nep (Administrator)\\n"
+                    "\\n1. nep (Administrator)\\n"
                     "2. user1 (Active)\\n"
                     "3. user2 (Inactive)\\n"
                     "4. guest (Temporary)\\n\\n"
@@ -133,7 +132,7 @@ void manage_users() {
                     "Press OK to continue");
                 
                 snprintf(cmd, sizeof(cmd), 
-                    "dialog --title \"User List\" --msgbox \"%s\" 15 50", users_info);
+                    "dialog --title \"User list\" --msgbox \"%s\" 14 50", users_info);
                 system(cmd);
                 break;
             }
@@ -161,7 +160,7 @@ void configure_settings() {
         char choice[16];
         
         snprintf(cmd, sizeof(cmd),
-            "dialog --title \"Manage settings\" --menu \"Select an option:\" 15 50 4 "
+            "dialog --title \"Manage settings\" --menu \"\\nSelect an option:\" 12 50 4 "
             "1 \"Server configuration\" "
             "2 \"Logging settings\" "
             "3 \"Security settings\" "
@@ -175,8 +174,7 @@ void configure_settings() {
             case 1: {
                 char config_info[1024];
                 snprintf(config_info, sizeof(config_info),
-                    "=== SERVER CONFIGURATION ===\\n\\n"
-                    "SOCKS5 Port: 1080\\n"
+                    "\\nSOCKS5 Port: 1080\\n"
                     "Admin Port: 8080\\n"
                     "Bind Address: 0.0.0.0\\n"
                     "Max Connections: 100\\n"
@@ -185,7 +183,7 @@ void configure_settings() {
                     "Press OK to continue");
                 
                 snprintf(cmd, sizeof(cmd), 
-                    "dialog --title \"Server Configuration\" --msgbox \"%s\" 15 60", config_info);
+                    "dialog --title \"Server configuration\" --msgbox \"%s\" 13 60", config_info);
                 system(cmd);
                 break;
             }
@@ -210,7 +208,7 @@ void admin_menu() {
         char choice[16];
         
         snprintf(cmd, sizeof(cmd),
-            "dialog --title \"Admin interface\" --menu \"Select an option:\" 15 50 4 "
+            "dialog --title \"Admin interface\" --menu \"\\nSelect an option:\" 12 50 4 "
             "1 \"View metrics\" "
             "2 \"Manage users\" "
             "3 \"Manage settings\" "
@@ -246,7 +244,7 @@ void admin_menu() {
 int confirm_exit() {
     char cmd[MAX_COMMAND];
     snprintf(cmd, sizeof(cmd),
-        "dialog --title \"Confirm\" --yesno \"Are you sure you want to exit?\" 6 40");
+        "dialog --title \"Confirm\" --yesno \"\\nAre you sure you want to exit?\" 6 40");
     
     return (system(cmd) == 0); // 0 = Yes, 256 = No
 }
