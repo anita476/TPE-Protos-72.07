@@ -163,7 +163,7 @@ static void socks5_handle_write(struct selector_key *key) {
 		// 	hello_write_error(key);
 			// podemos llamar directo a write_to_client(key, true)
 			// break;
-		case STATE_AUTH_WRITE:
+		case STATE_AUTH_WRITE: // TODO: de hecho puede ni existir ese state porque hace lo mismo que STATE_HELLO_WRITE
 			write_to_client(key, false);
 			break;
 		case STATE_REQUEST_WRITE:
