@@ -17,11 +17,15 @@ wait
 
 curl --socks5 localhost:1080 http://127.0.0.1:9999 # should return CONNECTION REFUSED quickly-- no server running on this port
 
+# Test various server binding scenarios
 ./bin/server -p 1080 # default, should accept both ipv4 and ipv6 connections
 ./bin/server -l ::1 -p 1080 # specific port 
 ./bin/server -l 0.0.0.0 -p 1080
 ./bin/server -l localhost -p 8080
 ./bin/server -l $(hostname) -p 1080
 ./bin/server -l thisdoesnotexist.invalid -p 1080 # should fail on getaddrinfo
-./bin/server -l 192.168.1 -p 1080 # will parse to 192.168.0.1 
-./bin/server -l github.com -p 1080
+./bin/server -l 192.168.1 -p 1080 # will parse to 192.168.0.1 -> should fail if you dont have any interfaces (check your available interfaces with `ip a`)
+./bin/server -l github.com -p 1080 # should fail on getaddrinfo
+
+# You can also check with binding to specific ports like 8080 (should work if you have permissions)
+
