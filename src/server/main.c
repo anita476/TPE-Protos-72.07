@@ -23,12 +23,15 @@ static void sigterm_handler(const int signal);
 static void exit_error(const char *error_msg, int errnum);
 
 // TODO expand parse args to include log level and eventually log file
+static struct socks5args args;
+
 int main(int argc, char **argv) {
 	/********************************************** SETTING UP THE SERVER  ***********************/
-	struct socks5args args;
+
 	printf("Starting server...\n");
 	// parse args is in charge of initializing the args struct, all info will be there (already should be rfc compliant)
 	parse_args(argc, argv, &args);
+	load_users(args.users, args.nusers);
 
 	metrics_init();
 

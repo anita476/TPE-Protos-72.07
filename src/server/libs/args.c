@@ -140,4 +140,5 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
 		fprintf(stderr, "\n");
 		exit(1);
 	}
+	args->nusers = nusers;
 }

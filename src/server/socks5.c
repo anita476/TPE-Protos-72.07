@@ -60,6 +60,13 @@ static bool build_socks5_success_response(client_session *session);
 // Destructor
 static void cleanup_session(client_session *session);
 
+static struct users * us = NULL;
+static uint8_t nusers = 0;
+void load_users(struct users * u, uint8_t n) {
+    us = u;
+    nusers = n;
+}
+
 void socks5_handle_new_connection(struct selector_key *key) {
 	int listen_fd = key->fd;
 	struct sockaddr_storage client_addr;
@@ -612,6 +619,7 @@ static void auth_write(struct selector_key * key, bool should_shutdown) {
 	// If we're not shutting down, update to next state
 	session->current_state = STATE_REQUEST_READ;
 	selector_set_interest(key->s, key->fd, OP_READ);
+
 }
 
 static void hello_write(struct selector_key *key) {
@@ -1348,6 +1356,11 @@ static void log_resolved_addresses(const char *domain, struct addrinfo *addr_lis
 }
 
 static bool valid_user(char * username, char * password) {
+    for (int i = 0; i < nusers; i++) {
+        if( strcmp(username, us[i].name) == 0 && strcmp(password, us[i].pass) == 0) {
+            return true;
+        }
+    }
 	return strcmp(username, "nep") == 0 && strcmp(password, "nep") == 0;
 	///TODO implement proper validation
 }

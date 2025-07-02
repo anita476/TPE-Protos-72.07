@@ -16,7 +16,7 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
-
+#include "args.h"
 #include "buffer.h"
 #include "logger.h"
 #include "netutils.h"
@@ -113,5 +113,6 @@ typedef struct {
 // capaz se le puede agregar el clientSocket aca en vez de en el main pero X
 
 void socks5_handle_new_connection(struct selector_key *key);
+void load_users(struct users * u, uint8_t n);
 
 #endif // SOCKS5_H
