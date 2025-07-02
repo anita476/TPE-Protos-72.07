@@ -15,7 +15,7 @@ void show_info(const char* message);
 int get_username(char* username, size_t size);
 int get_password(char* password, size_t size);
 int verify_credentials(const char* username, const char* password);
-void show_system_status(void);
+void show_metrics(void);
 void manage_users(void);
 void configure_settings(void);
 void admin_menu(void);
@@ -58,7 +58,7 @@ void show_error(const char* message) {
 void show_info(const char* message) {
     char cmd[MAX_COMMAND];
     snprintf(cmd, sizeof(cmd), 
-        "dialog --title \"Información\" --msgbox \"%s\" 8 50", message);
+        "dialog --title \"Information\" --msgbox \"%s\" 8 50", message);
     system(cmd);
 }
 
@@ -82,23 +82,23 @@ int verify_credentials(const char* username, const char* password) {
     return (strcmp(username, "nep") == 0 && strcmp(password, "nep") == 0);
 }
 
-void show_system_status() {
+void show_metrics() {
     char cmd[MAX_COMMAND];
     char status_info[2048];
     
     snprintf(status_info, sizeof(status_info),
-        "Server Status: Running\\n"
-        "SOCKS5 Port: Active\\n"
-        "Admin Port: Active\\n"
-        "Current Connections: 15\\n"
-        "Total Connections: 1,234\\n"
-        "Bytes Transferred: 2.5 GB\\n"
-        "Server Uptime: 5 days, 12 hours\\n"
-        "Active Users: 8\\n"
+        "Server status: Running\\n"
+        "SOCKS5 port: Active\\n"
+        "Admin port: Active\\n"
+        "Current connections: 15\\n"
+        "Total connections: 1,234\\n"
+        "Bytes transferred: 2.5 GB\\n"
+        "Server uptime: 5 days, 12 hours\\n"
+        "Active users: 8\\n"
         "Press OK to continue");
     
     snprintf(cmd, sizeof(cmd), 
-        "dialog --title \"System Status\" --msgbox \"%s\" 20 60", status_info);
+        "dialog --title \"View metrics\" --msgbox \"%s\" 20 60", status_info);
     system(cmd);
 }
 
@@ -108,7 +108,7 @@ void manage_users() {
         char choice[16];
         
         snprintf(cmd, sizeof(cmd),
-            "dialog --title \"Manage Users\" --menu \"Select an option:\" 15 50 5 "
+            "dialog --title \"Manage users\" --menu \"Select an option:\" 15 50 5 "
             "1 \"List all users\" "
             "2 \"Add new user\" "
             "3 \"Remove user\" "
@@ -161,7 +161,7 @@ void configure_settings() {
         char choice[16];
         
         snprintf(cmd, sizeof(cmd),
-            "dialog --title \"Configure Settings\" --menu \"Select an option:\" 15 50 4 "
+            "dialog --title \"Manage settings\" --menu \"Select an option:\" 15 50 4 "
             "1 \"Server configuration\" "
             "2 \"Logging settings\" "
             "3 \"Security settings\" "
@@ -210,10 +210,10 @@ void admin_menu() {
         char choice[16];
         
         snprintf(cmd, sizeof(cmd),
-            "dialog --title \"Admin Interface\" --menu \"Choose an option:\" 15 50 4 "
-            "1 \"View System Status\" "
-            "2 \"Manage Users\" "
-            "3 \"Configure Settings\" "
+            "dialog --title \"Admin interface\" --menu \"Select an option:\" 15 50 4 "
+            "1 \"View metrics\" "
+            "2 \"Manage users\" "
+            "3 \"Manage settings\" "
             "4 \"Exit\" 3>&1 1>&2 2>&3");
         
         // Cancelled
@@ -223,7 +223,7 @@ void admin_menu() {
         
         switch (atoi(choice)) {
             case 1:
-                show_system_status();
+                show_metrics();
                 break;
             case 2:
                 manage_users();
