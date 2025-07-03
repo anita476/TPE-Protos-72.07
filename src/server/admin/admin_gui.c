@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dialog.h>
 
 #define MAX_INPUT 256
 #define MAX_USERS 10
 #define MAX_USERNAME 24
+#define TEMP_FILE "/tmp/whiptail_input"
 
 typedef struct {
     char username[MAX_USERNAME];
@@ -21,8 +21,7 @@ static User users[MAX_USERS] = {
 
 static int user_count = 4;
 
-// Core helper functions
-static void cleanup_dialog(void);
+//Helper functions
 static void show_message(const char* title, const char* message);
 static char* get_input(const char* title, const char* text, int hidden);
 static int get_menu_selection(const char* title, const char* text, char items[][2][64], int count);
@@ -47,62 +46,83 @@ static void configure_settings(void);
 static void admin_menu(void);
 static int authenticate(void);
 
-static void cleanup_dialog() {
-    if (dialog_vars.input_result) {
-        free(dialog_vars.input_result);
-        dialog_vars.input_result = NULL;
-    }
-    dlg_clear();
-}
-
 static void show_message(const char* title, const char* message) {
-    char formatted_message[512];
-    snprintf(formatted_message, sizeof(formatted_message), "\n%s", message);
-    dialog_msgbox(title, formatted_message, 8, 50, 1);
-    cleanup_dialog();
+    char command[1024];
+    snprintf(command, sizeof(command), 
+        "whiptail --title \"%s\" --msgbox \"%s\" 8 45", title, message);
+    system(command);
 }
 
 static char* get_input(const char* title, const char* text, int hidden) {
     static char result[MAX_INPUT];
-    char formatted_text[512];
-    snprintf(formatted_text, sizeof(formatted_text), "\n%s", text);
-    int ret = dialog_inputbox(title, formatted_text, 9, 40, "", hidden);
-    if (ret == 0 && dialog_vars.input_result) {
-        strncpy(result, dialog_vars.input_result, sizeof(result) - 1);
-        result[sizeof(result) - 1] = '\0';
-        cleanup_dialog();
-        return result;
+    char command[1024];
+    
+    if (hidden) {
+        snprintf(command, sizeof(command), 
+            "whiptail --title \"%s\" --passwordbox \"%s\" 8 35 2>%s", 
+            title, text, TEMP_FILE);
+    } else {
+        snprintf(command, sizeof(command), 
+            "whiptail --title \"%s\" --inputbox \"%s\" 8 35 2>%s", 
+            title, text, TEMP_FILE);
     }
-    cleanup_dialog();
+    
+    int ret = system(command);
+    if (ret == 0) {
+        FILE* file = fopen(TEMP_FILE, "r");
+        if (file) {
+            if (fgets(result, sizeof(result), file)) {
+                char* newline = strchr(result, '\n');
+                if (newline) *newline = '\0';
+                fclose(file);
+                remove(TEMP_FILE);
+                return result;
+            }
+            fclose(file);
+        }
+    }
+    remove(TEMP_FILE);
     return NULL;
 }
 
 static int get_menu_selection(const char* title, const char* text, char items[][2][64], int count) {
-    char *menu_items[count * 2];
+    char command[2048];
+    char menu_items[1024] = "";
+    
     for (int i = 0; i < count; i++) {
-        menu_items[i * 2] = items[i][0];
-        menu_items[i * 2 + 1] = items[i][1];
+        char item[256];
+        snprintf(item, sizeof(item), "\"%s\" \"%s\" ", items[i][0], items[i][1]);
+        strcat(menu_items, item);
     }
     
-    char formatted_text[512];
-    snprintf(formatted_text, sizeof(formatted_text), "\n%s", text);
-    int choice = dialog_menu(title, formatted_text, 14, 50, count, count, menu_items);
-    if (choice != 0) {
-        cleanup_dialog();
-        return -1;
-    }
+    snprintf(command, sizeof(command), 
+        "whiptail --title \"%s\" --menu \"%s\" 12 50 %d %s 2>%s", 
+        title, text, count, menu_items, TEMP_FILE);
     
-    int selected = dialog_vars.input_result ? atoi(dialog_vars.input_result) : 0;
-    cleanup_dialog();
-    return selected;
+    int ret = system(command);
+    if (ret == 0) {
+        FILE* file = fopen(TEMP_FILE, "r");
+        if (file) {
+            char result[16];
+            if (fgets(result, sizeof(result), file)) {
+                char* newline = strchr(result, '\n');
+                if (newline) *newline = '\0';
+                fclose(file);
+                remove(TEMP_FILE);
+                return atoi(result);
+            }
+            fclose(file);
+        }
+    }
+    remove(TEMP_FILE);
+    return -1;
 }
 
 static int get_confirmation(const char* title, const char* text) {
-    char formatted_text[512];
-    snprintf(formatted_text, sizeof(formatted_text), "\n%s", text);
-    int result = (dialog_yesno(title, formatted_text, 6, 40) == 0);
-    cleanup_dialog();
-    return result;
+    char command[1024];
+    snprintf(command, sizeof(command), 
+        "whiptail --title \"%s\" --yesno \"%s\" 8 45", title, text);
+    return (system(command) == 0);
 }
 
 static int validate_input(const char* input, int min_len, int max_len, const char* error_prefix) {
@@ -166,7 +186,6 @@ static int find_user(const char* username) {
     return -1;
 }
 
-// TODO: Actually verify
 static int verify_credentials(const char* username, const char* password) {
     return (strcmp(username, "admin") == 0 && strcmp(password, "admin") == 0) ||
            (strcmp(username, "nep") == 0 && strcmp(password, "nep") == 0);
@@ -191,16 +210,18 @@ static int get_password(char* password, int size) {
 static void show_server_config() {
     char config_info[1024];
     snprintf(config_info, sizeof(config_info),
-        "\nSOCKS5 Port: 1080\n"
-        "Admin Port: 8080\n"
-        "Bind Address: 0.0.0.0\n"
-        "Max Connections: 100\n"
-        "Connection Timeout: 30 seconds\n"
-        "Buffer Size: 8192 bytes\n\n"
+        "SOCKS5 Port: 1080\\n"
+        "Admin Port: 8080\\n"
+        "Bind Address: 0.0.0.0\\n"
+        "Max Connections: 100\\n"
+        "Connection Timeout: 30 seconds\\n"
+        "Buffer Size: 8192 bytes\\n\\n"
         "Press OK to continue");
     
-    dialog_msgbox("Server configuration", config_info, 13, 60, 1);
-    cleanup_dialog();
+    char command[2048];
+    snprintf(command, sizeof(command), 
+        "whiptail --title \"Server Configuration\" --msgbox \"%s\" 12 50", config_info);
+    system(command);
 }
 
 static void show_user_list() {
@@ -209,35 +230,39 @@ static void show_user_list() {
     
     for (int i = 0; i < user_count; i++) {
         char user_line[64];
-        snprintf(user_line, sizeof(user_line), "%d. %s (%s)\n", 
+        snprintf(user_line, sizeof(user_line), "%d. %s (%s)\\n", 
                 i + 1, users[i].username, users[i].role);
         strcat(user_list, user_line);
     }
     
     snprintf(users_info, sizeof(users_info),
-        "\n%s\nTotal users: %d\n\n"
+        "%s\\nTotal users: %d\\n\\n"
         "Press OK to continue", user_list, user_count);
     
-    dialog_msgbox("User list", users_info, 14, 50, 1);
-    cleanup_dialog();
+    char command[2048];
+    snprintf(command, sizeof(command), 
+        "whiptail --title \"User List\" --msgbox \"%s\" 10 50", users_info);
+    system(command);
 }
 
 static void show_metrics() {
     char status_info[2048];
     
     snprintf(status_info, sizeof(status_info),
-        "\nServer status: Running\n"
-        "SOCKS5 port: Active\n"
-        "Admin port: Active\n"
-        "Current connections: 15\n"
-        "Total connections: 1,234\n"
-        "Bytes transferred: 2.5 GB\n"
-        "Server uptime: 5 days, 12 hours\n"
-        "Active users: %d\n\n"
+        "Server status: Running\\n"
+        "SOCKS5 port: Active\\n"
+        "Admin port: Active\\n"
+        "Current connections: 15\\n"
+        "Total connections: 1,234\\n"
+        "Bytes transferred: 2.5 GB\\n"
+        "Server uptime: 5 days, 12 hours\\n"
+        "Active users: %d\\n\\n"
         "Press OK to continue", user_count);
     
-    dialog_msgbox("View metrics", status_info, 15, 60, 1);
-    cleanup_dialog();
+    char command[3072];
+    snprintf(command, sizeof(command), 
+        "whiptail --title \"View Metrics\" --msgbox \"%s\" 13 50", status_info);
+    system(command);
 }
 
 static void manage_users() {
@@ -454,19 +479,15 @@ static int change_user_password() {
 }
 
 int main() {
-    init_dialog(stdin, stdout);
-    
-    show_message("Welcome", "SOCKS5 server admin interface\n\nPress OK to continue");
+    show_message("Welcome", "SOCKS5 server admin interface. \nPress OK to continue");
     
     if (!authenticate()) {
-        end_dialog();
         system("clear");
         return 0;
     }
     
     admin_menu();
     
-    end_dialog();
     system("clear");
     
     return 0;
