@@ -40,7 +40,6 @@ static void show_metrics(void);
 static void show_server_config(void);
 static int add_user(void);
 static int remove_user(void);
-static int change_user_password(void);
 static void manage_users(void);
 static void configure_settings(void);
 static void admin_menu(void);
@@ -267,22 +266,20 @@ static void show_metrics() {
 
 static void manage_users() {
     while (1) {
-        char items[5][2][64] = {
+        char items[4][2][64] = {
             {"1", "List all users"},
             {"2", "Add new user"}, 
             {"3", "Remove user"},
-            {"4", "Change user password"},
-            {"5", "Back to main menu"}
+            {"4", "Back to main menu"}
         };
         
-        int selected = get_menu_selection("Manage users", "Select an option:", items, 5);
-        if (selected == -1 || selected == 5) return;
+        int selected = get_menu_selection("Manage users", "Select an option:", items, 4);
+        if (selected == -1 || selected == 4) return;
         
         switch (selected) {
             case 1: show_user_list(); break;
             case 2: add_user(); break;
             case 3: remove_user(); break;
-            case 4: change_user_password(); break;
             default: show_message("Error", "Invalid option"); break;
         }
     }
@@ -449,33 +446,6 @@ static int remove_user() {
     
     show_message("Info", "User removal cancelled.");
     return 0;
-}
-
-static int change_user_password() {
-    int user_index = select_user("Change password", "Select user to change password:", 0);
-    if (user_index == -1) {
-        return 0;
-    }
-    
-    char* selected_user = users[user_index].username;
-    char prompt[256];
-    snprintf(prompt, sizeof(prompt), "Enter new password for user '%s':", selected_user);
-    
-    char* new_password = get_input("New password", prompt, 1);
-    if (!new_password || !validate_input(new_password, 4, 24, "Password")) return 0;
-    
-    char* confirm_password = get_input("Confirm password", "Confirm new password:", 1);
-    if (!confirm_password || strcmp(new_password, confirm_password) != 0) {
-        show_message("Error", "Passwords do not match. Please try again.");
-        return 0;
-    }
-    
-    char success_msg[256];
-    snprintf(success_msg, sizeof(success_msg), 
-        "Password for user '%s' has been successfully changed.", selected_user);
-    show_message("Success", success_msg);
-    
-    return 1;
 }
 
 int main() {
