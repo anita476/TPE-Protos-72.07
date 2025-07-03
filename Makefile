@@ -55,7 +55,7 @@ client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(LIBS_OBJS)
 	$(CC) $(CLIENT_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
 
 admin: $(BIN_DIR) $(OBJ_DIR) $(ADMIN_OBJS)
-	$(CC) $(ADMIN_OBJS) $(LDFLAGS) -o $(BIN_DIR)/admin_gui
+	$(CC) $(ADMIN_OBJS) $(LDFLAGS) -ldialog -lncursesw -lncurses -ltinfo -lm -o $(BIN_DIR)/admin_gui
 
 # compile all libs and tests (each test is its own binary)
 test: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(TEST_BINS)
