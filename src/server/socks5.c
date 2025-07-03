@@ -84,6 +84,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 
 	// set new client socket to non-blocking
 	if (selector_fd_set_nio(client_fd) == -1) {
+		metrics_increment_errors();
 		perror("selector_fd_set_nio error");
 		close(client_fd);
 		return;
@@ -93,6 +94,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	// register the session
 	client_session *session = calloc(1, sizeof(client_session));
 	if (!session) {
+		metrics_increment_errors();
 		perror("calloc error..");
 		close(client_fd);
 		return;
@@ -201,8 +203,8 @@ static void socks5_handle_close(struct selector_key *key) {
 	if (session->client_fd == -1 && session->remote_fd == -1) {
 		cleanup_session(session);
 		free(session);
+		metrics_decrement_connections();
 	}
-	metrics_decrement_connections();
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Session cleanup complete for fd=%d", key->fd);
 	// IMPORTANT: Do NOT call selector_unregister_fd here!
 	// The selector is already in the process of unregistering when it calls this function
@@ -1205,17 +1207,25 @@ static void relay_client_to_remote(struct selector_key *key) {
 	ssize_t bytes_read = recv(session->client_fd, buffer, sizeof(buffer), 0);
 
 	if (bytes_read <= 0) {
+		if (bytes_read < 0) {
+			metrics_increment_errors();
+		}
 		log(DEBUG, "[RELAY] Client connection closed");
 		handle_error(key);
 		return;
 	}
 
+	metrics_add_bytes_in(bytes_read);
+
 	ssize_t bytes_written = send(session->remote_fd, buffer, bytes_read, MSG_NOSIGNAL);
 	if (bytes_written <= 0) {
+		metrics_increment_errors();
 		log(DEBUG, "[RELAY] Remote connection closed");
 		handle_error(key);
 		return;
 	}
+
+	metrics_add_bytes_out(bytes_written);
 
 	log(DEBUG, "[RELAY] Relayed %zd bytes client->remote", bytes_read);
 }
@@ -1228,17 +1238,25 @@ static void relay_remote_to_client(struct selector_key *key) {
 	ssize_t bytes_read = recv(session->remote_fd, buffer, sizeof(buffer), 0);
 
 	if (bytes_read <= 0) {
+		if (bytes_read < 0) {
+			metrics_increment_errors();
+		}
 		log(DEBUG, "[RELAY] Remote connection closed");
 		handle_error(key);
 		return;
 	}
 
+	metrics_add_bytes_in(bytes_read);
+
 	ssize_t bytes_written = send(session->client_fd, buffer, bytes_read, MSG_NOSIGNAL);
 	if (bytes_written <= 0) {
+		metrics_increment_errors();
 		log(DEBUG, "[RELAY] Client connection closed");
 		handle_error(key);
 		return;
 	}
+
+	metrics_add_bytes_out(bytes_written);
 
 	log(DEBUG, "[RELAY] Relayed %zd bytes remote->client", bytes_read);
 }
