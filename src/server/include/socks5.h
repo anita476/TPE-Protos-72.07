@@ -75,12 +75,14 @@ typedef struct {
 	socks5_request current_request;
 	socks5_response current_response;
 
-	uint8_t raw_read_buffer[256];
-	uint8_t raw_write_buffer[256];
+	uint8_t *raw_read_buffer; // make into pointer to allocate at runtime
+	uint8_t *raw_write_buffer;
 
 	// Buffers to handle reading and writing
 	buffer read_buffer;
 	buffer write_buffer;
+
+	size_t buffer_size;
 
 	int remote_fd;
 	int client_fd; // socket for CLIENT CONNECTION
@@ -91,12 +93,6 @@ typedef struct {
 	bool dns_failed; // Add this field
 	uint8_t dns_error_code;
 
-	uint8_t raw_destination_read_buffer[256];
-	uint8_t raw_destination_write_buffer[256];
-
-	buffer destination_read_buffer;
-	buffer destination_write_buffer;
-
 	bool has_error;
 	uint8_t error_code;
 	bool error_response_sent;
@@ -106,8 +102,6 @@ typedef struct {
 	bool cleaned_up; // to avoid double cleanup
 
 } client_session;
-
-// capaz se le puede agregar el clientSocket aca en vez de en el main pero X
 
 void socks5_handle_new_connection(struct selector_key *key);
 

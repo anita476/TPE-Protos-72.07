@@ -158,6 +158,8 @@ int main(int argc, char **argv) {
 		error_msg = "Failed to setup CalSetting server socket";
 		exit_error(error_msg, errno);
 	};
+	log(INFO, "SOCKS5 socket with fd %d", socksFd);
+	log(INFO, "CalSetting socket with fd %d", mngFd);
 
 	/*
 	** It takes a socket (srv file descriptor)
@@ -208,7 +210,6 @@ int main(int argc, char **argv) {
 	}
 
 	// Until sigterm or sigint, run server loop
-	// TODO: dont close on client disconnect (SELECTOR_IO)
 	for (; !done;) {
 		error_msg = NULL;
 		selectorStatus = selector_select(selector);

@@ -20,8 +20,7 @@ SERVER_SRCS = $(SERVER_DIR)/main.c $(SERVER_DIR)/socks5.c
 SERVER_OBJS = $(OBJ_DIR)/server-main.o $(patsubst $(SERVER_DIR)/%.c,$(OBJ_DIR)/%.o,$(filter-out $(SERVER_DIR)/main.c,$(SERVER_SRCS)))
 
 # libraries source files
-# todo delete socks5-PLACEHOLDER.c when socks5 is implemented
-LIBS_SRCS = $(filter-out $(LIBS_DIR)/socks5-PLACEHOLDER.c, $(wildcard $(LIBS_DIR)/*.c))
+LIBS_SRCS = $(wildcard $(LIBS_DIR)/*.c)
 LIBS_OBJS = $(patsubst $(LIBS_DIR)/%.c,$(OBJ_DIR)/%.o,$(LIBS_SRCS))
 
 # client source files

@@ -1,4 +1,5 @@
 #include "include/socks5.h"
+#include "include/config.h"
 #include "include/metrics.h"
 #include "include/selector.h"
 #include "include/socks5_utils.h"
@@ -33,17 +34,13 @@ static const struct fd_handler remote_handler = {.handle_read = socks5_remote_re
 
 /******************* -State machine handlers- *******************/
 static void hello_read(struct selector_key *key);
-// static void hello_write(struct selector_key *key);
-static void auth_read(struct selector_key * key);
-// static void auth_write(struct selector_key *key, bool should_shutdown);
-// static void hello_write_error(struct selector_key *key);
+static void auth_read(struct selector_key *key);
 static void request_read(struct selector_key *key);
 static void request_write(struct selector_key *key);
 static void request_resolve(struct selector_key *key);
 static void request_connect(struct selector_key *key);
 static void close_client(struct selector_key *key);
 static void relay_data(struct selector_key *key);
-// static void error_write(struct selector_key *key);
 static void handle_error(struct selector_key *key);
 
 static void write_to_client(struct selector_key *key, bool should_shutdown);
@@ -57,17 +54,17 @@ static void log_resolved_addresses(const char *domain,
 static void *dns_resolution_thread(void *arg);
 static void handle_connect_failure(struct selector_key *key, int error);
 static void handle_connect_success(struct selector_key *key);
-static bool valid_user(char * username, char * password);
+static bool valid_user(char *username, char *password);
 static bool build_socks5_success_response(client_session *session);
 
 // Destructor
 static void cleanup_session(client_session *session);
 
-static struct users * us = NULL;
+static struct users *us = NULL;
 static uint8_t nusers = 0;
-void load_users(struct users * u, uint8_t n) {
-    us = u;
-    nusers = n;
+void load_users(struct users *u, uint8_t n) {
+	us = u;
+	nusers = n;
 }
 
 void socks5_handle_new_connection(struct selector_key *key) {
@@ -75,7 +72,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	struct sockaddr_storage client_addr;
 	socklen_t client_addr_len = sizeof(client_addr);
 
-	// shouldnt blockk since it was dispatched by the selector
+	// shouldnt block since it was dispatched by the selector
 	int client_fd = accept(listen_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	if (client_fd < 0) {
 		metrics_increment_errors(ERROR_TYPE_NETWORK);
@@ -95,8 +92,8 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	// register the session
 	client_session *session = calloc(1, sizeof(client_session));
 	if (!session) {
-		metrics_increment_errors(ERROR_TYPE_SYSTEM);
-		perror("calloc error..");
+		metrics_increment_errors(ERROR_TYPE_OTHER);
+		log(ERROR, "[HANDLE CONNECTION] Failed to allocate client session");
 		close(client_fd);
 		return;
 	}
@@ -108,8 +105,26 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	session->has_error = false;
 	session->error_code = SOCKS5_REPLY_SUCCESS;
 	session->error_response_sent = false;
-	buffer_init(&session->read_buffer, sizeof(session->raw_read_buffer), session->raw_read_buffer);
-	buffer_init(&session->write_buffer, sizeof(session->raw_write_buffer), session->raw_write_buffer);
+
+	session->buffer_size = g_socks5_buffer_size; // can be changed at runtime!
+	session->raw_read_buffer = malloc(session->buffer_size);
+	if (session->raw_read_buffer == NULL) {
+		log(ERROR, "[HANDLE CONNECTION] Failed to allocate read buffer");
+		free(session);
+		close(client_fd);
+		metrics_increment_errors(ERROR_TYPE_OTHER);
+		return;
+	}
+	session->raw_write_buffer = malloc(session->buffer_size);
+	if (session->raw_write_buffer == NULL) {
+		log(ERROR, "[HANDLE CONNECTION] Failed to allocate read buffer");
+		free(session);
+		close(client_fd);
+		metrics_increment_errors(ERROR_TYPE_OTHER);
+		return;
+	}
+	buffer_init(&session->read_buffer, session->buffer_size, session->raw_read_buffer);
+	buffer_init(&session->write_buffer, session->buffer_size, session->raw_write_buffer);
 
 	selector_register(key->s, client_fd, &client_handler, OP_READ, session);
 
@@ -158,14 +173,8 @@ static void socks5_handle_write(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 	switch (session->current_state) {
 		case STATE_HELLO_WRITE:
-			// hello_write(key);
-			// podemos llamar directo a write_to_client(key, false)
 			write_to_client(key, false);
 			break;
-		// case STATE_HELLO_NO_ACCEPTABLE_METHODS:
-		// 	hello_write_error(key);
-			// podemos llamar directo a write_to_client(key, true)
-			// break;
 		case STATE_AUTH_WRITE: // TODO: de hecho puede ni existir ese state porque hace lo mismo que STATE_HELLO_WRITE
 			write_to_client(key, false);
 			break;
@@ -173,7 +182,6 @@ static void socks5_handle_write(struct selector_key *key) {
 			request_write(key);
 			break;
 		case STATE_ERROR_WRITE:
-			// error_write(key);
 			write_to_client(key, true); // This will send the error response and close the connection
 			// podemos llamar directo a write_to_client(key, true)
 			break;
@@ -355,8 +363,7 @@ static void hello_read(struct selector_key *key) {
 		log(DEBUG, "[HELLO_READ] USER_PASSWORD AUTH supported Moving to STATE_AUTH_READ.");
 		session->authenticated = true; // Mark session as authenticated
 		session->current_state = STATE_HELLO_WRITE;
-	}
-	else if (no_auth_supported) {
+	} else if (no_auth_supported) {
 		buffer_write(wb, SOCKS5_NO_AUTH); // no auth
 		log(DEBUG, "[HELLO_READ] No auth supported. Moving to STATE_HELLO_WRITE.");
 		session->current_state = STATE_HELLO_WRITE;
@@ -452,14 +459,12 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	// If we're not shutting down, update to next state
 	if (session->authenticated) {
 		session->current_state = STATE_AUTH_READ;
-	}
-	else {
+	} else {
 		session->current_state = STATE_REQUEST_READ;
 	}
 
 	selector_set_interest(key->s, key->fd, OP_READ);
 }
-
 
 static void auth_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
@@ -495,7 +500,7 @@ static void auth_read(struct selector_key *key) {
 
 	metrics_add_bytes_in(bytes_read);
 
-	 buffer_write_adv(rb, bytes_read);
+	buffer_write_adv(rb, bytes_read);
 	log(DEBUG, "[AUTH_READ] Read %zd bytes from client.", bytes_read);
 
 	size_t available;
@@ -508,7 +513,6 @@ static void auth_read(struct selector_key *key) {
 	uint8_t version = peek[0];
 	uint8_t ulen = peek[1];
 
-
 	log(DEBUG, "[AUTH_READ] Header: VER=0x%02x ULEN=%d", version, ulen);
 
 	if (version != SOCKS5_AUTH_VERSION) {
@@ -518,8 +522,8 @@ static void auth_read(struct selector_key *key) {
 		return;
 	}
 
-	//check if plen field has been sent
-	if ( available < (size_t)(2 + ulen)) {
+	// check if plen field has been sent
+	if (available < (size_t) (2 + ulen)) {
 		log(DEBUG, "[AUTH_READ] Not enough data yet. Waiting for more.");
 		return; // Not enough data yet
 	}
@@ -532,12 +536,12 @@ static void auth_read(struct selector_key *key) {
 	buffer_read_adv(rb, 2); // Consume version and ulen
 	peek = buffer_read_ptr(rb, &available);
 	char username[ulen + 1];
-	strncpy(username,(char *)peek , ulen);
-	username[ulen] = '\0'; // Null-terminate the username string
+	strncpy(username, (char *) peek, ulen);
+	username[ulen] = '\0';		   // Null-terminate the username string
 	buffer_read_adv(rb, ulen + 1); // Consume username and plen field
 	peek = buffer_read_ptr(rb, &available);
 	char password[plen + 1];
-	strncpy(password, (char *)peek, plen);
+	strncpy(password, (char *) peek, plen);
 	password[plen] = '\0'; // Null-terminate the password string
 	log(DEBUG, "[AUTH_READ] Username: '%s', Password: '%s'", username, password);
 	buffer_read_adv(rb, plen);
@@ -545,19 +549,21 @@ static void auth_read(struct selector_key *key) {
 	// prepare reply and change interest to WRITE (we want to send the auth response)
 	// TODO: what should we do if there is no space to write the response? for now we are just returning
 
-	buffer * wb = &session->write_buffer;
+	buffer *wb = &session->write_buffer;
 	if (buffer_writeable_bytes(wb) < 2) {
 		log(ERROR,
-			"[AUTH_READ] No space to write response."); // shouldnt we wait until there is more space left maybe? --> YES, by returning we are indeed waiting for the next time the selector notifies us
+			"[AUTH_READ] No space to write response."); // shouldnt we wait until there is more space left maybe? -->
+														// YES, by returning we are indeed waiting for the next time the
+														// selector notifies us
 		// session->current_state = STATE_ERROR;
 		return; // no space to write the response
 	}
 
 	// now safe to write the response
 	buffer_write(wb, SOCKS5_AUTH_VERSION);
-	if (!valid_user(username,password)) {
+	if (!valid_user(username, password)) {
 		buffer_write(wb, SOCKS5_REPLY_GENERAL_FAILURE);
-		session->current_state = STATE_ERROR_WRITE; ///maybe user a different state for auth error? 
+		session->current_state = STATE_ERROR_WRITE; /// maybe user a different state for auth error?
 	} else {
 		buffer_write(wb, SOCKS5_AUTH_SUCCESS);
 		session->current_state = STATE_AUTH_WRITE;
@@ -1307,7 +1313,7 @@ static void set_error_state(client_session *session, uint8_t error_code) {
 	session->error_code = error_code;
 	session->error_response_sent = false;
 	session->current_state = STATE_ERROR;
-	
+
 	error_type_t error_type = map_socks5_error_to_type(error_code);
 	metrics_increment_errors(error_type);
 	log(DEBUG, "[SET_ERROR_STATE] Setting error state with code: 0x%02x", error_code);
@@ -1400,20 +1406,19 @@ static void log_resolved_addresses(const char *domain, struct addrinfo *addr_lis
 	log(INFO, "[DNS_RESOLVE] Total addresses resolved: %d", count);
 }
 
-static bool valid_user(char * username, char * password) {
-    for (int i = 0; i < nusers; i++) {
-        if( strcmp(username, us[i].name) == 0 && strcmp(password, us[i].pass) == 0) {
-            return true;
-        }
-    }
+static bool valid_user(char *username, char *password) {
+	for (int i = 0; i < nusers; i++) {
+		if (strcmp(username, us[i].name) == 0 && strcmp(password, us[i].pass) == 0) {
+			return true;
+		}
+	}
 	return strcmp(username, "nep") == 0 && strcmp(password, "nep") == 0;
-	///TODO implement proper validation
+	/// TODO implement proper validation
 }
 
 static void cleanup_session(client_session *session) {
 	if (!session || session->cleaned_up)
 		return;
-	session->cleaned_up = true;
 
 	if (session->current_request.dst_address) {
 		if (session->current_request.atyp == SOCKS5_ATYP_DOMAIN) {
@@ -1443,4 +1448,15 @@ static void cleanup_session(client_session *session) {
 
 	buffer_reset(&session->read_buffer);
 	buffer_reset(&session->write_buffer);
+
+	if (session->raw_read_buffer) {
+		free(session->raw_read_buffer);
+		session->raw_read_buffer = NULL;
+	}
+	if (session->raw_write_buffer) {
+		free(session->raw_write_buffer);
+		session->raw_write_buffer = NULL;
+	}
+
+	session->cleaned_up = true;
 }
