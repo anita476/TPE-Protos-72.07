@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <metrics.h>
 
 uint8_t map_getaddrinfo_error_to_socks5(int gai_error) {
 	switch (gai_error) {
@@ -48,6 +49,7 @@ struct addrinfo *create_ipv6_addrinfo(const uint8_t ip[16], uint16_t port) {
 	struct sockaddr_in6 *sa = malloc(sizeof(struct sockaddr_in6));
 
 	if (!ai || !sa) {
+		metrics_increment_errors(ERROR_TYPE_MEMORY);
 		free(ai);
 		free(sa);
 		return NULL;
@@ -74,6 +76,7 @@ struct addrinfo *create_ipv4_addrinfo(uint32_t ip_host_order, uint16_t port) {
 	struct sockaddr_in *sa = malloc(sizeof(struct sockaddr_in));
 
 	if (!ai || !sa) {
+		metrics_increment_errors(ERROR_TYPE_MEMORY);
 		free(ai);
 		free(sa);
 		return NULL;

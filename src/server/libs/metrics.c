@@ -60,6 +60,7 @@ void metrics_cleanup(void) {
     log(INFO, "[METRICS] Auth errors: %u", metrics.error_counts[ERROR_TYPE_AUTH]);
     log(INFO, "[METRICS] System errors: %u", metrics.error_counts[ERROR_TYPE_SYSTEM]);
     log(INFO, "[METRICS] Timeout errors: %u", metrics.error_counts[ERROR_TYPE_TIMEOUT]);
+    log(INFO, "[METRICS] Memory errors: %u", metrics.error_counts[ERROR_TYPE_MEMORY]);
     log(INFO, "[METRICS] Other errors: %u", metrics.error_counts[ERROR_TYPE_OTHER]);
     log(INFO, "[METRICS] Server uptime: %ld seconds", uptime);
     log(INFO, "[METRICS] Metrics system cleaned up");
