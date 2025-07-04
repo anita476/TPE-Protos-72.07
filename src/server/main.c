@@ -208,6 +208,7 @@ int main(int argc, char **argv) {
 		error_msg = "Error registering management CalSetting server socket with selector";
 		exit_error(error_msg, selectorMngStatus);
 	}
+	// disableLogging();
 
 	// Until sigterm or sigint, run server loop
 	for (; !done;) {
