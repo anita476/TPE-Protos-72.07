@@ -17,6 +17,11 @@
 
 #define HELLO_HEADER_FIXED_LEN 3
 
+#define LOGS_RESPONSE_HEADER_FIXED_LEN 4
+
+metrics * handle_metrics_response(int sock, metrics * m);
+void fill_log_struct(char * data, log_strct * log);
+
 int setup_tcp_client_Socket(char * address, char * port) {
 	struct addrinfo addrCriteria = {0};                   // Criteria for address match
 	addrCriteria.ai_family = AF_UNSPEC;             // v4 or v6 is OK
@@ -127,19 +132,154 @@ int request_send(uint8_t command_code, uint8_t arg_1, uint8_t arg_2, int sock) {
 	return 0; // success
 }
 
-// metrics * handle_metrics(int sock, metrics * m) {
-// 	if (sock < 0 || m == NULL) {
-// 		return NULL; // Invalid parameters
-// 	}
-//
-// 	char response[sizeof(metrics)];
-// 	char * response_ptr = response;
-// 	if (recv_all(sock, response, sizeof(metrics)) != sizeof(metrics)) {
-// 		return NULL; // Failed to read metrics
-// 	}
-// 	m->version = response_ptr[0];
-// 	response_ptr++;
-// 	m->server_state = response_ptr[0];
-// 	response_ptr++;
-// 	m->n_current_connections = ntohl(response_ptr[0]);
-// }
+metrics * handle_metrics(int sock, metrics * m) {
+	//send the request for metrics
+	if (request_send(COMMAND_METRICS, RESERVED_BYTE, RESERVED_BYTE, sock) != 0) {
+		return NULL; // Failed to send request
+	}
+	//handle the response
+	return handle_metrics_response(sock, m);
+}
+
+metrics * handle_metrics_response(int sock, metrics * m) {
+	if (sock < 0 || m == NULL) {
+		return NULL; // Invalid parameters
+	}
+
+	char response[sizeof(metrics)];
+	char * response_ptr = response;
+	uint32_t four_byte_temp;
+	uint16_t two_byte_temp;
+
+
+	if (recv_all(sock, response, sizeof(metrics)) != sizeof(metrics)) {
+		return NULL; // Failed to read metrics
+	}
+	m->version = *response_ptr++;
+	m->server_state = *response_ptr++;
+
+
+
+	memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
+	m->n_current_connections = ntohl(four_byte_temp);
+	response_ptr += sizeof(uint32_t);
+
+	memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
+	m->n_total_connections = ntohl(four_byte_temp);
+	response_ptr += sizeof(uint32_t);
+
+	memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
+	m->n_total_bytes_received = ntohl(four_byte_temp);
+	response_ptr += sizeof(uint32_t);
+
+	memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
+	m->n_total_bytes_sent = ntohl(four_byte_temp);
+	response_ptr += sizeof(uint32_t);
+
+	memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
+	m->n_timeouts = ntohs(two_byte_temp);
+	response_ptr += sizeof(uint16_t);
+
+	memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
+	m->n_server_errors = ntohs(two_byte_temp);
+	response_ptr += sizeof(uint16_t);
+
+	memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
+	m->n_bad_requests = ntohs(two_byte_temp);
+	response_ptr += sizeof(uint16_t);
+
+	return m; // Return the filled metrics structure
+}
+
+log_strct * handle_log(int sock, uint8_t n, uint8_t offset) {
+	//send the request for metrics
+	if (request_send(COMMAND_LOGS, n, offset, sock) != 0) {
+		return NULL; // Failed to send request
+	}
+	char response[sizeof(log_strct)] = {0};
+	char * response_ptr = response;
+	uint32_t four_byte_temp;
+	uint16_t two_byte_temp;
+
+	if (recv_all(sock, response, LOGS_RESPONSE_HEADER_FIXED_LEN) != LOGS_RESPONSE_HEADER_FIXED_LEN) {
+		return NULL; // Failed to read metrics
+	}
+	uint8_t nlogs = response[2];
+	if (nlogs == 0) {
+		return NULL; // No logs available
+	}
+
+
+	log_strct * head = malloc(sizeof(log_strct));
+	if (recv_all(sock, response_ptr, sizeof(log_strct)) != sizeof(log_strct)) {
+		free_log_list(head);
+		return NULL; // Failed to read log. should not happen
+	}
+	fill_log_struct(response_ptr, head);
+	response_ptr += sizeof(log_strct);
+	nlogs--;
+	log_strct * current_log_ptr = head;
+
+
+	for (;nlogs > 0; nlogs--) {
+		if (recv_all(sock, response_ptr, sizeof(log_strct)) != sizeof(log_strct)) {
+			free_log_list(head);
+			return NULL; // Failed to read log. should not happen
+		}
+		current_log_ptr->next = malloc(sizeof(log_strct));
+		fill_log_struct(response_ptr, current_log_ptr->next);
+		response_ptr += sizeof(log_strct);
+		current_log_ptr = current_log_ptr->next;
+	}
+	return head;
+}
+
+void fill_log_struct(char * data, log_strct * log) {
+
+
+	memcpy(log->date,data,DATE_SIZE);
+	data += DATE_SIZE;
+	log->ulen = *data++;
+
+	memcpy(log->username, data, log->ulen);
+	log->register_type = *data++;  //should be 'A' always
+
+	memcpy(log->origin_ip, data, IPV6_LEN_BYTES);
+
+	uint16_t two_byte_temp;
+	memcpy(&two_byte_temp, data, sizeof(uint16_t));
+	log->origin_port = ntohs(two_byte_temp);
+	data += sizeof(uint16_t);
+
+
+	//TODO chequear address len que este bien o mal.
+	log->destination_ATYP = *data++;
+	if (log->destination_ATYP == DOMAIN_ATYP) {
+		uint8_t domain_len = *data++;
+		memcpy(log->destination_address, data, domain_len);
+		log->destination_address[domain_len] = '\0'; // Null-terminate the string
+		data += domain_len;
+	} else if (log->destination_ATYP == IPV4_ATYP) {
+		memcpy(log->destination_address, data, IPV4_LEN_BYTES);
+		data += IPV4_LEN_BYTES;
+	}
+	else {
+		memcpy(log->destination_address, data, IPV6_LEN_BYTES);
+		data += IPV6_LEN_BYTES;
+	}
+
+
+	memcpy(&two_byte_temp, data, sizeof(uint16_t));
+	log->destination_port = ntohs(two_byte_temp);
+	data += sizeof(uint16_t);
+
+	log->status_code = *data++;
+}
+void free_log_list(log_strct * node) {
+	if (node == NULL) {
+		return; // Nothing to free
+	}
+	free_log_list(node->next);
+	free(node);
+}
+
