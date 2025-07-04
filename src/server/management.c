@@ -15,7 +15,7 @@ static void handle_config_command(COMMAND cmd, const char *arg, const int argc) 
 				return;
 			}
 			size_t new_size = strtoul(arg, NULL, 10);
-			if (new_size > 0) { // TODO maybe have a min and max to protect the server integrity :p
+			if (new_size <= BUFFER_SIZE_MAX && new_size >= BUFFER_SIZE_MIN) {
 				log(INFO, "Changing SOCKS5 buffer size to %zu bytes", new_size);
 				g_socks5_buffer_size = new_size;
 			}
