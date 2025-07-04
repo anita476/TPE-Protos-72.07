@@ -1,17 +1,19 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -g -std=c11 -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
+CFLAGS = -Wall -Wextra -g -std=c11 -fsanitize=address -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
 # added -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L because of "implicit declaration of pselect"
 # https://barnowl.mit.edu/ticket/166
 # 
-LDFLAGS = -pthread
+LDFLAGS = -pthread -fsanitize=address
 
 SRC_DIR = src
 SERVER_DIR = $(SRC_DIR)/server
 CLIENT_DIR = $(SRC_DIR)/client
+SHARED_DIR = shared
 ADMIN_DIR = $(CLIENT_DIR)/admin
 LIBS_DIR = $(SERVER_DIR)/libs
 TEST_DIR = $(SERVER_DIR)/test
 INCLUDE_DIR = $(SERVER_DIR)/include
+SHARED_INCLUDE_DIR = $(SHARED_DIR)/include
 OBJ_DIR = obj
 BIN_DIR = bin
 
@@ -27,6 +29,9 @@ LIBS_OBJS = $(patsubst $(LIBS_DIR)/%.c,$(OBJ_DIR)/%.o,$(LIBS_SRCS))
 CLIENT_SRCS = $(CLIENT_DIR)/main.c
 CLIENT_OBJS = $(OBJ_DIR)/client-main.o
 
+# shared source files 
+SHARED_SRCS = $(wildcard $(SHARED_DIR)/*.c)
+SHARED_OBJS = $(patsubst $(SHARED_DIR)/%.c,$(OBJ_DIR)/%.o,$(SHARED_SRCS))
 # admin source files
 ADMIN_SRCS = $(ADMIN_DIR)/admin_gui.c
 ADMIN_OBJS = $(OBJ_DIR)/admin_gui.o
@@ -46,12 +51,13 @@ $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
 
 #  compiles libs to .o files, then compiles socks5 and main
-server: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(SERVER_OBJS)
+
+server: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(SHARED_OBJS) $(SERVER_OBJS)
 	$(CC) $(SERVER_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/server
 
 
-client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(LIBS_OBJS)
-	$(CC) $(CLIENT_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
+client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(SHARED_OBJS) 
+	$(CC) $(CLIENT_OBJS) $(SHARED_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
 
 admin: $(BIN_DIR) $(OBJ_DIR) $(ADMIN_OBJS)
 	$(CC) $(ADMIN_OBJS) $(LDFLAGS) -o $(BIN_DIR)/admin_gui
@@ -89,6 +95,9 @@ $(BIN_DIR)/buffer_test: $(TEST_DIR)/buffer_test.c $(filter-out obj/buffer.o,$(LI
 # same for selectoe test
 $(BIN_DIR)/selector_test: $(TEST_DIR)/selector_test.c $(filter-out obj/selector.o,$(LIBS_OBJS))
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(filter-out obj/selector.o,$(LIBS_OBJS)) $(LDFLAGS) -lcheck -lm -lsubunit -o $@
+
+$(OBJ_DIR)/%.o: $(SHARED_DIR)/%.c
+	$(CC) $(CFLAGS) -I$(SHARED_INCLUDE_DIR) -c $< -o $@
 
 clean:
 	rm -rf $(BIN_DIR) $(OBJ_DIR)
