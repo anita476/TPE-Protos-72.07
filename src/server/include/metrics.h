@@ -10,6 +10,7 @@ typedef enum {
     ERROR_TYPE_AUTH,         // Authentication/authorization errors
     ERROR_TYPE_SYSTEM,       // System/resource errors
     ERROR_TYPE_TIMEOUT,      // Timeout errors
+    ERROR_TYPE_MEMORY,
     ERROR_TYPE_OTHER         // Other unspecified errors
 } error_type_t;
 

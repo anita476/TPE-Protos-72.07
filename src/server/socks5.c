@@ -98,6 +98,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	if (!session) {
 		metrics_increment_errors(ERROR_TYPE_OTHER);
 		log(ERROR, "[HANDLE CONNECTION] Failed to allocate client session");
+		perror("calloc error..");
 		close(client_fd);
 		return;
 	}
@@ -919,6 +920,9 @@ static void *dns_resolution_thread(void *arg) {
 
 	int err = getaddrinfo(session->current_request.domain_to_resolve, port_str, &hints, &res);
 	if (err != 0) {
+		if (err == EAI_MEMORY) {
+			metrics_increment_errors(ERROR_TYPE_MEMORY);
+    	}
 		log(ERROR, "[DNS_THREAD] getaddrinfo failed: %s", gai_strerror(err));
 		session->dns_failed = true;
 		session->dns_error_code = map_getaddrinfo_error_to_socks5(err);
