@@ -51,6 +51,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown);
 // Helpers
 static void set_error_state(client_session *session, uint8_t error_code);
 static bool send_socks5_error_response(struct selector_key *key);
+static error_type_t map_socks5_error_to_type(uint8_t error_code);
 static void log_resolved_addresses(const char *domain,
 								   struct addrinfo *addr_list); // This could be deleted since its just for debugging
 static void *dns_resolution_thread(void *arg);
@@ -77,14 +78,14 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	// shouldnt blockk since it was dispatched by the selector
 	int client_fd = accept(listen_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	if (client_fd < 0) {
-		metrics_increment_errors();
+		metrics_increment_errors(ERROR_TYPE_NETWORK);
 		perror("accept error"); // todo more robust error handling...
 		return;
 	}
 
 	// set new client socket to non-blocking
 	if (selector_fd_set_nio(client_fd) == -1) {
-		metrics_increment_errors();
+		metrics_increment_errors(ERROR_TYPE_SYSTEM);
 		perror("selector_fd_set_nio error");
 		close(client_fd);
 		return;
@@ -94,7 +95,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	// register the session
 	client_session *session = calloc(1, sizeof(client_session));
 	if (!session) {
-		metrics_increment_errors();
+		metrics_increment_errors(ERROR_TYPE_SYSTEM);
 		perror("calloc error..");
 		close(client_fd);
 		return;
@@ -410,7 +411,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 		if (errno == EPIPE) {
 			// client has closed the connection -> do not write (broken pipe exception in send)
 			log(INFO, "[WRITE_TO_CLIENT] Client already closed connection (EPIPE), closing socket.");
-			metrics_increment_errors();
+			metrics_increment_errors(ERROR_TYPE_NETWORK);
 			log(DEBUG, "[WRITE_TO_CLIENT] Unregistering fd=%d from selector", key->fd);
 			selector_unregister_fd(key->s, key->fd);
 			close(key->fd);
@@ -1175,7 +1176,7 @@ static void close_client(struct selector_key *key) {
 			return;
 		} else {
 			log(ERROR, "[CLOSE_CLIENT] recv() error: %s", strerror(errno));
-			metrics_increment_errors();
+			metrics_increment_errors(ERROR_TYPE_NETWORK);
 			selector_unregister_fd(key->s, key->fd);
 			close(key->fd);
 		}
@@ -1208,7 +1209,7 @@ static void relay_client_to_remote(struct selector_key *key) {
 
 	if (bytes_read <= 0) {
 		if (bytes_read < 0) {
-			metrics_increment_errors();
+			metrics_increment_errors(ERROR_TYPE_NETWORK);
 		}
 		log(DEBUG, "[RELAY] Client connection closed");
 		handle_error(key);
@@ -1219,7 +1220,7 @@ static void relay_client_to_remote(struct selector_key *key) {
 
 	ssize_t bytes_written = send(session->remote_fd, buffer, bytes_read, MSG_NOSIGNAL);
 	if (bytes_written <= 0) {
-		metrics_increment_errors();
+		metrics_increment_errors(ERROR_TYPE_NETWORK);
 		log(DEBUG, "[RELAY] Remote connection closed");
 		handle_error(key);
 		return;
@@ -1239,7 +1240,7 @@ static void relay_remote_to_client(struct selector_key *key) {
 
 	if (bytes_read <= 0) {
 		if (bytes_read < 0) {
-			metrics_increment_errors();
+			metrics_increment_errors(ERROR_TYPE_NETWORK);
 		}
 		log(DEBUG, "[RELAY] Remote connection closed");
 		handle_error(key);
@@ -1250,7 +1251,7 @@ static void relay_remote_to_client(struct selector_key *key) {
 
 	ssize_t bytes_written = send(session->client_fd, buffer, bytes_read, MSG_NOSIGNAL);
 	if (bytes_written <= 0) {
-		metrics_increment_errors();
+		metrics_increment_errors(ERROR_TYPE_NETWORK);
 		log(DEBUG, "[RELAY] Client connection closed");
 		handle_error(key);
 		return;
@@ -1274,6 +1275,24 @@ static void socks5_remote_read(struct selector_key *key) {
 
 // ERROR FUNCTIONS
 
+static error_type_t map_socks5_error_to_type(uint8_t error_code) {
+	switch (error_code) {
+		case SOCKS5_REPLY_NETWORK_UNREACHABLE:
+		case SOCKS5_REPLY_HOST_UNREACHABLE:
+		case SOCKS5_REPLY_CONNECTION_REFUSED:
+			return ERROR_TYPE_NETWORK;
+		case SOCKS5_REPLY_COMMAND_NOT_SUPPORTED:
+		case SOCKS5_REPLY_ADDRESS_TYPE_NOT_SUPPORTED:
+			return ERROR_TYPE_PROTOCOL;
+		case SOCKS5_REPLY_TTL_EXPIRED:
+			return ERROR_TYPE_TIMEOUT;
+		case SOCKS5_REPLY_CONNECTION_NOT_ALLOWED:
+			return ERROR_TYPE_AUTH;
+		default:
+			return ERROR_TYPE_OTHER;
+	}
+}
+
 // static void error_write(struct selector_key *key) {
 // 	// client_session *session = (client_session *) key->data;
 
@@ -1288,7 +1307,9 @@ static void set_error_state(client_session *session, uint8_t error_code) {
 	session->error_code = error_code;
 	session->error_response_sent = false;
 	session->current_state = STATE_ERROR;
-	metrics_increment_errors();
+	
+	error_type_t error_type = map_socks5_error_to_type(error_code);
+	metrics_increment_errors(error_type);
 	log(DEBUG, "[SET_ERROR_STATE] Setting error state with code: 0x%02x", error_code);
 }
 

@@ -37,8 +37,9 @@ void metrics_add_bytes_out(uint64_t bytes) {
     metrics.total_bytes_transferred += bytes;
 }
 
-void metrics_increment_errors(void) {
-    metrics.errors++;
+void metrics_increment_errors(error_type_t error_type) {
+    metrics.error_counts[error_type]++;
+    metrics.total_errors++;
 }
 
 server_metrics* metrics_get(void) {
@@ -53,7 +54,13 @@ void metrics_cleanup(void) {
     log(INFO, "[METRICS] Bytes received: %" PRIu64, metrics.bytes_transferred_in);
     log(INFO, "[METRICS] Bytes sent: %" PRIu64, metrics.bytes_transferred_out);
     log(INFO, "[METRICS] Total bytes transferred: %" PRIu64, metrics.total_bytes_transferred);
-    log(INFO, "[METRICS] Metrics system cleaned up");
-    log(INFO, "[METRICS] Error count: %u", metrics.errors);
+    log(INFO, "[METRICS] Total errors: %u", metrics.total_errors);
+    log(INFO, "[METRICS] Network errors: %u", metrics.error_counts[ERROR_TYPE_NETWORK]);
+    log(INFO, "[METRICS] Protocol errors: %u", metrics.error_counts[ERROR_TYPE_PROTOCOL]);
+    log(INFO, "[METRICS] Auth errors: %u", metrics.error_counts[ERROR_TYPE_AUTH]);
+    log(INFO, "[METRICS] System errors: %u", metrics.error_counts[ERROR_TYPE_SYSTEM]);
+    log(INFO, "[METRICS] Timeout errors: %u", metrics.error_counts[ERROR_TYPE_TIMEOUT]);
+    log(INFO, "[METRICS] Other errors: %u", metrics.error_counts[ERROR_TYPE_OTHER]);
     log(INFO, "[METRICS] Server uptime: %ld seconds", uptime);
+    log(INFO, "[METRICS] Metrics system cleaned up");
 }
