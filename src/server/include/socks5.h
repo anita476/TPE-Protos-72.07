@@ -5,6 +5,11 @@
 #ifndef _SOCKS5_H_
 #define _SOCKS5_H_
 
+#include "args.h"
+#include "buffer.h"
+#include "logger.h"
+#include "netutils.h"
+#include "selector.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
@@ -16,14 +21,6 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
-#include "args.h"
-#include "buffer.h"
-#include "logger.h"
-#include "netutils.h"
-#include "selector.h"
-
-
-
 
 /* Since the send, recv etc. are blocking, we can use a state machine to transition between states and ensure no
  * blocking occurs */
@@ -113,6 +110,8 @@ typedef struct {
 // capaz se le puede agregar el clientSocket aca en vez de en el main pero X
 
 void socks5_handle_new_connection(struct selector_key *key);
-void load_users(struct users * u, uint8_t n);
+
+// Todo this should be in its own library
+void load_users(struct users *u, uint8_t n);
 
 #endif // SOCKS5_H
