@@ -1,5 +1,6 @@
 #!/bin/bash
 
+## Same test without proxy, should take approx half the time
 # Number of concurrent connections to test
 NUM_CONNECTIONS=1000
 
@@ -24,7 +25,7 @@ for ((i=0; i<NUM_CONNECTIONS; i++)); do
     # Pick a URL from the list (cycling through if NUM_CONNECTIONS > number of URLs)
     url="${URLS[$((i % ${#URLS[@]}))]}"
     echo "Launching request $((i+1)) to $url"
-    curl --socks5-hostname localhost:1080 "$url" > /dev/null 2>&1 &
+    curl "$url" > /dev/null 2>&1 &
     pids[$i]=$!
 done
 for pid in "${pids[@]}"; do
@@ -39,6 +40,6 @@ done
 # Wait for all background jobs to finish
 #wait
 
-echo "All $NUM_CONNECTIONS concurrent requests completed WITH PROXY."
+echo "All $NUM_CONNECTIONS concurrent requests completed NO PROXY."
 echo "Successful connections: $success"
 echo "Failed connections: $fail"

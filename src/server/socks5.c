@@ -79,8 +79,12 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	// shouldnt block since it was dispatched by the selector
 	int client_fd = accept(listen_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	if (client_fd < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			// no connection to accept (race condition)
+			return;
+		}
 		metrics_increment_errors(ERROR_TYPE_NETWORK);
-		perror("accept error"); // todo more robust error handling...
+		perror("accept error");
 		return;
 	}
 
@@ -115,6 +119,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	if (session->raw_read_buffer == NULL) {
 		log(ERROR, "[HANDLE CONNECTION] Failed to allocate read buffer");
 		free(session);
+		session = NULL;
 		close(client_fd);
 		metrics_increment_errors(ERROR_TYPE_OTHER);
 		return;
@@ -123,6 +128,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	if (session->raw_write_buffer == NULL) {
 		log(ERROR, "[HANDLE CONNECTION] Failed to allocate read buffer");
 		free(session);
+		session = NULL;
 		close(client_fd);
 		metrics_increment_errors(ERROR_TYPE_OTHER);
 		return;
@@ -216,6 +222,7 @@ static void socks5_handle_close(struct selector_key *key) {
 	if (session->client_fd == -1 && session->remote_fd == -1) {
 		cleanup_session(session);
 		free(session);
+		session = NULL;
 		metrics_decrement_connections();
 	}
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Session cleanup complete for fd=%d", key->fd);
@@ -575,81 +582,6 @@ static void auth_read(struct selector_key *key) {
 	selector_set_interest_key(key, OP_WRITE);
 }
 
-// static void auth_write(struct selector_key * key, bool should_shutdown) {
-// 	client_session *session = (client_session *) key->data;
-// 	buffer *wb = &session->write_buffer;
-
-// 	size_t bytes_to_write;
-// 	uint8_t *ptr = buffer_read_ptr(wb, &bytes_to_write);
-
-// 	if (bytes_to_write == 0) {
-// 		log(ERROR, "[AUTH_WRITE] No data to write.");
-// 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-// 		return;
-// 	}
-
-// 	ssize_t bytes_written = send(key->fd, ptr, bytes_to_write, MSG_NOSIGNAL);
-// 	if (bytes_written < 0) {
-// 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-// 			log(DEBUG, "[AUTH_WRITE] send() would block, waiting for next write event.");
-// 			return; // Try again later when selector notifies
-// 		}
-// 		if (errno == EPIPE) {
-// 			// client has closed the connection -> do not write (broken pipe exception in send)
-// 			log(INFO, "[AUTH_WRITE] Client already closed connection (EPIPE), closing socket.");
-// 			metrics_increment_errors();
-// 			log(DEBUG, "[AUTH_WRITE] Unregistering fd=%d from selector", key->fd);
-// 			selector_unregister_fd(key->s, key->fd);
-// 			close(key->fd);
-// 			log(DEBUG, "[AUTH_WRITE] EPIPE cleanup complete for fd=%d", key->fd);
-// 			return;
-// 		}
-// 		log(ERROR, "[AUTH_WRITE] send() error: %s", strerror(errno));
-// 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-// 		return;
-// 	} else if (bytes_written == 0) {
-// 		log(INFO, "[AUTH_WRITE] Connection closed by peer during send");
-// 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-// 		return;
-// 	}
-
-// 	metrics_add_bytes_out(bytes_written);
-
-// 	buffer_read_adv(wb, bytes_written);
-// 	log(INFO, "[AUTH_WRITE] Sent %zd/%zu bytes to client.", bytes_written, bytes_to_write);
-
-// 	if (buffer_readable_bytes(wb) > 0) {
-// 		log(DEBUG, "[AUTH_WRITE] Partial write, waiting for next event.");
-// 		return; // More data pending
-// 	}
-
-// 	// The shutdown is justified because the RFC specifies that the CLIENT must close the connection.
-// 	// Gracefully shutting down from the server side is considered good practice and is commonly done by
-// 	// industry standards such as nginx. By calling shutdown(), we signal we won’t send or receive more data, allowing
-// 	// for a clean connection teardown.
-// 	if (should_shutdown) {
-// 		log(DEBUG, "[AUTH_WRITE] All data sent. Shutting down socket.");
-// 		shutdown(key->fd, SHUT_RDWR);
-// 		selector_unregister_fd(key->s, key->fd);
-// 		close(key->fd);
-// 		return;
-// 	}
-
-// 	// If we're not shutting down, update to next state
-// 	session->current_state = STATE_REQUEST_READ;
-// 	selector_set_interest(key->s, key->fd, OP_READ);
-
-// }
-
-// static void hello_write(struct selector_key *key) {
-// 	write_to_client(key, false);
-// }
-
-// static void hello_write_error(struct selector_key *key) {
-// 	log(DEBUG, "[HELLO_WRITE_ERROR] Entered - sending rejection response");
-// 	write_to_client(key, true);
-// }
-
 /** A socks request looks like this:
 		+----+-----+-------+------+----------+----------+
 		|VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
@@ -834,6 +766,7 @@ static void request_read(struct selector_key *key) {
 
 		if (session->current_request.domain_to_resolve) {
 			free(session->current_request.domain_to_resolve);
+			session->current_request.domain_to_resolve = NULL;
 		}
 		session->current_request.domain_to_resolve = strdup(domain_name);
 
@@ -1302,15 +1235,6 @@ static error_type_t map_socks5_error_to_type(uint8_t error_code) {
 			return ERROR_TYPE_OTHER;
 	}
 }
-
-// static void error_write(struct selector_key *key) {
-// 	// client_session *session = (client_session *) key->data;
-
-// 	log(DEBUG, "[ERROR_WRITE] Sending error response to client");
-
-// 	// Use the existing write_to_client function with shutdown=true
-// 	write_to_client(key, true);
-// }
 
 static void set_error_state(client_session *session, uint8_t error_code) {
 	session->has_error = true;
