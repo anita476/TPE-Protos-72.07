@@ -16,7 +16,7 @@ OBJ_DIR = obj
 BIN_DIR = bin
 
 # server src files
-SERVER_SRCS = $(SERVER_DIR)/main.c $(SERVER_DIR)/socks5.c
+SERVER_SRCS = $(SERVER_DIR)/main.c $(SERVER_DIR)/socks5.c $(SERVER_DIR)/management.c
 SERVER_OBJS = $(OBJ_DIR)/server-main.o $(patsubst $(SERVER_DIR)/%.c,$(OBJ_DIR)/%.o,$(filter-out $(SERVER_DIR)/main.c,$(SERVER_SRCS)))
 
 # libraries source files

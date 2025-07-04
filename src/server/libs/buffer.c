@@ -5,7 +5,7 @@
 #include <assert.h>
 #include <string.h>
 
-#include "buffer.h"
+#include "../include/buffer.h"
 
 inline void buffer_reset(buffer *b) {
 	b->read = b->data;
@@ -23,9 +23,8 @@ inline bool buffer_can_write(buffer *b) {
 }
 
 inline size_t buffer_writeable_bytes(buffer *b) {
-    return b->limit - b->write;
+	return b->limit - b->write;
 }
-
 
 inline uint8_t *buffer_write_ptr(buffer *b, size_t *nbyte) {
 	assert(b->write <= b->limit);
@@ -36,7 +35,6 @@ inline uint8_t *buffer_write_ptr(buffer *b, size_t *nbyte) {
 inline bool buffer_can_read(buffer *b) {
 	return b->write - b->read > 0;
 }
-
 
 inline uint8_t *buffer_read_ptr(buffer *b, size_t *nbyte) {
 	assert(b->read <= b->write);
@@ -96,5 +94,5 @@ void buffer_compact(buffer *b) {
 }
 
 inline size_t buffer_readable_bytes(buffer *b) {
-    return b->write - b->read;
+	return b->write - b->read;
 }

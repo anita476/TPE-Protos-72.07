@@ -1,5 +1,4 @@
 #include "include/socks5.h"
-#include "include/config.h"
 #include "include/metrics.h"
 #include "include/selector.h"
 #include "include/socks5_utils.h"
@@ -7,6 +6,11 @@
 #include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
+
+#include <time.h>
+
+extern struct timespec g_select_timeout;
+extern size_t g_socks5_buffer_size;
 
 void socks5_handle_new_connection(struct selector_key *key);
 static void socks5_handle_read(struct selector_key *key);
