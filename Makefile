@@ -9,7 +9,6 @@ SRC_DIR = src
 SERVER_DIR = $(SRC_DIR)/server
 CLIENT_DIR = $(SRC_DIR)/client
 SHARED_DIR = shared
-ADMIN_DIR = $(CLIENT_DIR)/admin
 LIBS_DIR = $(SERVER_DIR)/libs
 TEST_DIR = $(SERVER_DIR)/test
 INCLUDE_DIR = $(SERVER_DIR)/include
@@ -32,16 +31,14 @@ CLIENT_OBJS = $(OBJ_DIR)/client-main.o
 # shared source files 
 SHARED_SRCS = $(wildcard $(SHARED_DIR)/*.c)
 SHARED_OBJS = $(patsubst $(SHARED_DIR)/%.c,$(OBJ_DIR)/%.o,$(SHARED_SRCS))
-# admin source files
-ADMIN_SRCS = $(ADMIN_DIR)/admin_gui.c
-ADMIN_OBJS = $(OBJ_DIR)/admin_gui.o
+
 
 # tests
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
 TEST_BINS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(BIN_DIR)/%)
 
 
-all: server client admin
+all: server client test
 
 
 $(OBJ_DIR):
@@ -59,8 +56,6 @@ server: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(SHARED_OBJS) $(SERVER_OBJS)
 client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(SHARED_OBJS) 
 	$(CC) $(CLIENT_OBJS) $(SHARED_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
 
-admin: $(BIN_DIR) $(OBJ_DIR) $(ADMIN_OBJS)
-	$(CC) $(ADMIN_OBJS) $(LDFLAGS) -o $(BIN_DIR)/admin_gui
 
 # compile all libs and tests (each test is its own binary)
 test: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(TEST_BINS)
@@ -72,10 +67,6 @@ $(OBJ_DIR)/server-main.o: $(SERVER_DIR)/main.c
 # Compile client main
 $(OBJ_DIR)/client-main.o: $(CLIENT_DIR)/main.c
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
-
-# Compile admin GUI
-$(OBJ_DIR)/admin_gui.o: $(ADMIN_DIR)/admin_gui.c
-	$(CC) $(CFLAGS) -c $< -o $@
 
 # compile everything else for the server
 $(OBJ_DIR)/%.o: $(SERVER_DIR)/%.c
@@ -102,4 +93,4 @@ $(OBJ_DIR)/%.o: $(SHARED_DIR)/%.c
 clean:
 	rm -rf $(BIN_DIR) $(OBJ_DIR)
 
-.PHONY: all server client admin test clean
+.PHONY: all server client test clean
