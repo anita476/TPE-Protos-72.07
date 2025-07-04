@@ -6,7 +6,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -y gcc make check ncat curl iproute2 whiptail && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-
+RUN apt-get update && apt-get install -y python3
+# python3 to test with http server (probs should also install nginx haha)
 WORKDIR /root
 
 # Expose the SOCKS5 port && admin port

@@ -10,8 +10,8 @@
 
 #include "../include/selector.h"
 #include <fcntl.h>
-#include <signal.h> // macOS compiling :p
 #include <stdint.h> // SIZE_MAX
+#include <sys/epoll.h>
 #include <sys/select.h>
 #include <sys/signal.h>
 #include <sys/socket.h>
@@ -132,13 +132,9 @@ struct fdselector {
 	struct item *fds;
 	size_t fd_size; // cantidad de elementos posibles de fds
 
-	/** fd maximo para usar en select() */
-	int max_fd; // max(.fds[].fd)
-
-	/** descriptores prototipicos ser usados en select */
-	fd_set master_r, master_w;
-	/** para ser usado en el select() (recordar que select cambia el valor) */
-	fd_set slave_r, slave_w;
+	int epoll_fd;
+	struct epoll_event *events;
+	size_t max_events; // max number of events that can be handled at once
 
 	/** timeout prototipico para usar en select() */
 	struct timespec master_t;
@@ -198,37 +194,6 @@ static void items_init(fd_selector s, const size_t last) {
 }
 
 /**
- * calcula el fd maximo para ser utilizado en select()
- */
-static int items_max_fd(fd_selector s) {
-	int max = 0;
-	for (int i = 0; i <= s->max_fd; i++) {
-		struct item *item = s->fds + i;
-		if (ITEM_USED(item)) {
-			if (item->fd > max) {
-				max = item->fd;
-			}
-		}
-	}
-	return max;
-}
-
-static void items_update_fdset_for_fd(fd_selector s, const struct item *item) {
-	FD_CLR(item->fd, &s->master_r);
-	FD_CLR(item->fd, &s->master_w);
-
-	if (ITEM_USED(item)) {
-		if (item->interest & OP_READ) {
-			FD_SET(item->fd, &(s->master_r));
-		}
-
-		if (item->interest & OP_WRITE) {
-			FD_SET(item->fd, &(s->master_w));
-		}
-	}
-}
-
-/**
  * garantizar cierta cantidad de elemenos en `fds'.
  * Se asegura de que `n' sea un número que la plataforma donde corremos lo
  * soporta
@@ -283,19 +248,31 @@ fd_selector selector_new(const size_t initial_elements) {
 		memset(ret, 0x00, size);
 		ret->master_t.tv_sec = conf.select_timeout.tv_sec;
 		ret->master_t.tv_nsec = conf.select_timeout.tv_nsec;
-		assert(ret->max_fd == 0);
 		ret->resolution_jobs = 0;
 		pthread_mutex_init(&ret->resolution_mutex, 0);
 		if (0 != ensure_capacity(ret, initial_elements)) {
 			selector_destroy(ret);
 			ret = NULL;
+		} else {
+			// max events that can be handled at once
+			ret->max_events = initial_elements > 0 ? initial_elements : 1024;
+			ret->events = calloc(ret->max_events, sizeof(struct epoll_event));
+			if (!ret->events) {
+				selector_destroy(ret);
+				return NULL;
+			}
+			ret->epoll_fd = epoll_create1(0);
+			if (ret->epoll_fd == -1) {
+				perror("epoll_create1");
+				selector_destroy(ret);
+				return NULL;
+			}
 		}
 	}
 	return ret;
 }
 
 void selector_destroy(fd_selector s) {
-	// lean ya que se llama desde los casos fallidos de _new.
 	if (s != NULL) {
 		if (s->fds != NULL) {
 			for (size_t i = 0; i < s->fd_size; i++) {
@@ -314,21 +291,37 @@ void selector_destroy(fd_selector s) {
 			s->fds = NULL;
 			s->fd_size = 0;
 		}
+		// free all events in list
+		if (s->events) {
+			free(s->events);
+			s->events = NULL;
+		}
+		if (s->epoll_fd != -1) {
+			close(s->epoll_fd);
+			s->epoll_fd = -1;
+		}
 		free(s);
 	}
 }
 
 #define INVALID_FD(fd) ((fd) < 0 || (fd) >= ITEMS_MAX_SIZE)
 
+static uint32_t interest_to_epoll_events(fd_interest interest) {
+	uint32_t events = 0;
+	if (interest & OP_READ)
+		events |= EPOLLIN;
+	if (interest & OP_WRITE)
+		events |= EPOLLOUT;
+	return events;
+}
+
 selector_status selector_register(fd_selector s, const int fd, const fd_handler *handler, const fd_interest interest,
 								  void *data) {
 	selector_status ret = SELECTOR_SUCCESS;
-	// 0. validación de argumentos
 	if (s == NULL || INVALID_FD(fd) || handler == NULL) {
 		ret = SELECTOR_IARGS;
 		goto finally;
 	}
-	// 1. tenemos espacio?
 	size_t ufd = (size_t) fd;
 	if (ufd > s->fd_size) {
 		ret = ensure_capacity(s, ufd);
@@ -336,8 +329,6 @@ selector_status selector_register(fd_selector s, const int fd, const fd_handler 
 			goto finally;
 		}
 	}
-
-	// 2. registración
 	struct item *item = s->fds + ufd;
 	if (ITEM_USED(item)) {
 		ret = SELECTOR_FDINUSE;
@@ -347,32 +338,32 @@ selector_status selector_register(fd_selector s, const int fd, const fd_handler 
 		item->handler = handler;
 		item->interest = interest;
 		item->data = data;
-
-		// actualizo colaterales
-		if (fd > s->max_fd) {
-			s->max_fd = fd;
+		struct epoll_event ev = {0};
+		ev.events = interest_to_epoll_events(interest);
+		ev.data.ptr = item;
+		if (epoll_ctl(s->epoll_fd, EPOLL_CTL_ADD, fd, &ev) == -1) {
+			perror("epoll_ctl: add");
+			memset(item, 0x00, sizeof(*item));
+			item_init(item);
+			ret = SELECTOR_IO;
+			goto finally;
 		}
-		items_update_fdset_for_fd(s, item);
 	}
-
 finally:
 	return ret;
 }
 
 selector_status selector_unregister_fd(fd_selector s, const int fd) {
 	selector_status ret = SELECTOR_SUCCESS;
-
 	if (NULL == s || INVALID_FD(fd)) {
 		ret = SELECTOR_IARGS;
 		goto finally;
 	}
-
 	struct item *item = s->fds + fd;
 	if (!ITEM_USED(item)) {
 		ret = SELECTOR_IARGS;
 		goto finally;
 	}
-
 	if (item->handler->handle_close != NULL) {
 		struct selector_key key = {
 			.s = s,
@@ -381,21 +372,16 @@ selector_status selector_unregister_fd(fd_selector s, const int fd) {
 		};
 		item->handler->handle_close(&key);
 	}
-
 	item->interest = OP_NOOP;
-	items_update_fdset_for_fd(s, item);
-
+	epoll_ctl(s->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
 	memset(item, 0x00, sizeof(*item));
 	item_init(item);
-	s->max_fd = items_max_fd(s);
-
 finally:
 	return ret;
 }
 
 selector_status selector_set_interest(fd_selector s, int fd, fd_interest i) {
 	selector_status ret = SELECTOR_SUCCESS;
-
 	if (NULL == s || INVALID_FD(fd)) {
 		ret = SELECTOR_IARGS;
 		goto finally;
@@ -406,20 +392,24 @@ selector_status selector_set_interest(fd_selector s, int fd, fd_interest i) {
 		goto finally;
 	}
 	item->interest = i;
-	items_update_fdset_for_fd(s, item);
+	struct epoll_event ev = {0};
+	ev.events = interest_to_epoll_events(i);
+	ev.data.ptr = item;
+	if (epoll_ctl(s->epoll_fd, EPOLL_CTL_MOD, fd, &ev) == -1) {
+		perror("epoll_ctl: mod");
+		ret = SELECTOR_IO;
+	}
 finally:
 	return ret;
 }
 
 selector_status selector_set_interest_key(struct selector_key *key, fd_interest i) {
 	selector_status ret;
-
 	if (NULL == key || NULL == key->s || INVALID_FD(key->fd)) {
 		ret = SELECTOR_IARGS;
 	} else {
 		ret = selector_set_interest(key->s, key->fd, i);
 	}
-
 	return ret;
 }
 
@@ -427,40 +417,6 @@ selector_status selector_set_interest_key(struct selector_key *key, fd_interest 
  * se encarga de manejar los resultados del select.
  * se encuentra separado para facilitar el testing
  */
-static void handle_iteration(fd_selector s) {
-	int n = s->max_fd;
-	struct selector_key key = {
-		.s = s,
-	};
-
-	for (int i = 0; i <= n; i++) {
-		struct item *item = s->fds + i;
-		if (ITEM_USED(item)) {
-			key.fd = item->fd;
-			key.data = item->data;
-			if (FD_ISSET(item->fd, &s->slave_r)) {
-				if (OP_READ & item->interest) {
-					if (0 == item->handler->handle_read) {
-						assert(("OP_READ arrived but no handler. bug!" == 0));
-					} else {
-						item->handler->handle_read(&key);
-					}
-				}
-			}
-			// TODO: check! CHANGED THIS but not sure if its correct (FD_ISSET(i, &s->slave_w)) {
-			if (FD_ISSET(item->fd, &s->slave_w)) {
-				if (OP_WRITE & item->interest) {
-					if (0 == item->handler->handle_write) {
-						assert(("OP_WRITE arrived but no handler. bug!" == 0));
-					} else {
-						item->handler->handle_write(&key);
-					}
-				}
-			}
-		}
-	}
-}
-
 static void handle_block_notifications(fd_selector s) {
 	struct selector_key key = {
 		.s = s,
@@ -510,49 +466,46 @@ finally:
 
 selector_status selector_select(fd_selector s) {
 	selector_status ret = SELECTOR_SUCCESS;
-
-	memcpy(&s->slave_r, &s->master_r, sizeof(s->slave_r));
-	memcpy(&s->slave_w, &s->master_w, sizeof(s->slave_w));
-	memcpy(&s->slave_t, &s->master_t, sizeof(s->slave_t));
-
 	s->selector_thread = pthread_self();
-
-	int fds = pselect(s->max_fd + 1, &s->slave_r, &s->slave_w, 0, &s->slave_t, &emptyset);
-	if (-1 == fds) {
-		switch (errno) {
-			case EAGAIN:
-			case EINTR:
-				// si una señal nos interrumpio. ok!
-				break;
-			case EBADF:
-				// ayuda a encontrar casos donde se cierran los fd pero no
-				// se desregistraron
-				for (int i = 0; i < s->max_fd; i++) {
-					if (FD_ISSET(i, &s->master_r) || FD_ISSET(i, &s->master_w)) {
-						if (-1 == fcntl(i, F_GETFD, 0)) {
-							fprintf(stderr, "Bad descriptor detected: %d\n", i);
-						}
-					}
-				}
-				ret = SELECTOR_IO;
-				break;
-			default:
-				ret = SELECTOR_IO;
-				goto finally;
+	int timeout_ms = (int) (s->master_t.tv_sec * 1000 + s->master_t.tv_nsec / 1000000);
+	int n = epoll_wait(s->epoll_fd, s->events, s->max_events, timeout_ms);
+	if (n < 0) {
+		if (errno == EINTR) {
+			// interrupted by signal, ok
+		} else {
+			perror("epoll_wait");
+			ret = SELECTOR_IO;
+			goto finally;
 		}
-	} else {
-		handle_iteration(s);
 	}
-	if (ret == SELECTOR_SUCCESS) {
-		handle_block_notifications(s);
+	for (int i = 0; i < n; i++) {
+		struct item *item = (struct item *) s->events[i].data.ptr;
+		if (!ITEM_USED(item))
+			continue;
+		struct selector_key key = {
+			.s = s,
+			.fd = item->fd,
+			.data = item->data,
+		};
+		uint32_t ev = s->events[i].events;
+		if ((ev & EPOLLIN) && (item->interest & OP_READ) && item->handler->handle_read) {
+			item->handler->handle_read(&key);
+		}
+		if ((ev & EPOLLOUT) && (item->interest & OP_WRITE) && item->handler->handle_write) {
+			item->handler->handle_write(&key);
+		}
+		if ((ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) && item->handler->handle_close) {
+			item->handler->handle_close(&key);
+		}
 	}
+	handle_block_notifications(s);
 finally:
 	return ret;
 }
 
 int selector_fd_set_nio(const int fd) {
 	int ret = 0;
-	//TODO: Check! Changed this: int flags = fcntl(fd, F_GETFD, 0);
+	// TODO: Check! Changed this: int flags = fcntl(fd, F_GETFD, 0);
 	int flags = fcntl(fd, F_GETFL, 0);
 	if (flags == -1) {
 		ret = -1;
@@ -565,36 +518,24 @@ int selector_fd_set_nio(const int fd) {
 }
 
 selector_status selector_unregister_fd_noclose(fd_selector s, const int fd) {
-    selector_status ret = SELECTOR_SUCCESS;
+	selector_status ret = SELECTOR_SUCCESS;
 
-    if (NULL == s || INVALID_FD(fd)) {
-        ret = SELECTOR_IARGS;
-        goto finally;
-    }
+	if (NULL == s || INVALID_FD(fd)) {
+		ret = SELECTOR_IARGS;
+		goto finally;
+	}
 
-    struct item *item = s->fds + fd;
-    if (!ITEM_USED(item)) {
-        ret = SELECTOR_IARGS;
-        goto finally;
-    }
+	struct item *item = s->fds + fd;
+	if (!ITEM_USED(item)) {
+		ret = SELECTOR_IARGS;
+		goto finally;
+	}
 
-    // Key difference: NO call to handle_close()
-    // if (item->handler->handle_close != NULL) {
-    //     struct selector_key key = {
-    //         .s = s,
-    //         .fd = item->fd,
-    //         .data = item->data,
-    //     };
-    //     item->handler->handle_close(&key);
-    // }
-
-    item->interest = OP_NOOP;
-    items_update_fdset_for_fd(s, item);
-
-    memset(item, 0x00, sizeof(*item));
-    item_init(item);
-    s->max_fd = items_max_fd(s);
+	item->interest = OP_NOOP;
+	epoll_ctl(s->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+	memset(item, 0x00, sizeof(*item));
+	item_init(item);
 
 finally:
-    return ret;
+	return ret;
 }
