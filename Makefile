@@ -26,20 +26,17 @@ LIBS_OBJS = $(patsubst $(LIBS_DIR)/%.c,$(OBJ_DIR)/%.o,$(LIBS_SRCS))
 
 # client source files
 CLIENT_SRCS = $(CLIENT_DIR)/main.c
-CLIENT_OBJS = $(OBJ_DIR)/client-main.o
+CLIENT_OBJS = $(OBJ_DIR)/client-main.o $(OBJ_DIR)/lib_client.o
 
 # shared source files 
 SHARED_SRCS = $(wildcard $(SHARED_DIR)/*.c)
 SHARED_OBJS = $(patsubst $(SHARED_DIR)/%.c,$(OBJ_DIR)/%.o,$(SHARED_SRCS))
 
-
 # tests
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
 TEST_BINS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(BIN_DIR)/%)
 
-
 all: server client test
-
 
 $(OBJ_DIR):
 	mkdir -p $(OBJ_DIR)
@@ -52,10 +49,8 @@ $(BIN_DIR):
 server: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(SHARED_OBJS) $(SERVER_OBJS)
 	$(CC) $(SERVER_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/server
 
-
 client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(SHARED_OBJS) 
 	$(CC) $(CLIENT_OBJS) $(SHARED_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
-
 
 # compile all libs and tests (each test is its own binary)
 test: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(TEST_BINS)
@@ -67,6 +62,10 @@ $(OBJ_DIR)/server-main.o: $(SERVER_DIR)/main.c
 # Compile client main
 $(OBJ_DIR)/client-main.o: $(CLIENT_DIR)/main.c
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+
+# Compile client library
+$(OBJ_DIR)/lib_client.o: $(CLIENT_DIR)/lib_client.c
+	$(CC) $(CFLAGS) -I$(CLIENT_DIR)/include -I$(INCLUDE_DIR) -I$(SHARED_INCLUDE_DIR) -c $< -o $@
 
 # compile everything else for the server
 $(OBJ_DIR)/%.o: $(SERVER_DIR)/%.c

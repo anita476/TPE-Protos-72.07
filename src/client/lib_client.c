@@ -3,7 +3,7 @@
 //
 
 #include "include/lib_client.h"
-#include "include/buffer.h"
+#include "buffer.h"
 
 #include <bits/socket.h>
 #include <errno.h>
@@ -14,9 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 
-
 #define HELLO_HEADER_FIXED_LEN 3
-
 #define LOGS_RESPONSE_HEADER_FIXED_LEN 4
 #define GET_USERS_RESPONSE_HEADER_FIXED_LEN 4
 #define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
@@ -77,6 +75,7 @@ int send_all(int fd, char * msg, size_t len) {
 
 	return total_sent; // Return total bytes sent
 }
+
 int recv_all(int fd, char * buf, size_t len) {
 	size_t total_received = 0;
 	while (total_received < len) {
@@ -119,6 +118,7 @@ int hello_send(char * username, char * password, int sock) {
 	}
 	return 0; // success
 }
+
 int hello_read(int sock) {
 	char buff[2] = {0};
 	if (recv_all(sock, buff, 2) < 0) {
@@ -142,6 +142,7 @@ int request_send(uint8_t command_code, uint8_t arg_1, uint8_t arg_2, int sock) {
 	}
 	return 0; // success
 }
+
 uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
 	if (user_type != USER_TYPE_ADMIN) {
 		return RESPONSE_NOT_ALLOWED; // Only admin can change timeout
@@ -162,7 +163,6 @@ uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
 	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
 	}
-
 
 	return response[1]; // Return the response code
 }
@@ -210,14 +210,11 @@ metrics * handle_metrics_response(int sock, metrics * m) {
 	uint32_t four_byte_temp;
 	uint16_t two_byte_temp;
 
-
 	if (recv_all(sock, response, sizeof(metrics)) != sizeof(metrics)) {
 		return NULL; // Failed to read metrics
 	}
 	m->version = *response_ptr++;
 	m->server_state = *response_ptr++;
-
-
 
 	memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
 	m->n_current_connections = ntohl(four_byte_temp);
@@ -268,8 +265,9 @@ log_strct * handle_log(int sock, uint8_t n, uint8_t offset) {
 		return NULL; // No logs available
 	}
 
-
 	log_strct * head = malloc(sizeof(log_strct));
+	head->next = NULL;
+
 	if (recv_all(sock, response_ptr, sizeof(log_strct)) != sizeof(log_strct)) {
 		free_log_list(head);
 		return NULL; // Failed to read log. should not happen
@@ -278,7 +276,6 @@ log_strct * handle_log(int sock, uint8_t n, uint8_t offset) {
 	response_ptr += sizeof(log_strct);
 	nlogs--;
 	log_strct * current_log_ptr = head;
-
 
 	for (;nlogs > 0; nlogs--) {
 		if (recv_all(sock, response_ptr, sizeof(log_strct)) != sizeof(log_strct)) {
@@ -310,6 +307,8 @@ user_list_entry * handle_get_users(uint8_t n, uint8_t offset,int sock) {
 		return NULL; // No logs available
 	}
 	user_list_entry * head = malloc(sizeof(user_list_entry));
+	head->next = NULL;
+	
 	if (recv_all(sock, response_ptr, sizeof(user_list_entry)) != sizeof(user_list_entry)) {
 		free_user_list(head);
 		return NULL; // Failed to read user. should not happen
@@ -317,7 +316,6 @@ user_list_entry * handle_get_users(uint8_t n, uint8_t offset,int sock) {
 	fill_user_list_entry(response_ptr, head, 0);
 	response_ptr += sizeof(user_list_entry);
 	user_list_entry * current_usr_ptr = head;
-
 
 	for (uint8_t i = 1; i < nusers; i++) {
 		if (recv_all(sock, response_ptr, sizeof(user_list_entry)) != sizeof(user_list_entry)) {
@@ -332,25 +330,22 @@ user_list_entry * handle_get_users(uint8_t n, uint8_t offset,int sock) {
 	return head;
 }
 
-
-
 void fill_log_struct(char * data, log_strct * log) {
-
-
 	memcpy(log->date,data,DATE_SIZE);
 	data += DATE_SIZE;
 	log->ulen = *data++;
 
 	memcpy(log->username, data, log->ulen);
+	data += log->ulen;
 	log->register_type = *data++;  //should be 'A' always
 
 	memcpy(log->origin_ip, data, IPV6_LEN_BYTES);
+	data += IPV6_LEN_BYTES;
 
 	uint16_t two_byte_temp;
 	memcpy(&two_byte_temp, data, sizeof(uint16_t));
 	log->origin_port = ntohs(two_byte_temp);
 	data += sizeof(uint16_t);
-
 
 	//TODO chequear address len que este bien o mal.
 	log->destination_ATYP = *data++;
@@ -368,7 +363,6 @@ void fill_log_struct(char * data, log_strct * log) {
 		data += IPV6_LEN_BYTES;
 	}
 
-
 	memcpy(&two_byte_temp, data, sizeof(uint16_t));
 	log->destination_port = ntohs(two_byte_temp);
 	data += sizeof(uint16_t);
@@ -384,7 +378,6 @@ void fill_user_list_entry(char * data, user_list_entry * user, uint8_t pack_id) 
 	user->package_id = pack_id; // Set the package ID
 }
 
-
 void free_log_list(log_strct * node) {
 	if (node == NULL) {
 		return; // Nothing to free
@@ -392,6 +385,7 @@ void free_log_list(log_strct * node) {
 	free_log_list(node->next);
 	free(node);
 }
+
 void free_user_list(user_list_entry * node) {
 	if (node == NULL) {
 		return; // Nothing to free
@@ -399,5 +393,3 @@ void free_user_list(user_list_entry * node) {
 	free_user_list(node->next);
 	free(node);
 }
-
-

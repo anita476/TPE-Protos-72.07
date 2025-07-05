@@ -22,7 +22,6 @@
 #define HELLO_ADMIN_RESPONSE_CODE 0x01
 #define HELLO_ERROR_RESPONSE_CODE 0x02
 
-
 #define COMMAND_LOGS 0x00
 #define COMMAND_USER_LIST 0x01
 #define COMMAND_METRICS 0x02
@@ -65,7 +64,7 @@ typedef struct metrics {
 	uint16_t n_server_errors;
 	uint16_t n_bad_requests;
 	uint8_t error_code;  //in case we need it
-}metrics;
+} metrics;
 
 typedef struct log_strct {
 	char date[DATE_SIZE];  //date in ISO-8601 format YYYY-MM-DDTHH:MM:SS
@@ -79,7 +78,7 @@ typedef struct log_strct {
 	uint16_t destination_port; //origin port
 	uint8_t status_code;
 	struct log_strct * next; //pointer to the next log in the linked list
-}log_strct;
+} log_strct;
 
 typedef struct user_list_entry {
 	uint8_t ulen;
@@ -87,9 +86,26 @@ typedef struct user_list_entry {
 	uint8_t user_type;
 	uint8_t package_id;  //TODO capaz sacar?
 	struct user_list_entry * next;
-}user_list_entry;
+} user_list_entry;
 
-void free_log_list(log_strct * head);
-void free_user_list(user_list_entry * head);
+// Connection functions
+int setup_tcp_client_Socket(char *address, char *port);
+
+// Authentication functions
+int hello_send(char *username, char *password, int sock);
+int hello_read(int sock);
+
+// Server interaction functions
+metrics *handle_metrics(int sock, metrics *m);
+log_strct *handle_log(int sock, uint8_t n, uint8_t offset);
+user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock);
+
+// Server configuration functions
+uint8_t handle_change_buffer_size(int sock, uint8_t new_size);
+uint8_t handle_change_timeout(int sock, uint8_t new_timeout);
+
+// Memory management functions
+void free_log_list(log_strct *head);
+void free_user_list(user_list_entry *head);
 
 #endif //LIB_CLIENT_H
