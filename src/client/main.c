@@ -600,15 +600,15 @@ static void manage_users() {
 
 static void configure_settings() {
     while (1) {
-        char items[3][2][64] = {
+        char items[4][2][64] = {
             {"1", "Change buffer size"},
             {"2", "Show configurations"},
             {"3", "Change timeout"},
             {"4", "Back to main menu"}
         };
 
-        int selected = ui_get_menu_selection("Server settings", "Select an option:", items, 3);
-        if (selected == -1 || selected == 3)
+        int selected = ui_get_menu_selection("Server settings", "Select an option:", items, 4);
+        if (selected == -1 || selected == 4)
             return;
 
         switch (selected) {
