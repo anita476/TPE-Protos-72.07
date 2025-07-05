@@ -18,9 +18,17 @@
 #define HELLO_HEADER_FIXED_LEN 3
 
 #define LOGS_RESPONSE_HEADER_FIXED_LEN 4
+#define GET_USERS_RESPONSE_HEADER_FIXED_LEN 4
 
 metrics * handle_metrics_response(int sock, metrics * m);
 void fill_log_struct(char * data, log_strct * log);
+void fill_user_list_entry(char * data, user_list_entry * user, uint8_t pack_id);
+
+static uint8_t user_type;
+
+static uint8_t get_user_type() {
+	return user_type;
+}
 
 int setup_tcp_client_Socket(char * address, char * port) {
 	struct addrinfo addrCriteria = {0};                   // Criteria for address match
@@ -49,6 +57,7 @@ int setup_tcp_client_Socket(char * address, char * port) {
 	}
 
 	freeaddrinfo(servAddr);
+	user_type = USER_TYPE_CLIENT;
 	return sock;
 }
 
@@ -114,6 +123,7 @@ int hello_read(int sock) {
 	if (recv_all(sock, buff, 2) < 0) {
 		return -1; // Failed to read
 	}
+	user_type = buff[1] == 1? USER_TYPE_ADMIN : USER_TYPE_CLIENT; // 1 for admin, 0 for client
 	return buff[1]; //returns hello_response code
 }
 
@@ -234,6 +244,47 @@ log_strct * handle_log(int sock, uint8_t n, uint8_t offset) {
 	return head;
 }
 
+user_list_entry * handle_get_users(uint8_t n, uint8_t offset,int sock) {
+	if (request_send(COMMAND_USER_LIST, n, offset, sock) != 0) {
+		return NULL; // Failed to send request
+	}
+	char response[sizeof(user_list_entry)] = {0};
+	char * response_ptr = response;
+	uint32_t four_byte_temp;
+	uint16_t two_byte_temp;
+
+	if (recv_all(sock, response, GET_USERS_RESPONSE_HEADER_FIXED_LEN) != GET_USERS_RESPONSE_HEADER_FIXED_LEN) {
+		return NULL; // Failed to read metrics
+	}
+	uint8_t nusers = response[2];
+	if (nusers == 0) {
+		return NULL; // No logs available
+	}
+	user_list_entry * head = malloc(sizeof(user_list_entry));
+	if (recv_all(sock, response_ptr, sizeof(user_list_entry)) != sizeof(user_list_entry)) {
+		free_user_list(head);
+		return NULL; // Failed to read user. should not happen
+	}
+	fill_user_list_entry(response_ptr, head, 0);
+	response_ptr += sizeof(user_list_entry);
+	user_list_entry * current_usr_ptr = head;
+
+
+	for (uint8_t i = 1; i < nusers; i++) {
+		if (recv_all(sock, response_ptr, sizeof(user_list_entry)) != sizeof(user_list_entry)) {
+			free_user_list(head);
+			return NULL; // Failed to read log. should not happen
+		}
+		current_usr_ptr->next = malloc(sizeof(user_list_entry));
+		fill_user_list_entry(response_ptr, current_usr_ptr->next, i);
+		response_ptr += sizeof(user_list_entry);
+		current_usr_ptr = current_usr_ptr->next;
+	}
+	return head;
+}
+
+
+
 void fill_log_struct(char * data, log_strct * log) {
 
 
@@ -275,6 +326,16 @@ void fill_log_struct(char * data, log_strct * log) {
 
 	log->status_code = *data++;
 }
+
+void fill_user_list_entry(char * data, user_list_entry * user, uint8_t pack_id) {
+	user->ulen = *data++;
+	memcpy(user->username, data, user->ulen);
+	data += user->ulen;
+	user->user_type = *data++;
+	user->package_id = pack_id; // Set the package ID
+}
+
+
 void free_log_list(log_strct * node) {
 	if (node == NULL) {
 		return; // Nothing to free
@@ -282,4 +343,12 @@ void free_log_list(log_strct * node) {
 	free_log_list(node->next);
 	free(node);
 }
+void free_user_list(user_list_entry * node) {
+	if (node == NULL) {
+		return; // Nothing to free
+	}
+	free_user_list(node->next);
+	free(node);
+}
+
 

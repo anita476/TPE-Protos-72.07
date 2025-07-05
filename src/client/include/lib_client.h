@@ -43,6 +43,11 @@
 #define IPV4_LEN_BYTES 4
 #define IPV6_LEN_BYTES 16
 
+#define USER_TYPE_CLIENT 0x00
+#define USER_TYPE_ADMIN 0x01
+
+static uint8_t get_user_type();
+
 typedef struct metrics {
 	uint8_t version;
 	uint8_t server_state;
@@ -70,7 +75,15 @@ typedef struct log_strct {
 	struct log_strct * next; //pointer to the next log in the linked list
 }log_strct;
 
-void free_log_list(log_strct * head);
+typedef struct user_list_entry {
+	uint8_t ulen;
+	char username[USERNAME_MAX_SIZE];
+	uint8_t user_type;
+	uint8_t package_id;  //TODO capaz sacar?
+	struct user_list_entry * next;
+}user_list_entry;
 
+void free_log_list(log_strct * head);
+void free_user_list(user_list_entry * head);
 
 #endif //LIB_CLIENT_H
