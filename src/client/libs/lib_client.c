@@ -109,9 +109,10 @@ int hello_send(char * username, char * password, int sock) {
 	msg_ptr[1] = username_len;
 	msg_ptr[2] = password_len;
 	msg_ptr += 3;
-	strcpy(msg_ptr, username);
+
+	memcpy(msg_ptr, username, username_len);
 	msg_ptr += username_len;
-	strcpy(msg_ptr, password);
+	memcpy(msg_ptr, password, password_len);
 
 	if (send_all(sock, msg, total_len) < 0) {
 		return -1; // Failed to send

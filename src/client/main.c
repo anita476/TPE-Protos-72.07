@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include "include/lib_client.h"
 #include "include/ui_whiptail.h"
+#include "include/validation.h"
 
 #define MAX_USERS 10
 #define MAX_USERNAME 24
