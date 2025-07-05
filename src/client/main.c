@@ -314,13 +314,15 @@ static void show_logs() {
 static void show_config() {
     char config_info[1024];
     snprintf(config_info, sizeof(config_info),
+             "Current Connection:\n"
+             "Server Address: %s\n"
+             "Admin Port: %s\n\n"
+             "Server Configuration:\n"
              "SOCKS5 Port: 1080\n"
-             "Admin Port: 8080\n"
-             "Bind Address: 0.0.0.0\n"
-             "Max Connections: 100\n"
              "Connection Timeout: 30 seconds\n"
              "Buffer Size: 8192 bytes\n\n"
-             "Press OK to continue");
+             "Press OK to continue",
+             server_address, server_port);
 
     ui_show_message("Server Configuration", config_info);
 }
