@@ -15,9 +15,12 @@
 #define ITEMS_PER_PAGE 10
 #define MAX_DISPLAY_ITEMS 8
 
+#define DEFAULT_SERVER_ADDRESS "localhost"
+#define DEFAULT_SERVER_PORT "8080"
+
 static int server_socket = -1;
-static char server_address[256] = "localhost";
-static char server_port[16] = "8080";
+static char server_address[256] = DEFAULT_SERVER_ADDRESS;
+static char server_port[16] = DEFAULT_SERVER_PORT;
 
 // Authentication functions
 static int get_user_input(const char *title, const char *prompt, int is_password, char *output, int size);
@@ -57,6 +60,10 @@ static void admin_menu(void);
 static int confirm_exit(void);
 static void manage_users(void);
 static void configure_settings(void);
+
+// Argument functions
+static int parse_arguments(int argc, char *argv[]);
+static void print_usage(void);
 
 /* Authentication functions */
 
@@ -628,10 +635,72 @@ static void configure_settings() {
     }
 }
 
+/* Argument functions */
+
+static int parse_arguments(int argc, char *argv[]) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--host") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: Option %s requires an argument\n", argv[i]);
+                return -1;
+            }
+            strncpy(server_address, argv[i + 1], sizeof(server_address) - 1);
+            server_address[sizeof(server_address) - 1] = '\0';
+            i++;
+        } else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--port") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: Option %s requires an argument\n", argv[i]);
+                return -1;
+            }
+            
+            char *endptr;
+            long port = strtol(argv[i + 1], &endptr, 10);
+            if (*endptr != '\0' || port <= 0 || port > 65535) {
+                fprintf(stderr, "Error: Invalid port number '%s'. Must be between 1 and 65535\n", argv[i + 1]);
+                return -1;
+            }
+            
+            strncpy(server_port, argv[i + 1], sizeof(server_port) - 1);
+            server_port[sizeof(server_port) - 1] = '\0';
+            i++;
+        } else if (strcmp(argv[i], "--help") == 0) {
+            print_usage();
+            return 1;
+        } else {
+            fprintf(stderr, "Error: Unknown option '%s'\n", argv[i]);
+            print_usage();
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static void print_usage(void) {
+    printf("Usage: client [-h host] [-p port]\n");
+    printf("Options:\n");
+    printf("  -h host    Server hostname or IP address (default: %s)\n", DEFAULT_SERVER_ADDRESS);
+    printf("  -p port    Server port number (default: %s)\n", DEFAULT_SERVER_PORT);
+    printf("  --help     Show this help message\n");
+    printf("\nExample:\n");
+    printf("  client -h 192.168.1.100 -p 9090\n");
+}
+
 /* Main */
 
-int main() {
-    ui_show_message("Welcome", "SOCKS5 server admin interface. \nPress OK to continue");
+int main(int argc, char *argv[]) {
+    int parse_result = parse_arguments(argc, argv);
+    if (parse_result != 0) {
+        return (parse_result == 1) ? 0 : 1;
+    }
+
+    char welcome_msg[512];
+    snprintf(welcome_msg, sizeof(welcome_msg),
+             "SOCKS5 server admin interface\n\n"
+             "Connecting to: %s:%s\n\n"
+             "Press OK to continue", 
+             server_address, server_port);
+    
+    ui_show_message("Welcome", welcome_msg);
 
     if (!authenticate()) {
         system("clear");
