@@ -175,6 +175,10 @@ int main(int argc, char **argv) {
 		error_msg = "Error setting flags for SOCKS5 server socket";
 		exit_error(error_msg, errno);
 	}
+	if (selector_fd_set_nio(mngFd) == -1) {
+		error_msg = "Error setting flags for CalSetting server socket";
+		exit_error(error_msg, errno);
+	}
 	const struct selector_init configuration = {
 		.signal = SIGALRM, // TODO: ask what is sigALRM for?
 		.select_timeout =
@@ -187,7 +191,6 @@ int main(int argc, char **argv) {
 		error_msg = "Error initializing selector";
 		exit_error(error_msg, errno);
 	}
-	// maximum number of fds TODO make use of epoll
 	selector = selector_new(1024);
 	if (selector == NULL) {
 		error_msg = "Error creating selector";
@@ -208,6 +211,7 @@ int main(int argc, char **argv) {
 		error_msg = "Error registering management CalSetting server socket with selector";
 		exit_error(error_msg, selectorMngStatus);
 	}
+	// disableLogging();
 
 	// Until sigterm or sigint, run server loop
 	for (; !done;) {

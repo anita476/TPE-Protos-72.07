@@ -5,6 +5,8 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #include <time.h>
@@ -79,8 +81,12 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	// shouldnt block since it was dispatched by the selector
 	int client_fd = accept(listen_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	if (client_fd < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			// no connection to accept (race condition)
+			return;
+		}
 		metrics_increment_errors(ERROR_TYPE_NETWORK);
-		perror("accept error"); // todo more robust error handling...
+		perror("accept error");
 		return;
 	}
 
@@ -96,7 +102,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	// register the session
 	client_session *session = calloc(1, sizeof(client_session));
 	if (!session) {
-		metrics_increment_errors(ERROR_TYPE_OTHER);
+		metrics_increment_errors(ERROR_TYPE_MEMORY);
 		log(ERROR, "[HANDLE CONNECTION] Failed to allocate client session");
 		perror("calloc error..");
 		close(client_fd);
@@ -116,16 +122,18 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	if (session->raw_read_buffer == NULL) {
 		log(ERROR, "[HANDLE CONNECTION] Failed to allocate read buffer");
 		free(session);
+		session = NULL;
 		close(client_fd);
-		metrics_increment_errors(ERROR_TYPE_OTHER);
+		metrics_increment_errors(ERROR_TYPE_MEMORY);
 		return;
 	}
 	session->raw_write_buffer = malloc(session->buffer_size);
 	if (session->raw_write_buffer == NULL) {
 		log(ERROR, "[HANDLE CONNECTION] Failed to allocate read buffer");
 		free(session);
+		session = NULL;
 		close(client_fd);
-		metrics_increment_errors(ERROR_TYPE_OTHER);
+		metrics_increment_errors(ERROR_TYPE_MEMORY);
 		return;
 	}
 	buffer_init(&session->read_buffer, session->buffer_size, session->raw_read_buffer);
@@ -139,7 +147,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	metrics_increment_connections();
 }
 
-// TODO: should use stm to handle the states...
+// TODO: should use stm to handle the states for more efficiency
 static void socks5_handle_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 	switch (session->current_state) {
@@ -217,6 +225,7 @@ static void socks5_handle_close(struct selector_key *key) {
 	if (session->client_fd == -1 && session->remote_fd == -1) {
 		cleanup_session(session);
 		free(session);
+		session = NULL;
 		metrics_decrement_connections();
 	}
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Session cleanup complete for fd=%d", key->fd);
@@ -576,81 +585,6 @@ static void auth_read(struct selector_key *key) {
 	selector_set_interest_key(key, OP_WRITE);
 }
 
-// static void auth_write(struct selector_key * key, bool should_shutdown) {
-// 	client_session *session = (client_session *) key->data;
-// 	buffer *wb = &session->write_buffer;
-
-// 	size_t bytes_to_write;
-// 	uint8_t *ptr = buffer_read_ptr(wb, &bytes_to_write);
-
-// 	if (bytes_to_write == 0) {
-// 		log(ERROR, "[AUTH_WRITE] No data to write.");
-// 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-// 		return;
-// 	}
-
-// 	ssize_t bytes_written = send(key->fd, ptr, bytes_to_write, MSG_NOSIGNAL);
-// 	if (bytes_written < 0) {
-// 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-// 			log(DEBUG, "[AUTH_WRITE] send() would block, waiting for next write event.");
-// 			return; // Try again later when selector notifies
-// 		}
-// 		if (errno == EPIPE) {
-// 			// client has closed the connection -> do not write (broken pipe exception in send)
-// 			log(INFO, "[AUTH_WRITE] Client already closed connection (EPIPE), closing socket.");
-// 			metrics_increment_errors();
-// 			log(DEBUG, "[AUTH_WRITE] Unregistering fd=%d from selector", key->fd);
-// 			selector_unregister_fd(key->s, key->fd);
-// 			close(key->fd);
-// 			log(DEBUG, "[AUTH_WRITE] EPIPE cleanup complete for fd=%d", key->fd);
-// 			return;
-// 		}
-// 		log(ERROR, "[AUTH_WRITE] send() error: %s", strerror(errno));
-// 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-// 		return;
-// 	} else if (bytes_written == 0) {
-// 		log(INFO, "[AUTH_WRITE] Connection closed by peer during send");
-// 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-// 		return;
-// 	}
-
-// 	metrics_add_bytes_out(bytes_written);
-
-// 	buffer_read_adv(wb, bytes_written);
-// 	log(INFO, "[AUTH_WRITE] Sent %zd/%zu bytes to client.", bytes_written, bytes_to_write);
-
-// 	if (buffer_readable_bytes(wb) > 0) {
-// 		log(DEBUG, "[AUTH_WRITE] Partial write, waiting for next event.");
-// 		return; // More data pending
-// 	}
-
-// 	// The shutdown is justified because the RFC specifies that the CLIENT must close the connection.
-// 	// Gracefully shutting down from the server side is considered good practice and is commonly done by
-// 	// industry standards such as nginx. By calling shutdown(), we signal we won’t send or receive more data, allowing
-// 	// for a clean connection teardown.
-// 	if (should_shutdown) {
-// 		log(DEBUG, "[AUTH_WRITE] All data sent. Shutting down socket.");
-// 		shutdown(key->fd, SHUT_RDWR);
-// 		selector_unregister_fd(key->s, key->fd);
-// 		close(key->fd);
-// 		return;
-// 	}
-
-// 	// If we're not shutting down, update to next state
-// 	session->current_state = STATE_REQUEST_READ;
-// 	selector_set_interest(key->s, key->fd, OP_READ);
-
-// }
-
-// static void hello_write(struct selector_key *key) {
-// 	write_to_client(key, false);
-// }
-
-// static void hello_write_error(struct selector_key *key) {
-// 	log(DEBUG, "[HELLO_WRITE_ERROR] Entered - sending rejection response");
-// 	write_to_client(key, true);
-// }
-
 /** A socks request looks like this:
 		+----+-----+-------+------+----------+----------+
 		|VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
@@ -835,6 +769,7 @@ static void request_read(struct selector_key *key) {
 
 		if (session->current_request.domain_to_resolve) {
 			free(session->current_request.domain_to_resolve);
+			session->current_request.domain_to_resolve = NULL;
 		}
 		session->current_request.domain_to_resolve = strdup(domain_name);
 
@@ -922,7 +857,7 @@ static void *dns_resolution_thread(void *arg) {
 	if (err != 0) {
 		if (err == EAI_MEMORY) {
 			metrics_increment_errors(ERROR_TYPE_MEMORY);
-    	}
+		}
 		log(ERROR, "[DNS_THREAD] getaddrinfo failed: %s", gai_strerror(err));
 		session->dns_failed = true;
 		session->dns_error_code = map_getaddrinfo_error_to_socks5(err);
@@ -1001,7 +936,27 @@ static void request_connect(struct selector_key *key) {
 
 		session->current_state = STATE_REQUEST_CONNECT;
 		selector_set_interest_key(key, OP_NOOP);
-		// selector_set_interest_key(key, OP_READ);
+		// Now that weve connected, create the write and read buffers
+		// using buffer_size because in a single session buffer size is locked in
+		session->raw_remote_read_buffer = malloc(session->buffer_size);
+		session->raw_remote_write_buffer = malloc(session->buffer_size);
+		if (!session->raw_remote_read_buffer || !session->raw_remote_write_buffer) {
+			log(ERROR, "[REQUEST_CONNECT] Failed to allocate buffers for remote connection.");
+			metrics_increment_errors(ERROR_TYPE_MEMORY);
+			// Free the other buffer if one failed
+			if (session->raw_remote_read_buffer) {
+				free(session->raw_remote_read_buffer);
+				session->raw_remote_read_buffer = NULL;
+			}
+			if (session->raw_remote_write_buffer) {
+				free(session->raw_remote_write_buffer);
+				session->raw_remote_write_buffer = NULL;
+			}
+			handle_error(key);
+			return;
+		}
+		buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
+		buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
 		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
 		return;
 	}
@@ -1213,69 +1168,109 @@ static void relay_data(struct selector_key *key) {
 		handle_error(key);
 	}
 }
-
 static void relay_client_to_remote(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
-	// Read from client, write to remote
-	char buffer[16384];
-	ssize_t bytes_read = recv(session->client_fd, buffer, sizeof(buffer), 0);
+	buffer *client_to_remote_buf = &session->remote_write_buffer;
 
-	if (bytes_read <= 0) {
-		if (bytes_read < 0) {
-			metrics_increment_errors(ERROR_TYPE_NETWORK);
-		}
-		log(DEBUG, "[RELAY] Client connection closed");
+	size_t space;
+	uint8_t *write_ptr = buffer_write_ptr(client_to_remote_buf, &space);
+
+	ssize_t bytes_read = recv(session->client_fd, write_ptr, space, 0);
+	if (bytes_read < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+			return;
+		metrics_increment_errors(ERROR_TYPE_NETWORK);
 		handle_error(key);
 		return;
 	}
+	if (bytes_read == 0) {
+		log(DEBUG, "[RELAY] Client closed connection");
+		selector_unregister_fd(key->s, key->fd);
+		close(key->fd);
+		return;
+	}
 
+	buffer_write_adv(client_to_remote_buf, bytes_read);
 	metrics_add_bytes_in(bytes_read);
 
-	ssize_t bytes_written = send(session->remote_fd, buffer, bytes_read, MSG_NOSIGNAL);
-	if (bytes_written <= 0) {
-		metrics_increment_errors(ERROR_TYPE_NETWORK);
-		log(DEBUG, "[RELAY] Remote connection closed");
-		handle_error(key);
-		return;
+	// Flush from client_to_remote_buf to remote
+	while (buffer_can_read(client_to_remote_buf)) {
+		size_t len;
+		uint8_t *read_ptr = buffer_read_ptr(client_to_remote_buf, &len);
+		ssize_t bytes_written = send(session->remote_fd, read_ptr, len, MSG_NOSIGNAL);
+		if (bytes_written < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				// Wait until remote is writable !
+				selector_set_interest(key->s, session->remote_fd, OP_WRITE);
+				break;
+			}
+			metrics_increment_errors(ERROR_TYPE_NETWORK);
+			handle_error(key);
+			return;
+		}
+		metrics_add_bytes_out(bytes_written);
+		buffer_read_adv(client_to_remote_buf, bytes_written);
 	}
 
-	metrics_add_bytes_out(bytes_written);
+	log(DEBUG, "[RELAY] Relayed data client->remote");
 
-	log(DEBUG, "[RELAY] Relayed %zd bytes client->remote", bytes_read);
+	// If buffer still has data, make sure OP_WRITE is enabled
+	if (buffer_can_read(client_to_remote_buf)) {
+		selector_set_interest(key->s, session->remote_fd, OP_WRITE);
+	}
 }
 
 static void relay_remote_to_client(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
-	// Read from remote, write to client
-	char buffer[16384];
-	ssize_t bytes_read = recv(session->remote_fd, buffer, sizeof(buffer), 0);
+	buffer *remote_to_client_buf = &session->remote_read_buffer;
 
-	if (bytes_read <= 0) {
-		if (bytes_read < 0) {
-			metrics_increment_errors(ERROR_TYPE_NETWORK);
-		}
-		log(DEBUG, "[RELAY] Remote connection closed");
+	size_t space;
+	uint8_t *write_pnt = buffer_write_ptr(remote_to_client_buf, &space);
+	int bytes_read = recv(session->remote_fd, write_pnt, space, 0);
+	if (bytes_read < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+			return;
+		metrics_increment_errors(ERROR_TYPE_NETWORK);
 		handle_error(key);
 		return;
 	}
+	if (bytes_read == 0) {
+		log(DEBUG, "[RELAY] Remote closed connection");
+		selector_unregister_fd(key->s, key->fd);
+		close(key->fd);
+		return;
+	}
 
+	buffer_write_adv(remote_to_client_buf, bytes_read);
 	metrics_add_bytes_in(bytes_read);
 
-	ssize_t bytes_written = send(session->client_fd, buffer, bytes_read, MSG_NOSIGNAL);
-	if (bytes_written <= 0) {
-		metrics_increment_errors(ERROR_TYPE_NETWORK);
-		log(DEBUG, "[RELAY] Client connection closed");
-		handle_error(key);
-		return;
+	// Flush to client
+	while (buffer_can_read(remote_to_client_buf)) {
+		size_t read_len;
+		uint8_t *read_pt = buffer_read_ptr(remote_to_client_buf, &read_len);
+		ssize_t bytes_written = send(session->client_fd, read_pt, read_len, MSG_NOSIGNAL);
+		if (bytes_written < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				selector_set_interest(key->s, session->client_fd, OP_WRITE);
+				break;
+			}
+			metrics_increment_errors(ERROR_TYPE_NETWORK);
+			handle_error(key);
+			return;
+		}
+		metrics_add_bytes_out(bytes_written);
+		buffer_read_adv(remote_to_client_buf, bytes_written);
 	}
 
-	metrics_add_bytes_out(bytes_written);
+	log(DEBUG, "[RELAY] Relayed data remote->client");
 
-	log(DEBUG, "[RELAY] Relayed %zd bytes remote->client", bytes_read);
+	// is there more to read from ?
+	if (buffer_can_read(remote_to_client_buf)) {
+		selector_set_interest(key->s, session->client_fd, OP_WRITE);
+	}
 }
-
 static void socks5_remote_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
@@ -1306,15 +1301,6 @@ static error_type_t map_socks5_error_to_type(uint8_t error_code) {
 			return ERROR_TYPE_OTHER;
 	}
 }
-
-// static void error_write(struct selector_key *key) {
-// 	// client_session *session = (client_session *) key->data;
-
-// 	log(DEBUG, "[ERROR_WRITE] Sending error response to client");
-
-// 	// Use the existing write_to_client function with shutdown=true
-// 	write_to_client(key, true);
-// }
 
 static void set_error_state(client_session *session, uint8_t error_code) {
 	session->has_error = true;
@@ -1456,6 +1442,8 @@ static void cleanup_session(client_session *session) {
 
 	buffer_reset(&session->read_buffer);
 	buffer_reset(&session->write_buffer);
+	buffer_reset(&session->remote_read_buffer);
+	buffer_reset(&session->remote_write_buffer);
 
 	if (session->raw_read_buffer) {
 		free(session->raw_read_buffer);
@@ -1464,6 +1452,14 @@ static void cleanup_session(client_session *session) {
 	if (session->raw_write_buffer) {
 		free(session->raw_write_buffer);
 		session->raw_write_buffer = NULL;
+	}
+	if (session->raw_remote_read_buffer) {
+		free(session->raw_remote_read_buffer);
+		session->raw_remote_read_buffer = NULL;
+	}
+	if (session->raw_remote_write_buffer) {
+		free(session->raw_remote_write_buffer);
+		session->raw_remote_write_buffer = NULL;
 	}
 
 	session->cleaned_up = true;
