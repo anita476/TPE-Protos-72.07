@@ -30,7 +30,6 @@ typedef enum {
 	STATE_HELLO_WRITE,
 	STATE_AUTH_READ,
 	STATE_AUTH_WRITE,
-	// STATE_HELLO_NO_ACCEPTABLE_METHODS, // o lo llamo HELLO_ERROR?
 	STATE_REQUEST_READ,
 	STATE_REQUEST_WRITE,
 
@@ -38,7 +37,6 @@ typedef enum {
 	STATE_REQUEST_CONNECT,
 	STATE_RELAY,
 	STATE_ERROR_WRITE, // New state for writing error responses
-	// todo others..
 	STATE_CLIENT_CLOSE,
 	STATE_DONE,
 	STATE_ERROR,
@@ -92,6 +90,15 @@ typedef struct {
 
 	bool dns_failed; // Add this field
 	uint8_t dns_error_code;
+
+	// Ful duplex communication, buffer for REMOTE connection
+	uint8_t *raw_remote_read_buffer; // make into pointer to allocate at runtime
+	uint8_t *raw_remote_write_buffer;
+
+	// Buffers to handle reading and writing for REMOTE connection
+	buffer remote_read_buffer;
+	buffer remote_write_buffer;
+	// buffer size is the same for all
 
 	bool has_error;
 	uint8_t error_code;

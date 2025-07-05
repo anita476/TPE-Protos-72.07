@@ -5,6 +5,8 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #include <time.h>
@@ -100,7 +102,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	// register the session
 	client_session *session = calloc(1, sizeof(client_session));
 	if (!session) {
-		metrics_increment_errors(ERROR_TYPE_OTHER);
+		metrics_increment_errors(ERROR_TYPE_MEMORY);
 		log(ERROR, "[HANDLE CONNECTION] Failed to allocate client session");
 		perror("calloc error..");
 		close(client_fd);
@@ -122,7 +124,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 		free(session);
 		session = NULL;
 		close(client_fd);
-		metrics_increment_errors(ERROR_TYPE_OTHER);
+		metrics_increment_errors(ERROR_TYPE_MEMORY);
 		return;
 	}
 	session->raw_write_buffer = malloc(session->buffer_size);
@@ -131,7 +133,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 		free(session);
 		session = NULL;
 		close(client_fd);
-		metrics_increment_errors(ERROR_TYPE_OTHER);
+		metrics_increment_errors(ERROR_TYPE_MEMORY);
 		return;
 	}
 	buffer_init(&session->read_buffer, session->buffer_size, session->raw_read_buffer);
@@ -145,7 +147,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	metrics_increment_connections();
 }
 
-// TODO: should use stm to handle the states...
+// TODO: should use stm to handle the states for more efficiency
 static void socks5_handle_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 	switch (session->current_state) {
@@ -855,7 +857,7 @@ static void *dns_resolution_thread(void *arg) {
 	if (err != 0) {
 		if (err == EAI_MEMORY) {
 			metrics_increment_errors(ERROR_TYPE_MEMORY);
-    	}
+		}
 		log(ERROR, "[DNS_THREAD] getaddrinfo failed: %s", gai_strerror(err));
 		session->dns_failed = true;
 		session->dns_error_code = map_getaddrinfo_error_to_socks5(err);
@@ -934,7 +936,27 @@ static void request_connect(struct selector_key *key) {
 
 		session->current_state = STATE_REQUEST_CONNECT;
 		selector_set_interest_key(key, OP_NOOP);
-		// selector_set_interest_key(key, OP_READ);
+		// Now that weve connected, create the write and read buffers
+		// using buffer_size because in a single session buffer size is locked in
+		session->raw_remote_read_buffer = malloc(session->buffer_size);
+		session->raw_remote_write_buffer = malloc(session->buffer_size);
+		if (!session->raw_remote_read_buffer || !session->raw_remote_write_buffer) {
+			log(ERROR, "[REQUEST_CONNECT] Failed to allocate buffers for remote connection.");
+			metrics_increment_errors(ERROR_TYPE_MEMORY);
+			// Free the other buffer if one failed
+			if (session->raw_remote_read_buffer) {
+				free(session->raw_remote_read_buffer);
+				session->raw_remote_read_buffer = NULL;
+			}
+			if (session->raw_remote_write_buffer) {
+				free(session->raw_remote_write_buffer);
+				session->raw_remote_write_buffer = NULL;
+			}
+			handle_error(key);
+			return;
+		}
+		buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
+		buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
 		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
 		return;
 	}
@@ -1146,69 +1168,109 @@ static void relay_data(struct selector_key *key) {
 		handle_error(key);
 	}
 }
-
 static void relay_client_to_remote(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
-	// Read from client, write to remote
-	char buffer[16384];
-	ssize_t bytes_read = recv(session->client_fd, buffer, sizeof(buffer), 0);
+	buffer *client_to_remote_buf = &session->remote_write_buffer;
 
-	if (bytes_read <= 0) {
-		if (bytes_read < 0) {
-			metrics_increment_errors(ERROR_TYPE_NETWORK);
-		}
-		log(DEBUG, "[RELAY] Client connection closed");
+	size_t space;
+	uint8_t *write_ptr = buffer_write_ptr(client_to_remote_buf, &space);
+
+	ssize_t bytes_read = recv(session->client_fd, write_ptr, space, 0);
+	if (bytes_read < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+			return;
+		metrics_increment_errors(ERROR_TYPE_NETWORK);
 		handle_error(key);
 		return;
 	}
+	if (bytes_read == 0) {
+		log(DEBUG, "[RELAY] Client closed connection");
+		selector_unregister_fd(key->s, key->fd);
+		close(key->fd);
+		return;
+	}
 
+	buffer_write_adv(client_to_remote_buf, bytes_read);
 	metrics_add_bytes_in(bytes_read);
 
-	ssize_t bytes_written = send(session->remote_fd, buffer, bytes_read, MSG_NOSIGNAL);
-	if (bytes_written <= 0) {
-		metrics_increment_errors(ERROR_TYPE_NETWORK);
-		log(DEBUG, "[RELAY] Remote connection closed");
-		handle_error(key);
-		return;
+	// Flush from client_to_remote_buf to remote
+	while (buffer_can_read(client_to_remote_buf)) {
+		size_t len;
+		uint8_t *read_ptr = buffer_read_ptr(client_to_remote_buf, &len);
+		ssize_t bytes_written = send(session->remote_fd, read_ptr, len, MSG_NOSIGNAL);
+		if (bytes_written < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				// Wait until remote is writable !
+				selector_set_interest(key->s, session->remote_fd, OP_WRITE);
+				break;
+			}
+			metrics_increment_errors(ERROR_TYPE_NETWORK);
+			handle_error(key);
+			return;
+		}
+		metrics_add_bytes_out(bytes_written);
+		buffer_read_adv(client_to_remote_buf, bytes_written);
 	}
 
-	metrics_add_bytes_out(bytes_written);
+	log(DEBUG, "[RELAY] Relayed data client->remote");
 
-	log(DEBUG, "[RELAY] Relayed %zd bytes client->remote", bytes_read);
+	// If buffer still has data, make sure OP_WRITE is enabled
+	if (buffer_can_read(client_to_remote_buf)) {
+		selector_set_interest(key->s, session->remote_fd, OP_WRITE);
+	}
 }
 
 static void relay_remote_to_client(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
-	// Read from remote, write to client
-	char buffer[16384];
-	ssize_t bytes_read = recv(session->remote_fd, buffer, sizeof(buffer), 0);
+	buffer *remote_to_client_buf = &session->remote_read_buffer;
 
-	if (bytes_read <= 0) {
-		if (bytes_read < 0) {
-			metrics_increment_errors(ERROR_TYPE_NETWORK);
-		}
-		log(DEBUG, "[RELAY] Remote connection closed");
+	size_t space;
+	uint8_t *write_pnt = buffer_write_ptr(remote_to_client_buf, &space);
+	int bytes_read = recv(session->remote_fd, write_pnt, space, 0);
+	if (bytes_read < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+			return;
+		metrics_increment_errors(ERROR_TYPE_NETWORK);
 		handle_error(key);
 		return;
 	}
+	if (bytes_read == 0) {
+		log(DEBUG, "[RELAY] Remote closed connection");
+		selector_unregister_fd(key->s, key->fd);
+		close(key->fd);
+		return;
+	}
 
+	buffer_write_adv(remote_to_client_buf, bytes_read);
 	metrics_add_bytes_in(bytes_read);
 
-	ssize_t bytes_written = send(session->client_fd, buffer, bytes_read, MSG_NOSIGNAL);
-	if (bytes_written <= 0) {
-		metrics_increment_errors(ERROR_TYPE_NETWORK);
-		log(DEBUG, "[RELAY] Client connection closed");
-		handle_error(key);
-		return;
+	// Flush to client
+	while (buffer_can_read(remote_to_client_buf)) {
+		size_t read_len;
+		uint8_t *read_pt = buffer_read_ptr(remote_to_client_buf, &read_len);
+		ssize_t bytes_written = send(session->client_fd, read_pt, read_len, MSG_NOSIGNAL);
+		if (bytes_written < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				selector_set_interest(key->s, session->client_fd, OP_WRITE);
+				break;
+			}
+			metrics_increment_errors(ERROR_TYPE_NETWORK);
+			handle_error(key);
+			return;
+		}
+		metrics_add_bytes_out(bytes_written);
+		buffer_read_adv(remote_to_client_buf, bytes_written);
 	}
 
-	metrics_add_bytes_out(bytes_written);
+	log(DEBUG, "[RELAY] Relayed data remote->client");
 
-	log(DEBUG, "[RELAY] Relayed %zd bytes remote->client", bytes_read);
+	// is there more to read from ?
+	if (buffer_can_read(remote_to_client_buf)) {
+		selector_set_interest(key->s, session->client_fd, OP_WRITE);
+	}
 }
-
 static void socks5_remote_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
@@ -1380,6 +1442,8 @@ static void cleanup_session(client_session *session) {
 
 	buffer_reset(&session->read_buffer);
 	buffer_reset(&session->write_buffer);
+	buffer_reset(&session->remote_read_buffer);
+	buffer_reset(&session->remote_write_buffer);
 
 	if (session->raw_read_buffer) {
 		free(session->raw_read_buffer);
@@ -1388,6 +1452,14 @@ static void cleanup_session(client_session *session) {
 	if (session->raw_write_buffer) {
 		free(session->raw_write_buffer);
 		session->raw_write_buffer = NULL;
+	}
+	if (session->raw_remote_read_buffer) {
+		free(session->raw_remote_read_buffer);
+		session->raw_remote_read_buffer = NULL;
+	}
+	if (session->raw_remote_write_buffer) {
+		free(session->raw_remote_write_buffer);
+		session->raw_remote_write_buffer = NULL;
 	}
 
 	session->cleaned_up = true;
