@@ -4,7 +4,7 @@
 #include <ctype.h>
 #include <arpa/inet.h>
 #include "../include/validation.h"
-#include "../include/ui_whiptail.h"
+#include "../include/ui_adapter.h"
 
 #define MAX_USERNAME_LEN 24
 #define MIN_USERNAME_LEN 3

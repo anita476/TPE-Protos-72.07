@@ -5,12 +5,13 @@
 #include <ctype.h>
 
 #include "include/lib_client.h"
-#include "include/ui_whiptail.h"
 #include "include/validation.h"
 #include "include/pagination.h"
+#include "include/ui_adapter.h"
 
 #define MAX_USERS 10
 #define MAX_USERNAME 24
+#define MAX_INPUT 256
 
 #define ITEMS_PER_PAGE 10
 #define MAX_DISPLAY_ITEMS 8
@@ -21,6 +22,7 @@
 static int server_socket = -1;
 static char server_address[256] = DEFAULT_SERVER_ADDRESS;
 static char server_port[16] = DEFAULT_SERVER_PORT;
+static int use_console_ui = 0;
 
 // Authentication functions
 static int get_user_input(const char *title, const char *prompt, int is_password, char *output, int size);
@@ -665,6 +667,9 @@ static int parse_arguments(int argc, char *argv[]) {
             strncpy(server_port, argv[i + 1], sizeof(server_port) - 1);
             server_port[sizeof(server_port) - 1] = '\0';
             i++;
+        } else if (strcmp(argv[i], "--console") == 0) {
+            use_console_ui = 1;
+            printf("Using console UI mode\n");
         } else if (strcmp(argv[i], "--help") == 0) {
             print_usage();
             return 1;
@@ -678,13 +683,16 @@ static int parse_arguments(int argc, char *argv[]) {
 }
 
 static void print_usage(void) {
-    printf("Usage: client [-h host] [-p port]\n");
+    printf("Usage: client [-h host] [-p port] [--console]\n");
     printf("Options:\n");
-    printf("  -h host    Server hostname or IP address (default: %s)\n", DEFAULT_SERVER_ADDRESS);
-    printf("  -p port    Server port number (default: %s)\n", DEFAULT_SERVER_PORT);
-    printf("  --help     Show this help message\n");
+    printf("  -h host      Server hostname or IP address (default: %s)\n", DEFAULT_SERVER_ADDRESS);
+    printf("  -p port      Server port number (default: %s)\n", DEFAULT_SERVER_PORT);
+    printf("  --console    Use console UI instead of whiptail\n");
+    printf("  --help       Show this help message\n");
     printf("\nExample:\n");
     printf("  client -h 192.168.1.100 -p 9090\n");
+    printf("  client --console\n");
+    printf("  client -h server.com -p 8080 --console\n");
 }
 
 /* Main */
@@ -695,11 +703,15 @@ int main(int argc, char *argv[]) {
         return (parse_result == 1) ? 0 : 1;
     }
 
+    ui_init(use_console_ui);
+
     char welcome_msg[512];
     snprintf(welcome_msg, sizeof(welcome_msg),
              "SOCKS5 server admin interface\n\n"
+             "UI Mode: %s\n"
              "Connecting to: %s:%s\n\n"
              "Press OK to continue", 
+             use_console_ui ? "Console" : "Whiptail",
              server_address, server_port);
     
     ui_show_message("Welcome", welcome_msg);

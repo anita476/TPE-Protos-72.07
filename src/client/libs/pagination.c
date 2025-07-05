@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../include/pagination.h"
-#include "../include/ui_whiptail.h"
+#include "../include/ui_adapter.h"
 
 void handle_pagination(const pagination_config_t *config, int socket, int items_per_page) {
     if (socket < 0) {

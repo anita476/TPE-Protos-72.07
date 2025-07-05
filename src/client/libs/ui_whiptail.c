@@ -3,13 +3,13 @@
 #include <string.h>
 #include "ui_whiptail.h"
 
-void ui_show_message(const char *title, const char *message) {
+void ui_whiptail_show_message(const char *title, const char *message) {
     char command[1024];
     snprintf(command, sizeof(command), "whiptail --title \"%s\" --msgbox \"%s\" 8 45", title, message);
     system(command);
 }
 
-char *ui_get_input(const char *title, const char *text, int hidden) {
+char *ui_whiptail_get_input(const char *title, const char *text, int hidden) {
     static char result[MAX_INPUT];
     char command[1024];
 
@@ -41,7 +41,7 @@ char *ui_get_input(const char *title, const char *text, int hidden) {
     return NULL;
 }
 
-int ui_get_menu_selection(const char *title, const char *text, char items[][2][64], int count) {
+int ui_whiptail_get_menu_selection(const char *title, const char *text, char items[][2][64], int count) {
     char command[2048];
     char menu_items[1024] = "";
 
@@ -74,7 +74,7 @@ int ui_get_menu_selection(const char *title, const char *text, char items[][2][6
     return -1;
 }
 
-int ui_get_confirmation(const char *title, const char *text) {
+int ui_whiptail_get_confirmation(const char *title, const char *text) {
     char command[1024];
     snprintf(command, sizeof(command), "whiptail --title \"%s\" --yesno \"%s\" 8 45", title, text);
     return (system(command) == 0);
