@@ -3,9 +3,11 @@
 #include <string.h>
 #include <unistd.h>
 #include <ctype.h>
+
 #include "include/lib_client.h"
 #include "include/ui_whiptail.h"
 #include "include/validation.h"
+#include "include/pagination.h"
 
 #define MAX_USERS 10
 #define MAX_USERNAME 24
@@ -24,15 +26,19 @@ static int get_password(char *password, int size);
 static int authenticate(void);
 
 // Pagination functions
-static void display_paginated_users(user_list_entry *users, int total_count, int current_page);
-static void display_paginated_logs(log_strct *logs, int total_count, int current_page);
-static char* format_user_info(user_list_entry *user, int index);
-static char* format_log_info(log_strct *log, int index);
+static void *fetch_users(int items_per_page, int offset, int socket);
+static void *fetch_logs(int items_per_page, int offset, int socket);
+static void display_users(void *data, int count, int page);
+static void display_logs(void *data, int count, int page);
+static void free_users(void *data);
+static void free_logs(void *data);
+static int count_users(void *data);
+static int count_logs(void *data);
 
 // Server interaction functions
 static void show_metrics(void);
 static void show_logs(void);
-static void show_user_list(void);
+static void show_users(void);
 static void show_config(void);
 
 // User management functions
@@ -100,19 +106,17 @@ static int authenticate() {
             continue;
         }
 
-        // Hello message
         if (hello_send(username, password, server_socket) != 0) {
             ui_show_message("Error", "Failed to send authentication");
             close(server_socket);
             return 0;
         }
 
-        // Hello response
         int auth_result = hello_read(server_socket);
-        if (auth_result == 1) { // Admin user
+        if (auth_result == 1) {
             ui_show_message("Success", "Authentication successful. Welcome to the admin panel.");
             return 1;
-        } else if (auth_result == 0) { // Regular user
+        } else if (auth_result == 0) {
             ui_show_message("Info", "Authenticated as regular user. Admin privileges required.");
             close(server_socket);
             return 0;
@@ -135,62 +139,102 @@ static int authenticate() {
 
 /* Pagination functions */
 
-static void display_paginated_users(user_list_entry *users, int total_count, int current_page) {
+static void *fetch_users(int items_per_page, int offset, int socket) {
+    return handle_get_users(items_per_page, offset, socket);
+}
+
+static void *fetch_logs(int items_per_page, int offset, int socket) {
+    return handle_log(socket, items_per_page, offset);
+}
+
+static int count_users(void *data) {
+    int count = 0;
+    user_list_entry *current = (user_list_entry *)data;
+    while (current != NULL) {
+        count++;
+        current = current->next;
+    }
+    return count;
+}
+
+static int count_logs(void *data) {
+    int count = 0;
+    log_strct *current = (log_strct *)data;
+    while (current != NULL) {
+        count++;
+        current = current->next;
+    }
+    return count;
+}
+
+static void display_users(void *data, int count, int page) {
+    if (count == 0) {
+        ui_show_message("Info", "No users found");
+        return;
+    }
+
     char users_info[2048];
     char user_list[1536] = "";
-    user_list_entry *current = users;
-    int count = 0;
+    user_list_entry *current = (user_list_entry *)data;
+    int display_count = 0;
+    int start_index = page * ITEMS_PER_PAGE;
 
-    while (current != NULL && count < MAX_DISPLAY_ITEMS) {
-        char *user_line = format_user_info(current, count + 1 + (current_page * ITEMS_PER_PAGE));
+    while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
+        const char *role = (current->user_type == 1) ? "Administrator" : "User";
+        char user_line[128];
+        snprintf(user_line, sizeof(user_line), "%d. %.*s (%s)\n", 
+                 start_index + display_count + 1, current->ulen, current->username, role);
         strcat(user_list, user_line);
         current = current->next;
-        count++;
+        display_count++;
     }
 
     snprintf(users_info, sizeof(users_info),
-             "Server Users (Page %d):\n%s\nShowing %d users\n\n"
+             "Server users (Page %d):\n%s\n"
+             "Showing %d of %d users on this page\n\n"
              "Press OK to continue",
-             current_page + 1, user_list, count);
+             page + 1, user_list, display_count, count);
 
-    ui_show_message("User List", users_info);
+    ui_show_message("User list", users_info);
 }
 
-static char* format_user_info(user_list_entry *user, int index) {
-    static char user_line[128];
-    const char *role = (user->user_type == 1) ? "Administrator" : "User";
-    snprintf(user_line, sizeof(user_line), "%d. %.*s (%s)\n", 
-             index, user->ulen, user->username, role);
-    return user_line;
-}
+static void display_logs(void *data, int count, int page) {
+    if (count == 0) {
+        ui_show_message("Info", "No logs found");
+        return;
+    }
 
-static void display_paginated_logs(log_strct *logs, int total_count, int current_page) {
     char logs_info[2048];
     char log_list[1536] = "";
-    log_strct *current = logs;
-    int count = 0;
+    log_strct *current = (log_strct *)data;
+    int display_count = 0;
+    int start_index = page * ITEMS_PER_PAGE;
 
-    while (current != NULL && count < MAX_DISPLAY_ITEMS) {
-        char *log_line = format_log_info(current, count + 1 + (current_page * ITEMS_PER_PAGE));
+    while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
+        char log_line[600];
+        snprintf(log_line, sizeof(log_line), "%d. %.*s -> %s:%d\n", 
+                 start_index + display_count + 1, current->ulen, current->username, 
+                 current->destination_address, current->destination_port);
         strcat(log_list, log_line);
         current = current->next;
-        count++;
+        display_count++;
     }
 
     snprintf(logs_info, sizeof(logs_info), 
-             "Server Logs (Page %d):\n%s\nShowing %d logs\n\n"
+             "Server logs (Page %d):\n%s\n"
+             "Showing %d of %d logs on this page\n\n"
              "Press OK to continue", 
-             current_page + 1, log_list, count);
+             page + 1, log_list, display_count, count);
 
-    ui_show_message("Server Logs", logs_info);
+    ui_show_message("Server logs", logs_info);
 }
 
-static char* format_log_info(log_strct *log, int index) {
-    static char log_line[600];
-    snprintf(log_line, sizeof(log_line), "%d. %.*s -> %s:%d\n", 
-             index, log->ulen, log->username, 
-             log->destination_address, log->destination_port);
-    return log_line;
+static void free_users(void *data) {
+    free_user_list((user_list_entry *)data);
+}
+
+static void free_logs(void *data) {
+    free_log_list((log_strct *)data);
 }
 
 /* Server interaction functions */
@@ -227,145 +271,37 @@ static void show_metrics() {
              server_metrics.n_server_errors,
              server_metrics.n_bad_requests);
 
-    ui_show_message("View Metrics", status_info);
+    ui_show_message("Server metrics", status_info);
+}
+
+static void show_users() {
+    pagination_config_t config = {
+        .title_format = "User list - Page %d",
+        .no_data_message = "No users available",
+        .no_more_data_message = "No more users available",
+        .nav_prompt = "Choose navigation option:",
+        .fetch_func = fetch_users,
+        .display_func = display_users,
+        .free_func = free_users,
+        .count_func = count_users
+    };
+    
+    handle_pagination(&config, server_socket, ITEMS_PER_PAGE);
 }
 
 static void show_logs() {
-    if (server_socket < 0) {
-        ui_show_message("Error", "No server connection");
-        return;
-    }
-
-    int current_page = 0;
-    int continue_browsing = 1;
-
-    while (continue_browsing) {
-        log_strct *logs = handle_log(server_socket, ITEMS_PER_PAGE, current_page * ITEMS_PER_PAGE);
-        
-        if (logs == NULL) {
-            if (current_page == 0) {
-                ui_show_message("Info", "No logs available");
-            } else {
-                ui_show_message("Info", "No more logs available");
-            }
-            break;
-        }
-
-        int log_count = 0;
-        log_strct *current = logs;
-        while (current != NULL) {
-            log_count++;
-            current = current->next;
-        }
-
-        display_paginated_logs(logs, log_count, current_page);
-        
-        char nav_items[4][2][64];
-        int nav_count = 0;
-        
-        if (current_page > 0) {
-            snprintf(nav_items[nav_count][0], 64, "%d", nav_count + 1);
-            snprintf(nav_items[nav_count][1], 64, "Previous page");
-            nav_count++;
-        }
-        
-        if (log_count == ITEMS_PER_PAGE) {
-            snprintf(nav_items[nav_count][0], 64, "%d", nav_count + 1);
-            snprintf(nav_items[nav_count][1], 64, "Next page");
-            nav_count++;
-        }
-        
-        snprintf(nav_items[nav_count][0], 64, "%d", nav_count + 1);
-        snprintf(nav_items[nav_count][1], 64, "Back to menu");
-        nav_count++;
-
-        char title[128];
-        snprintf(title, sizeof(title), "Server Logs - Page %d", current_page + 1);
-        
-        int selection = ui_get_menu_selection(title, "Choose navigation option:", nav_items, nav_count);
-        
-        if (selection == -1) {
-            continue_browsing = 0;
-        } else if (current_page > 0 && selection == 1) {
-            current_page--;
-        } else if (log_count == ITEMS_PER_PAGE && 
-                   ((current_page > 0 && selection == 2) || (current_page == 0 && selection == 1))) {
-            current_page++;
-        } else {
-            continue_browsing = 0;
-        }
-        
-        free_log_list(logs);
-    }
-}
-
-static void show_user_list() {
-    if (server_socket < 0) {
-        ui_show_message("Error", "No server connection");
-        return;
-    }
-
-    int current_page = 0;
-    int continue_browsing = 1;
-
-    while (continue_browsing) {
-        user_list_entry *users = handle_get_users(ITEMS_PER_PAGE, current_page * ITEMS_PER_PAGE, server_socket);
-        
-        if (users == NULL) {
-            if (current_page == 0) {
-                ui_show_message("Info", "No users available");
-            } else {
-                ui_show_message("Info", "No more users available");
-            }
-            break;
-        }
-
-        int user_count = 0;
-        user_list_entry *current = users;
-        while (current != NULL) {
-            user_count++;
-            current = current->next;
-        }
-
-        display_paginated_users(users, user_count, current_page);
-        
-        char nav_items[4][2][64];
-        int nav_count = 0;
-        
-        if (current_page > 0) {
-            snprintf(nav_items[nav_count][0], 64, "%d", nav_count + 1);
-            snprintf(nav_items[nav_count][1], 64, "Previous page");
-            nav_count++;
-        }
-        
-        if (user_count == ITEMS_PER_PAGE) {
-            snprintf(nav_items[nav_count][0], 64, "%d", nav_count + 1);
-            snprintf(nav_items[nav_count][1], 64, "Next page");
-            nav_count++;
-        }
-        
-        snprintf(nav_items[nav_count][0], 64, "%d", nav_count + 1);
-        snprintf(nav_items[nav_count][1], 64, "Back to menu");
-        nav_count++;
-
-        char title[128];
-        snprintf(title, sizeof(title), "User List - Page %d", current_page + 1);
-        
-        int selection = ui_get_menu_selection(title, "Choose navigation option:", nav_items, nav_count);
-        
-        if (selection == -1) {
-            continue_browsing = 0;
-        } else if (current_page > 0 && selection == 1) {
-            current_page--;
-        } else if (user_count == ITEMS_PER_PAGE && 
-                   ((current_page > 0 && selection == 2) || (current_page == 0 && selection == 1))) {
-            current_page++;
-        } else {
-            continue_browsing = 0;
-        }
-        
-        free_user_list(users);
-    }
+    pagination_config_t config = {
+        .title_format = "Server logs - Page %d",
+        .no_data_message = "No logs available",
+        .no_more_data_message = "No more logs available",
+        .nav_prompt = "Choose navigation option:",
+        .fetch_func = fetch_logs,
+        .display_func = display_logs,
+        .free_func = free_logs,
+        .count_func = count_logs
+    };
+    
+    handle_pagination(&config, server_socket, ITEMS_PER_PAGE);
 }
 
 static void show_config() {
@@ -457,88 +393,71 @@ static int select_user(const char *title, const char *text, int exclude_admin) {
 }
 
 static int add_user() {
-	/*
-	char username[MAX_INPUT], password[MAX_INPUT];
+    char username[MAX_INPUT], password[MAX_INPUT];
 
-	char *input_username = get_input("Username", "Enter username:", 0);
-	if (!input_username) {
-		return 0;
-	}
-	strcpy(username, input_username);
+    if (get_user_input("Username", "Enter username:", 0, username, sizeof(username)) != 0) {
+        return 0;
+    }
 
-	if (!validate_input(username, 3, MAX_USERNAME, "Username"))
-		return 0;
+    if (!validate_username(username)) {
+        return 0;
+    }
 
-	if (find_user(username) != -1) {
-		show_message("Error", "Username already exists. Please choose a different username.");
-		return 0;
-	}
+    if (find_user(username) != -1) {
+        ui_show_message("Error", "Username already exists. Please choose a different username.");
+        return 0;
+    }
 
-	char *input_password = get_input("Password", "Enter password:", 1);
-	if (!input_password) {
-		return 0;
-	}
-	strcpy(password, input_password);
+    if (get_user_input("Password", "Enter password:", 1, password, sizeof(password)) != 0) {
+        return 0;
+    }
 
-	if (!validate_input(password, 4, 24, "Password"))
-		return 0;
+    if (!validate_password(password)) {
+        return 0;
+    }
 
-	char *confirm_password = get_input("Confirm password", "Confirm your password:", 1);
-	if (!confirm_password || strcmp(password, confirm_password) != 0) {
-		show_message("Error", "Passwords do not match. Please try again.");
-		return 0;
-	}
+    char confirm_password[MAX_INPUT];
+    if (get_user_input("Confirm password", "Confirm your password:", 1, confirm_password, sizeof(confirm_password)) != 0) {
+        return 0;
+    }
 
-	if (user_count >= MAX_USERS) {
-		show_message("Error", "Maximum number of users reached. Cannot add more users.");
-		return 0;
-	}
+    if (strcmp(password, confirm_password) != 0) {
+        ui_show_message("Error", "Passwords do not match. Please try again.");
+        return 0;
+    }
 
-	strcpy(users[user_count].username, username);
-	strcpy(users[user_count].role, "User");
-	user_count++;
+    // TODO: Implement actual user addition logic here
+    char success_msg[512];
+    snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully added to the system.", username);
+    ui_show_message("Success", success_msg);
 
-	char success_msg[512];
-	snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully added to the system.", username);
-	show_message("Success", success_msg);
-
-	return 1;
-	*/
+    return 1;
 }
 
 static int remove_user() {
-	/*
-	int user_index = select_user("Remove user", "Select user to remove:", 1);
-	if (user_index == -1) {
-		return 0;
-	}
+    int user_index = select_user("Remove user", "Select user to remove:", 1);
+    if (user_index == -1) {
+        return 0;
+    }
 
-	char selected_user[MAX_USERNAME];
-	//strcpy(selected_user, users[user_index].username);
+    // TODO: Get actual username from selected index
+    char selected_user[MAX_USERNAME] = "selected_user";
 
-	char confirm_msg[256];
-	snprintf(confirm_msg, sizeof(confirm_msg),
-			 "Are you sure you want to remove user '%s'?\n\nThis action cannot be undone.", selected_user);
+    char confirm_msg[256];
+    snprintf(confirm_msg, sizeof(confirm_msg),
+             "Are you sure you want to remove user '%s'?\n\nThis action cannot be undone.", selected_user);
 
-	if (get_confirmation("Confirm removal", confirm_msg)) {
-		for (int i = user_index; i < user_count - 1; i++) {
-			users[i] = users[i + 1];
-		}
+    if (ui_get_confirmation("Confirm removal", confirm_msg)) {
+        // TODO: Implement actual user removal logic here
+        char success_msg[256];
+        snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully removed from the system.",
+                 selected_user);
+        ui_show_message("Success", success_msg);
+        return 1;
+    }
 
-		strcpy(users[user_count - 1].username, "");
-		strcpy(users[user_count - 1].role, "");
-		user_count--;
-
-		char success_msg[256];
-		snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully removed from the system.",
-				 selected_user);
-		show_message("Success", success_msg);
-		return 1;
-	}
-
-	show_message("Info", "User removal cancelled.");
-	return 0;
-	*/
+    ui_show_message("Info", "User removal cancelled.");
+    return 0;
 }
 
 /* Server configuration functions */
@@ -569,7 +488,7 @@ static void change_server_setting(const char *setting_name, const char *unit,
              "Are you sure you want to change %s to %d %s?", 
              setting_name, new_value, unit);
     
-    if (!ui_get_confirmation("Confirm Change", confirm_msg)) {
+    if (!ui_get_confirmation("Confirm change", confirm_msg)) {
         char cancel_msg[256];
         snprintf(cancel_msg, sizeof(cancel_msg), "%s change cancelled.", setting_name);
         ui_show_message("Info", cancel_msg);
@@ -652,7 +571,11 @@ static int confirm_exit() {
 static void manage_users() {
     while (1) {
         char items[4][2][64] = {
-            {"1", "List all users"}, {"2", "Add new user"}, {"3", "Remove user"}, {"4", "Back to main menu"}};
+            {"1", "List all users"}, 
+            {"2", "Add new user"}, 
+            {"3", "Remove user"}, 
+            {"4", "Back to main menu"}
+        };
 
         int selected = ui_get_menu_selection("Manage users", "Select an option:", items, 4);
         if (selected == -1 || selected == 4)
@@ -660,7 +583,7 @@ static void manage_users() {
 
         switch (selected) {
             case 1:
-                show_user_list();
+                show_users();
                 break;
             case 2:
                 add_user();
@@ -679,11 +602,12 @@ static void configure_settings() {
     while (1) {
         char items[3][2][64] = {
             {"1", "Change buffer size"},
-            {"2", "Change timeout"},
-            {"3", "Back to main menu"}
+            {"2", "Show configurations"},
+            {"3", "Change timeout"},
+            {"4", "Back to main menu"}
         };
 
-        int selected = ui_get_menu_selection("Server Settings", "Select an option:", items, 3);
+        int selected = ui_get_menu_selection("Server settings", "Select an option:", items, 3);
         if (selected == -1 || selected == 3)
             return;
 
@@ -692,6 +616,9 @@ static void configure_settings() {
                 change_buffer_size();
                 break;
             case 2:
+                show_config();
+                break;
+            case 3:
                 change_timeout();
                 break;
             default:
