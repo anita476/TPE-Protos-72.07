@@ -2,7 +2,7 @@
 // Created by nep on 7/4/25.
 //
 
-#include "include/lib_client.h"
+#include "lib_client.h"
 #include "buffer.h"
 
 #include <bits/socket.h>

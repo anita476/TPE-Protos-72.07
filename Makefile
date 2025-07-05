@@ -10,23 +10,28 @@ SERVER_DIR = $(SRC_DIR)/server
 CLIENT_DIR = $(SRC_DIR)/client
 SHARED_DIR = shared
 LIBS_DIR = $(SERVER_DIR)/libs
+CLIENT_LIBS_DIR = $(CLIENT_DIR)/libs
 TEST_DIR = $(SERVER_DIR)/test
 INCLUDE_DIR = $(SERVER_DIR)/include
 SHARED_INCLUDE_DIR = $(SHARED_DIR)/include
 OBJ_DIR = obj
 BIN_DIR = bin
 
-# server src files
+# server source files
 SERVER_SRCS = $(SERVER_DIR)/main.c $(SERVER_DIR)/socks5.c $(SERVER_DIR)/management.c
 SERVER_OBJS = $(OBJ_DIR)/server-main.o $(patsubst $(SERVER_DIR)/%.c,$(OBJ_DIR)/%.o,$(filter-out $(SERVER_DIR)/main.c,$(SERVER_SRCS)))
 
-# libraries source files
+# server libraries source files
 LIBS_SRCS = $(wildcard $(LIBS_DIR)/*.c)
 LIBS_OBJS = $(patsubst $(LIBS_DIR)/%.c,$(OBJ_DIR)/%.o,$(LIBS_SRCS))
 
 # client source files
 CLIENT_SRCS = $(CLIENT_DIR)/main.c
-CLIENT_OBJS = $(OBJ_DIR)/client-main.o $(OBJ_DIR)/lib_client.o
+CLIENT_OBJS = $(OBJ_DIR)/client-main.o
+
+# client libraries source files
+CLIENT_LIBS_SRCS = $(wildcard $(CLIENT_LIBS_DIR)/*.c)
+CLIENT_LIBS_OBJS = $(patsubst $(CLIENT_LIBS_DIR)/%.c,$(OBJ_DIR)/%.o,$(CLIENT_LIBS_SRCS))
 
 # shared source files 
 SHARED_SRCS = $(wildcard $(SHARED_DIR)/*.c)
@@ -49,8 +54,8 @@ $(BIN_DIR):
 server: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(SHARED_OBJS) $(SERVER_OBJS)
 	$(CC) $(SERVER_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/server
 
-client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(SHARED_OBJS) 
-	$(CC) $(CLIENT_OBJS) $(SHARED_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
+client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(CLIENT_LIBS_OBJS) $(SHARED_OBJS) 
+	$(CC) $(CLIENT_OBJS) $(CLIENT_LIBS_OBJS) $(SHARED_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client
 
 # compile all libs and tests (each test is its own binary)
 test: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(TEST_BINS)
@@ -61,10 +66,10 @@ $(OBJ_DIR)/server-main.o: $(SERVER_DIR)/main.c
 
 # Compile client main
 $(OBJ_DIR)/client-main.o: $(CLIENT_DIR)/main.c
-	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+	$(CC) $(CFLAGS) -I$(CLIENT_DIR)/include -I$(INCLUDE_DIR) -I$(SHARED_INCLUDE_DIR) -c $< -o $@
 
-# Compile client library
-$(OBJ_DIR)/lib_client.o: $(CLIENT_DIR)/lib_client.c
+# Compile client library object files
+$(OBJ_DIR)/%.o: $(CLIENT_LIBS_DIR)/%.c
 	$(CC) $(CFLAGS) -I$(CLIENT_DIR)/include -I$(INCLUDE_DIR) -I$(SHARED_INCLUDE_DIR) -c $< -o $@
 
 # compile everything else for the server
@@ -78,11 +83,11 @@ $(OBJ_DIR)/%.o: $(LIBS_DIR)/%.c
 $(BIN_DIR)/%: $(TEST_DIR)/%.c $(LIBS_OBJS)
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(LIBS_OBJS) $(LDFLAGS) -lcheck -lm -lsubunit -o $@
 
-#  for buffer_test exclude selector.o since it includes buffer.c directly
+# for buffer_test exclude selector.o since it includes buffer.c directly
 $(BIN_DIR)/buffer_test: $(TEST_DIR)/buffer_test.c $(filter-out obj/buffer.o,$(LIBS_OBJS))
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(filter-out obj/buffer.o,$(LIBS_OBJS)) $(LDFLAGS) -lcheck -lm -lsubunit -o $@
 
-# same for selectoe test
+# same for selector test
 $(BIN_DIR)/selector_test: $(TEST_DIR)/selector_test.c $(filter-out obj/selector.o,$(LIBS_OBJS))
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) $< $(filter-out obj/selector.o,$(LIBS_OBJS)) $(LDFLAGS) -lcheck -lm -lsubunit -o $@
 
