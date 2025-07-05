@@ -19,6 +19,7 @@
 
 #define LOGS_RESPONSE_HEADER_FIXED_LEN 4
 #define GET_USERS_RESPONSE_HEADER_FIXED_LEN 4
+#define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
 
 metrics * handle_metrics_response(int sock, metrics * m);
 void fill_log_struct(char * data, log_strct * log);
@@ -140,6 +141,54 @@ int request_send(uint8_t command_code, uint8_t arg_1, uint8_t arg_2, int sock) {
 		return -1;
 	}
 	return 0; // success
+}
+uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
+	if (user_type != USER_TYPE_ADMIN) {
+		return RESPONSE_NOT_ALLOWED; // Only admin can change timeout
+	}
+	if (sock < 0) {
+		return RESPONSE_BAD_REQUEST; // Invalid socket
+	}
+
+	if (new_size < MIN_BUFF_SIZE_KB || new_size > MAX_BUFF_SIZE_KB) {
+		return RESPONSE_BAD_REQUEST; // Invalid buffer size
+	}
+
+	if (request_send(COMMAND_CHANGE_BUFFER_SIZE,new_size , RESERVED_BYTE, sock) != 0) {
+		return RESPONSE_GENERAL_SERVER_FAILURE; // TODO check error codes for send error
+	}
+
+	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
+	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
+	}
+
+
+	return response[1]; // Return the response code
+}
+
+uint8_t handle_change_timeout(int sock, uint8_t new_timeout) {
+	if (user_type != USER_TYPE_ADMIN) {
+		return RESPONSE_NOT_ALLOWED; // Only admin can change timeout
+	}
+
+	if (sock < 0) {
+		return RESPONSE_BAD_REQUEST; // Invalid socket
+	}
+
+	if (new_timeout< MIN_TIMEOUT_SECONDS || new_timeout > MAX_TIMEOUT_SECONDS) {
+		return RESPONSE_BAD_REQUEST; // Invalid Timeout
+	}
+
+	if (request_send(COMMAND_CHANGE_TIMEOUT,new_timeout , RESERVED_BYTE, sock) != 0) {
+		return RESPONSE_GENERAL_SERVER_FAILURE; // TODO check error codes for send error
+	}
+
+	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
+	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
+	}
+	return response[1]; // Return the response code
 }
 
 metrics * handle_metrics(int sock, metrics * m) {

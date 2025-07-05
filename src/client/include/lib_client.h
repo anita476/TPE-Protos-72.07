@@ -46,6 +46,12 @@
 #define USER_TYPE_CLIENT 0x00
 #define USER_TYPE_ADMIN 0x01
 
+#define MIN_BUFF_SIZE_KB 1
+#define MAX_BUFF_SIZE_KB 10   //todo check values
+
+#define MIN_TIMEOUT_SECONDS 1
+#define MAX_TIMEOUT_SECONDS 255
+
 static uint8_t get_user_type();
 
 typedef struct metrics {
