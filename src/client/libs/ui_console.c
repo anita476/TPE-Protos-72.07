@@ -2,50 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <termios.h>
 #include <unistd.h>
 #include "../include/ui_console.h"
 
 #define CONSOLE_WIDTH 80
 #define BOX_WIDTH 60
-
-static struct termios orig_termios;
-static int termios_saved = 0;
-
-/* Helper functions */
-
-static void save_terminal_settings(void) {
-    if (!termios_saved) {
-        tcgetattr(STDIN_FILENO, &orig_termios);
-        termios_saved = 1;
-    }
-}
-
-static void restore_terminal_settings(void) {
-    if (termios_saved) {
-        tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
-    }
-}
-
-static void disable_echo(void) {
-    struct termios new_termios;
-    save_terminal_settings();
-    new_termios = orig_termios;
-    new_termios.c_lflag &= ~(ECHO | ICANON);
-    tcsetattr(STDIN_FILENO, TCSANOW, &new_termios);
-}
-
-static void enable_echo(void) {
-    restore_terminal_settings();
-}
-
-static char getch(void) {
-    char ch;
-    disable_echo();
-    ch = getchar();
-    enable_echo();
-    return ch;
-}
 
 /* Draw functions */
 
@@ -103,7 +64,7 @@ void ui_print_separator(void) {
 void ui_wait_for_key(const char *prompt) {
     printf("\n%s", prompt);
     fflush(stdout);
-    getch();
+    getchar();
 }
 
 /* UI functions */
@@ -128,44 +89,22 @@ void ui_console_show_message(const char *title, const char *message) {
 
 char *ui_console_get_input(const char *title, const char *text, int hidden) {
     static char result[MAX_INPUT];
-    char ch;
-    int pos = 0;
-    
+
     ui_clear_screen();
     ui_print_header(title);
     printf("\n%s\n", text);
     printf("> ");
     fflush(stdout);
-    
-    if (hidden) {
-        disable_echo();
-        while ((ch = getchar()) != '\n' && ch != EOF && pos < MAX_INPUT - 1) {
-            if (ch == '\b' || ch == 127) {
-                if (pos > 0) {
-                    pos--;
-                    printf("\b \b");
-                    fflush(stdout);
-                }
-            } else if (ch >= 32 && ch <= 126) {
-                result[pos++] = ch;
-                printf("*");
-                fflush(stdout);
-            }
+
+    if (fgets(result, MAX_INPUT, stdin) != NULL) {
+        char *newline = strchr(result, '\n');
+        if (newline) {
+            *newline = '\0';
         }
-        enable_echo();
-        printf("\n");
-        result[pos] = '\0';
     } else {
-        if (fgets(result, MAX_INPUT, stdin) != NULL) {
-            char *newline = strchr(result, '\n');
-            if (newline) {
-                *newline = '\0';
-            }
-        } else {
-            return NULL;
-        }
+        return NULL;
     }
-    
+
     return result;
 }
 
