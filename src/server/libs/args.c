@@ -37,7 +37,7 @@ static void version(void) {
 	fprintf(stderr, "socks5v version 0.0\n"
 					"ITBA Protocolos de Comunicación 2025/1 -- Grupo 04\n"
 					"MIT License"
-					"Copyright (c) 2025 Ana Negre"
+					"Copyright (c) 2025 Ana Negre, Matías Leporini, Camila Lee, Juan Amancio Oliva Morroni\n"
 					"Permission is hereby granted, free of charge, to any person obtaining a copy"
 					"of this software and associated documentation files (the 'Software'), to deal"
 					"in the Software without restriction, including without limitation the rights"

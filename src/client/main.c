@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <inttypes.h> // for PRIu64
 
 #include "include/lib_client.h"
 #include "include/validation.h"
@@ -254,7 +255,7 @@ static void show_metrics() {
         return;
     }
      
-    metrics server_metrics;
+    metrics_t server_metrics;
     if (handle_metrics(server_socket, &server_metrics) == NULL) {
         ui_show_message("Error", "Failed to retrieve server metrics");
         return;
@@ -262,23 +263,58 @@ static void show_metrics() {
 
     char status_info[2048];
     snprintf(status_info, sizeof(status_info),
-             "Server status: %s\n"
-             "Current connections: %u\n"
-             "Total connections: %u\n"
-             "Bytes received: %u\n"
-             "Bytes sent: %u\n"
-             "Timeouts: %u\n"
-             "Server errors: %u\n"
-             "Bad requests: %u\n\n"
-             "Press OK to continue",
-             server_metrics.server_state == 1 ? "Running" : "Stopped",
-             server_metrics.n_current_connections,
-             server_metrics.n_total_connections,
-             server_metrics.n_total_bytes_received,
-             server_metrics.n_total_bytes_sent,
-             server_metrics.n_timeouts,
-             server_metrics.n_server_errors,
-             server_metrics.n_bad_requests);
+         "Server status: %s\n"
+         "Current connections: %u\n"
+         "Total connections: %u\n"
+         "Max concurrent connections: %u\n"
+         "Bytes received: %" PRIu64 "\n"
+         "Bytes sent: %" PRIu64 "\n"
+         "Total bytes: %" PRIu64 "\n"
+         "Total errors: %u\n"
+         "Uptime: %u seconds\n"
+         "Network errors: %u\n"
+         "Protocol errors: %u\n"
+         "Auth errors: %u\n"
+         "System errors: %u\n"
+         "Timeout errors: %u\n"
+         "Memory errors: %u\n"
+         "Other errors: %u\n\n"
+         "Press OK to continue",
+         server_metrics.server_state == 1 ? "Running" : "Stopped",
+         server_metrics.concurrent_connections,
+         server_metrics.total_connections,
+         server_metrics.max_concurrent_connections,
+         server_metrics.bytes_transferred_in,
+         server_metrics.bytes_transferred_out,
+         server_metrics.total_bytes_transferred,
+         server_metrics.total_errors,
+         server_metrics.uptime_seconds,
+         server_metrics.network_errors,
+         server_metrics.protocol_errors,
+         server_metrics.auth_errors,
+         server_metrics.system_errors,
+         server_metrics.timeout_errors,
+         server_metrics.memory_errors,
+         server_metrics.other_errors);
+
+    // snprintf(status_info, sizeof(status_info),
+    //          "Server status: %s\n"
+    //          "Current connections: %u\n"
+    //          "Total connections: %u\n"
+    //          "Bytes received: %u\n"
+    //          "Bytes sent: %u\n"
+    //          "Timeouts: %u\n"
+    //          "Server errors: %u\n"
+    //          "Bad requests: %u\n\n"
+    //          "Press OK to continue",
+    //          server_metrics.server_state == 1 ? "Running" : "Stopped",
+    //          server_metrics.n_current_connections,
+    //          server_metrics.n_total_connections,
+    //          server_metrics.n_total_bytes_received,
+    //          server_metrics.n_total_bytes_sent,
+    //          server_metrics.n_timeouts,
+    //          server_metrics.n_server_errors,
+    //          server_metrics.n_bad_requests);
 
     ui_show_message("Server metrics", status_info);
 }

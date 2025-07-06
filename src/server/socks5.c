@@ -66,8 +66,10 @@ static bool build_socks5_success_response(client_session *session);
 // Destructor
 static void cleanup_session(client_session *session);
 
-static struct users *us = NULL;
-static uint8_t nusers = 0;
+// CHANGE: making it global (not static)
+// TODO: move to another shared global config file maybe?
+struct users *us = NULL;
+uint8_t nusers = 0;
 void load_users(struct users *u, uint8_t n) {
 	us = u;
 	nusers = n;
@@ -169,9 +171,9 @@ static void socks5_handle_read(struct selector_key *key) {
 		case STATE_RELAY:
 			relay_data(key);
 			break;
-		case STATE_CLIENT_CLOSE:
-			close_client(key);
-			break;
+		// case STATE_CLIENT_CLOSE:
+		// 	close_client(key);
+		// 	break;
 		case STATE_ERROR:
 			handle_error(key);
 			break;
@@ -291,7 +293,6 @@ static void hello_read(struct selector_key *key) {
 	// Read all available data from the socket into our buffer
 	ssize_t bytes_read = recv(key->fd, ptr, wbytes, 0);
 	if (bytes_read < 0) {
-		errno = 0;
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
 			return; // no data available - normal for non-blocking
 		}
@@ -326,7 +327,7 @@ static void hello_read(struct selector_key *key) {
 
 	if (version != SOCKS5_VERSION) {
 		log(ERROR, "[HELLO_READ] Unsupported SOCKS version: 0x%02x. Closing connection.", version);
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		set_error_state(session, SOCKS5_REPLY_COMMAND_NOT_SUPPORTED);
 		handle_error(key);
 		return;
 	}
@@ -385,6 +386,7 @@ static void hello_read(struct selector_key *key) {
 	} else {
 		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS); // FF means error
 		log(ERROR, "[HELLO_READ] No acceptable methods. Moving to STATE_ERROR.");
+		set_error_state(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED); // Maps to AUTH
 		// session->current_state = STATE_HELLO_NO_ACCEPTABLE_METHODS; // close
 		session->current_state = STATE_ERROR_WRITE; // close
 	}
@@ -434,7 +436,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 			log(INFO, "[WRITE_TO_CLIENT] Client already closed connection (EPIPE), closing socket.");
 			metrics_increment_errors(ERROR_TYPE_NETWORK);
 			log(DEBUG, "[WRITE_TO_CLIENT] Unregistering fd=%d from selector", key->fd);
-			selector_unregister_fd(key->s, key->fd);
+			// selector_unregister_fd(key->s, key->fd);
 			close(key->fd);
 			log(DEBUG, "[WRITE_TO_CLIENT] EPIPE cleanup complete for fd=%d", key->fd);
 			return;
@@ -465,7 +467,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	if (should_shutdown) {
 		log(DEBUG, "[WRITE_TO_CLIENT] All data sent. Shutting down socket.");
 		shutdown(key->fd, SHUT_RDWR);
-		selector_unregister_fd(key->s, key->fd);
+		// selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
 		return;
 	}
@@ -576,7 +578,8 @@ static void auth_read(struct selector_key *key) {
 	// now safe to write the response
 	buffer_write(wb, SOCKS5_AUTH_VERSION);
 	if (!valid_user(username, password)) {
-		buffer_write(wb, SOCKS5_REPLY_GENERAL_FAILURE);
+		buffer_write(wb, SOCKS5_REPLY_GENERAL_FAILURE); // TODO: should use an auth failure
+		set_error_state(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED);
 		session->current_state = STATE_ERROR_WRITE; /// maybe user a different state for auth error?
 	} else {
 		buffer_write(wb, SOCKS5_AUTH_SUCCESS);
@@ -650,7 +653,7 @@ static void request_read(struct selector_key *key) {
 	// Version validation
 	if (version != SOCKS5_VERSION) {
 		log(ERROR, "[REQUEST_READ] Unsupported SOCKS version: 0x%02x. Closing connection.", version);
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		set_error_state(session, SOCKS5_REPLY_COMMAND_NOT_SUPPORTED);
 		handle_error(key);
 		return;
 	}
@@ -1007,7 +1010,7 @@ static void remote_connect_complete(struct selector_key *key) {
 static void handle_connect_failure(struct selector_key *key, int error) {
 	client_session *session = (client_session *) key->data;
 
-	selector_unregister_fd_noclose(key->s, key->fd);
+	// selector_unregister_fd_noclose(key->s, key->fd);
 	close(key->fd);
 	session->remote_fd = -1;
 
@@ -1032,7 +1035,7 @@ static void handle_connect_failure(struct selector_key *key, int error) {
 		struct selector_key client_key = {.s = key->s, .fd = session->client_fd, .data = session};
 		request_connect(&client_key);
 		return;
-	}
+	} 
 
 	log(ERROR, "[REMOTE_CONNECT_COMPLETE] No more addresses to try.");
 	uint8_t error_code = map_connect_error_to_socks5(error);
@@ -1186,7 +1189,7 @@ static void relay_client_to_remote(struct selector_key *key) {
 	}
 	if (bytes_read == 0) {
 		log(DEBUG, "[RELAY] Client closed connection");
-		selector_unregister_fd(key->s, key->fd);
+		// selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
 		return;
 	}
@@ -1238,7 +1241,7 @@ static void relay_remote_to_client(struct selector_key *key) {
 	}
 	if (bytes_read == 0) {
 		log(DEBUG, "[RELAY] Remote closed connection");
-		selector_unregister_fd(key->s, key->fd);
+		// selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
 		return;
 	}
@@ -1368,7 +1371,7 @@ static void handle_error(struct selector_key *key) {
 			return;
 		}
 	}
-	selector_unregister_fd(key->s, key->fd);
+	// selector_unregister_fd(key->s, key->fd); REMOVED line bc the selector will handle cleanup via EPOLLHUP
 	close(key->fd); // always close the fd, selector does NOT handle it
 }
 

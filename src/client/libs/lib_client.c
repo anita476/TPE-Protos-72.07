@@ -19,7 +19,7 @@
 #define GET_USERS_RESPONSE_HEADER_FIXED_LEN 4
 #define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
 
-metrics * handle_metrics_response(int sock, metrics * m);
+metrics_t * handle_metrics_response(int sock, metrics_t * m);
 void fill_log_struct(char * data, log_strct * log);
 void fill_user_list_entry(char * data, user_list_entry * user, uint8_t pack_id);
 
@@ -134,7 +134,7 @@ int request_send(uint8_t command_code, uint8_t arg_1, uint8_t arg_2, int sock) {
 		return RESPONSE_BAD_REQUEST; // Invalid command code
 	}
 	char request[REQUEST_SIZE];
-	request[0] = METRICS_PROTOCOL_VERSION;
+	request[0] = CALSETTING_VERSION; // Protocol version
 	request[1] = command_code;
 	request[2] = arg_1;
 	request[3] = arg_2;
@@ -192,7 +192,7 @@ uint8_t handle_change_timeout(int sock, uint8_t new_timeout) {
 	return response[1]; // Return the response code
 }
 
-metrics * handle_metrics(int sock, metrics * m) {
+metrics_t * handle_metrics(int sock, metrics_t * m) {
 	//send the request for metrics
 	if (request_send(COMMAND_METRICS, RESERVED_BYTE, RESERVED_BYTE, sock) != 0) {
 		return NULL; // Failed to send request
@@ -201,49 +201,73 @@ metrics * handle_metrics(int sock, metrics * m) {
 	return handle_metrics_response(sock, m);
 }
 
-metrics * handle_metrics_response(int sock, metrics * m) {
+metrics_t * handle_metrics_response(int sock, metrics_t * m) {
 	if (sock < 0 || m == NULL) {
 		return NULL; // Invalid parameters
 	}
 
-	char response[sizeof(metrics)];
-	char * response_ptr = response;
-	uint32_t four_byte_temp;
-	uint16_t two_byte_temp;
+	// char response[sizeof(metrics_t)];
+	// char * response_ptr = response;
+	// uint32_t four_byte_temp;
+	// uint16_t two_byte_temp;
+	metrics_t response;
 
-	if (recv_all(sock, response, sizeof(metrics)) != sizeof(metrics)) {
+    if (recv_all(sock, &response, sizeof(metrics_t)) != sizeof(metrics_t)) {
 		return NULL; // Failed to read metrics
 	}
-	m->version = *response_ptr++;
-	m->server_state = *response_ptr++;
 
-	memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
-	m->n_current_connections = ntohl(four_byte_temp);
-	response_ptr += sizeof(uint32_t);
+	m->version = response.version;
+    m->server_state = response.server_state;
 
-	memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
-	m->n_total_connections = ntohl(four_byte_temp);
-	response_ptr += sizeof(uint32_t);
+    m->total_connections = ntohl(response.total_connections);
+    m->concurrent_connections = ntohs(response.concurrent_connections);
+    m->max_concurrent_connections = ntohs(response.max_concurrent_connections);
 
-	memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
-	m->n_total_bytes_received = ntohl(four_byte_temp);
-	response_ptr += sizeof(uint32_t);
+    m->bytes_transferred_in = be64toh(response.bytes_transferred_in);
+    m->bytes_transferred_out = be64toh(response.bytes_transferred_out);
+    m->total_bytes_transferred = be64toh(response.total_bytes_transferred);
 
-	memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
-	m->n_total_bytes_sent = ntohl(four_byte_temp);
-	response_ptr += sizeof(uint32_t);
+    m->total_errors = ntohl(response.total_errors);
+    m->uptime_seconds = ntohl(response.uptime_seconds);
 
-	memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
-	m->n_timeouts = ntohs(two_byte_temp);
-	response_ptr += sizeof(uint16_t);
+    m->network_errors = ntohs(response.network_errors);
+    m->protocol_errors = ntohs(response.protocol_errors);
+    m->auth_errors = ntohs(response.auth_errors);
+    m->system_errors = ntohs(response.system_errors);
+    m->timeout_errors = ntohs(response.timeout_errors);
+    m->memory_errors = ntohs(response.memory_errors);
+    m->other_errors = ntohs(response.other_errors);
 
-	memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
-	m->n_server_errors = ntohs(two_byte_temp);
-	response_ptr += sizeof(uint16_t);
+	// m->version = *response_ptr++;
+	// m->server_state = *response_ptr++;
 
-	memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
-	m->n_bad_requests = ntohs(two_byte_temp);
-	response_ptr += sizeof(uint16_t);
+	// memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
+	// m->n_current_connections = ntohl(four_byte_temp);
+	// response_ptr += sizeof(uint32_t);
+
+	// memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
+	// m->n_total_connections = ntohl(four_byte_temp);
+	// response_ptr += sizeof(uint32_t);
+
+	// memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
+	// m->n_total_bytes_received = ntohl(four_byte_temp);
+	// response_ptr += sizeof(uint32_t);
+
+	// memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
+	// m->n_total_bytes_sent = ntohl(four_byte_temp);
+	// response_ptr += sizeof(uint32_t);
+
+	// memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
+	// m->n_timeouts = ntohs(two_byte_temp);
+	// response_ptr += sizeof(uint16_t);
+
+	// memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
+	// m->n_server_errors = ntohs(two_byte_temp);
+	// response_ptr += sizeof(uint16_t);
+
+	// memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
+	// m->n_bad_requests = ntohs(two_byte_temp);
+	// response_ptr += sizeof(uint16_t);
 
 	return m; // Return the filled metrics structure
 }
