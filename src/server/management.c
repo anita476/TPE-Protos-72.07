@@ -83,6 +83,7 @@ void management_handle_new_connection(struct selector_key *key) {
 
 	session->client_fd = client_fd;
 	session->current_state = MNG_STATE_HELLO_READ;
+	printf("[DEBUG] Session initialized: fd=%d, state=%d\n", session->client_fd, session->current_state);
 	session->authenticated = false;
 	session->user_type = 0xFF; // invalid until authenticated
 	session->has_error = false;
@@ -109,7 +110,6 @@ void management_handle_new_connection(struct selector_key *key) {
 	buffer_init(&session->read_buffer, session->buffer_size, session->raw_read_buffer);
 	buffer_init(&session->write_buffer, session->buffer_size, session->raw_write_buffer);
 
-	// Register with selector
 	if (selector_register(key->s, client_fd, &management_handler, OP_READ, session) != SELECTOR_SUCCESS) {
 		log(ERROR, "[MANAGEMENT] Failed to register with selector");
 		cleanup_session(session);
@@ -128,9 +128,12 @@ static void management_handle_read(struct selector_key *key) {
 
 	switch (session->current_state) {
 		case MNG_STATE_HELLO_READ:
+		            printf("[DEBUG] Calling hello_read\n");
+
 			hello_read(key);
 			break;
 		case MNG_STATE_COMMAND_READ:
+		printf("[DEBUG] Calling command_read\n");
 			command_read(key);
 			break;
 		case MNG_STATE_ERROR:
@@ -183,6 +186,12 @@ VER | ULEN | PWDLEN | USERNAME (ULEN bytes) | PASSWORD (PWDLEN bytes)
 
 static void hello_read(struct selector_key *key) {
 	management_session *session = (management_session *) key->data;
+	 printf("[DEBUG] hello_read: session=%p, state=%d, fd=%d\n", 
+           session, session ? session->current_state : -1, key->fd);
+		if (!session) {
+        printf("[DEBUG] NULL SESSION in hello_read!\n");
+        return;
+    }
 	buffer *rb = &session->read_buffer;
 
 	log(DEBUG, "[MANAGEMENT] Hello read state");
@@ -299,10 +308,10 @@ static void hello_read(struct selector_key *key) {
 
 static void hello_write(struct selector_key *key) {
 	management_session *session = (management_session *) key->data;
-
 	if (!write_to_client(key, false)) {
 		return; // still writing
 	}
+
 
 	if (!session->authenticated) {
 		// authentication failed, close connection
@@ -538,6 +547,7 @@ static void process_metrics_command(management_session *session) {
 	log(DEBUG, "[MANAGEMENT] Metrics response written successfully");
 }
 
+// TODO: implement actual log retrieval
 static void process_logs_command(management_session *session, uint8_t number, uint8_t offset) {
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);
@@ -556,7 +566,7 @@ static void process_logs_command(management_session *session, uint8_t number, ui
 
 	log(DEBUG, "[MANAGEMENT] Prepared logs response for %s (req: %d, offset: %d)", session->username, number, offset);
 }
-
+// TODO: implement actual user retrieval
 static void process_userlist_command(management_session *session, uint8_t number, uint8_t offset) {
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);
@@ -589,13 +599,33 @@ static void process_change_buffer_command(management_session *session, uint8_t n
 
 	uint8_t response_code = RESPONSE_GENERAL_SERVER_FAILURE;
 
-	if (new_size >= MIN_BUFF_SIZE_KB && new_size <= MAX_BUFF_SIZE_KB) {
-		g_socks5_buffer_size = new_size * 1024;
-		response_code = RESPONSE_SUCCESS_ADMIN;
-		log(INFO, "[MANAGEMENT] Buffer size changed to %d KB by %s", new_size, session->username);
-	} else {
-		log(ERROR, "[MANAGEMENT] Invalid buffer size: %d KB", new_size);
-	}
+	// validate user permissions? tbh i feel like its unnecessary at this point
+	if (session->user_type != USER_TYPE_ADMIN) {
+        log(DEBUG, "[MANAGEMENT] Non-admin user %s attempted to change buffer size", 
+            session->username ? session->username : "unknown");
+        response_code = RESPONSE_NOT_ALLOWED;
+    }
+
+	if (new_size < MIN_BUFF_SIZE_KB || new_size > MAX_BUFF_SIZE_KB) {
+        log(ERROR, "[MANAGEMENT] Invalid buffer size: %d KB (valid range: %d-%d KB)", 
+            new_size, MIN_BUFF_SIZE_KB, MAX_BUFF_SIZE_KB);
+        response_code = RESPONSE_BAD_REQUEST;
+    }
+    else {
+        size_t old_buffer_size = g_socks5_buffer_size;
+        g_socks5_buffer_size = new_size * 1024; // convert KB to bytes
+        response_code = RESPONSE_SUCCESS_ADMIN;
+        
+        log(INFO, "[MANAGEMENT] Buffer size changed from %zu to %zu bytes (%d KB) by %s", 
+            old_buffer_size, g_socks5_buffer_size, new_size, 
+            session->username ? session->username : "unknown");
+            
+        // TODO: not sure whether to keep this or not in order to notify impact on active connections
+        // if (get_active_connection_count() > 0) {
+        //     log(DEBUG, "[MANAGEMENT] Buffer size changed while connections active. "
+        //               "New size will affect future connections only.");
+        // }
+    }
 
 	buffer_write(wb, CALSETTING_VERSION);
 	buffer_write(wb, response_code);

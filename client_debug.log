@@ -1,0 +1,85 @@
+[H[2J[3JUsing console UI mode
+Console UI initialized
++----------------------------------------------------------+
+|                         Welcome                          |
++----------------------------------------------------------+
+
+  SOCKS5 server admin interface
+  UI Mode: Console
+  Connecting to: localhost:8080
+  Press OK to continue
+
+
+Press any key to continue...[H[2J[3J+----------------------------------------------------------+
+|                          Login                           |
++----------------------------------------------------------+
+
+Enter username:
+> [H[2J[3J+----------------------------------------------------------+
+|                          Login                           |
++----------------------------------------------------------+
+
+Enter password:
+> *****[H[2J[3J
++----------------------------------------------------------+
+|                         Success                          |
++----------------------------------------------------------+
+
+  Authentication successful. Welcome to the admin panel.
+
+
+Press any key to continue...[H[2J[3J+----------------------------------------------------------+
+|                     Admin interface                      |
++----------------------------------------------------------+
+
+Select an option:
+
+  1. View metrics
+  2. View logs
+  3. Manage users
+  4. Manage settings
+  5. Exit
+
+Enter your choice (1-5): [H[2J[3J+----------------------------------------------------------+
+|                     Server settings                      |
++----------------------------------------------------------+
+
+Select an option:
+
+  1. Change buffer size
+  2. Show configurations
+  3. Change timeout
+  4. Back to main menu
+
+Enter your choice (1-4): [H[2J[3J+----------------------------------------------------------+
+|                       buffer size                        |
++----------------------------------------------------------+
+
+Enter new buffer size (KB):
+> [H[2J[3J+----------------------------------------------------------+
+|                      Confirm change                      |
++----------------------------------------------------------+
+
+Are you sure you want to change buffer size to 40 KB?
+
+Do you want to continue? (y/N): [H[2J[3J[CLIENT DEBUG] Starting buffer size change: size=40
+[CLIENT DEBUG] User type: 1 (Admin=1)
+[CLIENT DEBUG] Socket: 3
+[CLIENT DEBUG] Min size: 1, Max size: 64
+[CLIENT DEBUG] All validations passed, sending request
+[CLIENT DEBUG] Command: 3, Arg1: 40, Arg2: 0
+[CLIENT DEBUG] request_send: cmd=3, arg1=40, arg2=0
+[CLIENT DEBUG] Sending: [0x01, 0x03, 0x28, 0x00]
+[CLIENT DEBUG] send_all returned: 4 (expected: 4)
+[CLIENT DEBUG] request_send returned: 0
+[CLIENT DEBUG] Request sent successfully, waiting for response...
+[CLIENT DEBUG] recv_all returned: 3 (expected: 3)
+[CLIENT DEBUG] Response: [0x01, 0x01, 0x03]
++----------------------------------------------------------+
+|                         Success                          |
++----------------------------------------------------------+
+
+  buffer size successfully changed to 40 KB.
+
+
+Press any key to continue...

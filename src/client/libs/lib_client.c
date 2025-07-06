@@ -130,42 +130,92 @@ int hello_read(int sock) {
 }
 
 int request_send(uint8_t command_code, uint8_t arg_1, uint8_t arg_2, int sock) {
-	if (command_code > COMMAND_CHANGE_TIMEOUT || command_code < COMMAND_LOGS) {
-		return RESPONSE_BAD_REQUEST; // Invalid command code
-	}
-	char request[REQUEST_SIZE];
-	request[0] = CALSETTING_VERSION; // Protocol version
-	request[1] = command_code;
-	request[2] = arg_1;
-	request[3] = arg_2;
-	if (send_all(sock, request, REQUEST_SIZE) != REQUEST_SIZE) {
-		return -1;
-	}
-	return 0; // success
+    printf("[CLIENT DEBUG] request_send: cmd=%d, arg1=%d, arg2=%d\n", command_code, arg_1, arg_2);
+    
+    if (command_code > COMMAND_CHANGE_TIMEOUT || command_code < COMMAND_LOGS) {
+        printf("[CLIENT DEBUG] Invalid command code: %d\n", command_code);
+        return RESPONSE_BAD_REQUEST;
+    }
+    
+    char request[REQUEST_SIZE];
+    request[0] = CALSETTING_VERSION;
+    request[1] = command_code;
+    request[2] = arg_1;
+    request[3] = arg_2;
+    
+    printf("[CLIENT DEBUG] Sending: [0x%02x, 0x%02x, 0x%02x, 0x%02x]\n", 
+           (unsigned char)request[0], (unsigned char)request[1], 
+           (unsigned char)request[2], (unsigned char)request[3]);
+    
+    int result = send_all(sock, request, REQUEST_SIZE);
+    printf("[CLIENT DEBUG] send_all returned: %d (expected: %d)\n", result, REQUEST_SIZE);
+    
+    if (result != REQUEST_SIZE) {
+        printf("[CLIENT DEBUG] send_all FAILED\n");
+        return -1;
+    }
+    return 0;
 }
 
 uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
+	printf("[CLIENT DEBUG] Starting buffer size change: size=%d\n", new_size);
+    printf("[CLIENT DEBUG] User type: %d (Admin=%d)\n", user_type, USER_TYPE_ADMIN);
+    printf("[CLIENT DEBUG] Socket: %d\n", sock);
+    printf("[CLIENT DEBUG] Min size: %d, Max size: %d\n", MIN_BUFF_SIZE_KB, MAX_BUFF_SIZE_KB);
+
 	if (user_type != USER_TYPE_ADMIN) {
+		        printf("[CLIENT DEBUG] User type check FAILED\n");
 		return RESPONSE_NOT_ALLOWED; // Only admin can change timeout
 	}
 	if (sock < 0) {
+		        printf("[CLIENT DEBUG] Socket validation FAILED\n");
 		return RESPONSE_BAD_REQUEST; // Invalid socket
 	}
 
 	if (new_size < MIN_BUFF_SIZE_KB || new_size > MAX_BUFF_SIZE_KB) {
+		        printf("[CLIENT DEBUG] Buffer size validation FAILED\n");
 		return RESPONSE_BAD_REQUEST; // Invalid buffer size
 	}
+	printf("[CLIENT DEBUG] All validations passed, sending request\n");
+    printf("[CLIENT DEBUG] Command: %d, Arg1: %d, Arg2: %d\n", 
+           COMMAND_CHANGE_BUFFER_SIZE, new_size, RESERVED_BYTE);
 
-	if (request_send(COMMAND_CHANGE_BUFFER_SIZE,new_size , RESERVED_BYTE, sock) != 0) {
-		return RESPONSE_GENERAL_SERVER_FAILURE; // TODO check error codes for send error
-	}
+    int send_result = request_send(COMMAND_CHANGE_BUFFER_SIZE, new_size, RESERVED_BYTE, sock);
+    printf("[CLIENT DEBUG] request_send returned: %d\n", send_result);
+    
+    if (send_result != 0) {
+        printf("[CLIENT DEBUG] request_send FAILED\n");
+        return RESPONSE_GENERAL_SERVER_FAILURE;
+    }
 
-	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
-	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
-		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
-	}
+	 printf("[CLIENT DEBUG] Request sent successfully, waiting for response...\n");
 
-	return response[1]; // Return the response code
+    char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
+    int recv_result = recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN);
+    
+    printf("[CLIENT DEBUG] recv_all returned: %d (expected: %d)\n", 
+           recv_result, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN);
+
+    if (recv_result != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+        printf("[CLIENT DEBUG] Failed to receive complete response\n");
+        return RESPONSE_GENERAL_SERVER_FAILURE;
+    }
+
+    printf("[CLIENT DEBUG] Response: [0x%02x, 0x%02x, 0x%02x]\n", 
+           (unsigned char)response[0], (unsigned char)response[1], (unsigned char)response[2]);
+
+    return response[1];
+
+	// if (request_send(COMMAND_CHANGE_BUFFER_SIZE,new_size , RESERVED_BYTE, sock) != 0) {
+	// 	return RESPONSE_GENERAL_SERVER_FAILURE; // TODO check error codes for send error
+	// }
+
+	// char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
+	// if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+	// 	return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
+	// }
+
+	// return response[1]; // Return the response code
 }
 
 uint8_t handle_change_timeout(int sock, uint8_t new_timeout) {
