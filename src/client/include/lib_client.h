@@ -15,6 +15,7 @@
 #define RESPONSE_GENERAL_SERVER_FAILURE 0x03
 #define RESPONSE_WRONG_VERSION 0x04
 #define RESPONSE_NOT_ALLOWED 0x05
+#define RESPONSE_USER_NOT_FOUND 0x06
 
 #define RESPONSE_BAD_REQUEST 0x06 //not for server but used by lib to let the frontend know
 
@@ -27,6 +28,10 @@
 #define COMMAND_METRICS 0x02
 #define COMMAND_CHANGE_BUFFER_SIZE 0x03
 #define COMMAND_CHANGE_TIMEOUT 0x04
+#define COMMAND_GET_CURRENT_CONFIG 0x05
+#define COMMAND_ADD_CLIENT 0x06
+#define COMMAND_ADD_ADMIN 0x07
+#define COMMAND_REMOVE_USER 0x08
 
 #define RESERVED_BYTE 0x00
 
@@ -34,6 +39,7 @@
 
 #define DATE_SIZE 21
 #define USERNAME_MAX_SIZE 255
+#define PASSWORD_MAX_SIZE 255
 #define DOMAIN_MAX_SIZE 255
 #define DOMAIN_ATYP 0x03
 #define IPV4_ATYP 0x01
@@ -88,6 +94,11 @@ typedef struct user_list_entry {
 	struct user_list_entry * next;
 } user_list_entry;
 
+typedef struct server_current_config {
+	uint8_t buffer_size_kb; // Buffer size in KB
+	uint8_t timeout_seconds; // Timeout in seconds
+}server_current_config;
+
 // Connection functions
 int setup_tcp_client_Socket(char *address, char *port);
 
@@ -103,9 +114,13 @@ user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock);
 // Server configuration functions
 uint8_t handle_change_buffer_size(int sock, uint8_t new_size);
 uint8_t handle_change_timeout(int sock, uint8_t new_timeout);
+uint8_t handle_add_client(int sock, char * username, char * password);
+uint8_t handle_add_admin(int sock, char * ussername, char * password);
+uint8_t handle_remove_user(int sock, char * username);
 
 // Memory management functions
 void free_log_list(log_strct *head);
 void free_user_list(user_list_entry *head);
+
 
 #endif //LIB_CLIENT_H
