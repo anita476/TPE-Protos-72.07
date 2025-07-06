@@ -587,6 +587,7 @@ static void process_userlist_command(management_session *session, uint8_t number
 		offset);
 }
 
+// TODO: check if it's actually working properly and what happens in the midst of connection
 static void process_change_buffer_command(management_session *session, uint8_t new_size) {
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);
