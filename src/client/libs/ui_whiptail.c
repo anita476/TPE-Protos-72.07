@@ -3,10 +3,60 @@
 #include <string.h>
 #include "ui_whiptail.h"
 
+static int count_lines(const char *text) {
+    int lines = 1;
+    for (const char *p = text; *p; p++) {
+        if (*p == '\n') {
+            lines++;
+        }
+    }
+    return lines;
+}
+
+static int read_temp_file_line(char *buffer, size_t buffer_size) {
+    FILE *file = fopen(TEMP_FILE, "r");
+    int ok = 0;
+    if (file) {
+        if (fgets(buffer, buffer_size, file)) {
+            char *newline = strchr(buffer, '\n');
+            if (newline) *newline = '\0';
+            ok = 1;
+        }
+        fclose(file);
+    }
+    remove(TEMP_FILE);
+    return ok;
+}
+
+// For Whiptail
+static char *read_temp_file_as_string(char *buffer, size_t buffer_size) {
+    if (read_temp_file_line(buffer, buffer_size)) {
+        return buffer;
+    }
+    return NULL;
+}
+
+// For Dialog
+static int read_temp_file_as_int(void) {
+    char result[16];
+    if (read_temp_file_line(result, sizeof(result))) {
+        return atoi(result);
+    }
+    return -1;
+}
+
 void ui_whiptail_show_message(const char *title, const char *message) {
     char command[1024];
-    snprintf(command, sizeof(command), "whiptail --title \"%s\" --msgbox \"%s\" 8 45", title, message);
-    system(command);
+    
+    int lines = count_lines(message);
+    
+    if (lines > 6) {
+        snprintf(command, sizeof(command), "dialog --title \"%s\" --msgbox \"%s\" 16 45 2>/dev/null", title, message);
+        system(command);
+    } else {
+        snprintf(command, sizeof(command), "whiptail --title \"%s\" --msgbox \"%s\" 8 45", title, message);
+        system(command);
+    }
 }
 
 char *ui_whiptail_get_input(const char *title, const char *text, int hidden) {
@@ -23,19 +73,7 @@ char *ui_whiptail_get_input(const char *title, const char *text, int hidden) {
 
     int ret = system(command);
     if (ret == 0) {
-        FILE *file = fopen(TEMP_FILE, "r");
-        if (file) {
-            if (fgets(result, sizeof(result), file)) {
-                char *newline = strchr(result, '\n');
-                if (newline) {
-                    *newline = '\0';
-                }
-                fclose(file);
-                remove(TEMP_FILE);
-                return result;
-            }
-            fclose(file);
-        }
+        return read_temp_file_as_string(result, sizeof(result));
     }
     remove(TEMP_FILE);
     return NULL;
@@ -51,24 +89,24 @@ int ui_whiptail_get_menu_selection(const char *title, const char *text, char ite
         strcat(menu_items, item);
     }
 
-    snprintf(command, sizeof(command), "whiptail --title \"%s\" --menu \"%s\" 12 50 %d %s 2>%s", title, text, count,
-             menu_items, TEMP_FILE);
+    int menu_height = count + 7;
+    int menu_width = 45;
+    
+    if (count > 8) {
+        snprintf(command, sizeof(command), "dialog --title \"%s\" --menu \"%s\" %d %d %d %s 2>%s", 
+                 title, text, menu_height, menu_width, count, menu_items, TEMP_FILE);
+        int ret = system(command);
+        if (ret == 0) {
+            return read_temp_file_as_int();
+        }
+    }
+    
+    snprintf(command, sizeof(command), "whiptail --title \"%s\" --menu \"%s\" %d %d %d %s 2>%s", 
+             title, text, menu_height > 20 ? 20 : menu_height, menu_width, count, menu_items, TEMP_FILE);
 
     int ret = system(command);
     if (ret == 0) {
-        FILE *file = fopen(TEMP_FILE, "r");
-        if (file) {
-            char result[16];
-            if (fgets(result, sizeof(result), file)) {
-                char *newline = strchr(result, '\n');
-                if (newline)
-                    *newline = '\0';
-                fclose(file);
-                remove(TEMP_FILE);
-                return atoi(result);
-            }
-            fclose(file);
-        }
+        return read_temp_file_as_int();
     }
     remove(TEMP_FILE);
     return -1;
