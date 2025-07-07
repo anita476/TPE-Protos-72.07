@@ -42,6 +42,7 @@ static uint8_t authenticate_user(const char *username, const char *password);
 // External configuration variables
 extern size_t g_socks5_buffer_size;
 extern int g_connection_timeout;
+extern int g_log_buffer_size;
 extern struct users *us;
 extern uint8_t nusers;
 
@@ -83,7 +84,6 @@ void management_handle_new_connection(struct selector_key *key) {
 
 	session->client_fd = client_fd;
 	session->current_state = MNG_STATE_HELLO_READ;
-	printf("[DEBUG] Session initialized: fd=%d, state=%d\n", session->client_fd, session->current_state);
 	session->authenticated = false;
 	session->user_type = 0xFF; // invalid until authenticated
 	session->has_error = false;
@@ -128,12 +128,9 @@ static void management_handle_read(struct selector_key *key) {
 
 	switch (session->current_state) {
 		case MNG_STATE_HELLO_READ:
-		            printf("[DEBUG] Calling hello_read\n");
-
 			hello_read(key);
 			break;
 		case MNG_STATE_COMMAND_READ:
-		printf("[DEBUG] Calling command_read\n");
 			command_read(key);
 			break;
 		case MNG_STATE_ERROR:
@@ -186,12 +183,9 @@ VER | ULEN | PWDLEN | USERNAME (ULEN bytes) | PASSWORD (PWDLEN bytes)
 
 static void hello_read(struct selector_key *key) {
 	management_session *session = (management_session *) key->data;
-	 printf("[DEBUG] hello_read: session=%p, state=%d, fd=%d\n", 
-           session, session ? session->current_state : -1, key->fd);
-		if (!session) {
-        printf("[DEBUG] NULL SESSION in hello_read!\n");
-        return;
-    }
+	if (!session) {
+		return;
+	}
 	buffer *rb = &session->read_buffer;
 
 	log(DEBUG, "[MANAGEMENT] Hello read state");
@@ -311,7 +305,6 @@ static void hello_write(struct selector_key *key) {
 	if (!write_to_client(key, false)) {
 		return; // still writing
 	}
-
 
 	if (!session->authenticated) {
 		// authentication failed, close connection
@@ -490,32 +483,32 @@ static void process_metrics_command(management_session *session) {
 
 	uint32_t uptime = (uint32_t) (time(NULL) - real_metrics->start_time);
 
-	metrics_t response = {
-		.version = CALSETTING_VERSION,
-		.server_state = 1, // TODO: determine server state propelry
+	metrics_t response = {.version = CALSETTING_VERSION,
+						  .server_state = 1, // TODO: determine server state propelry
 
-		.total_connections =real_metrics->total_connections > UINT32_MAX ? UINT32_MAX : (uint32_t) real_metrics->total_connections,
-		.concurrent_connections = CLAMP_UINT16(real_metrics->concurrent_connections),
-        .max_concurrent_connections = CLAMP_UINT16(real_metrics->max_concurrent_connections),
+						  .total_connections = real_metrics->total_connections > UINT32_MAX ?
+												   UINT32_MAX :
+												   (uint32_t) real_metrics->total_connections,
+						  .concurrent_connections = CLAMP_UINT16(real_metrics->concurrent_connections),
+						  .max_concurrent_connections = CLAMP_UINT16(real_metrics->max_concurrent_connections),
 
-		.bytes_transferred_in = real_metrics->bytes_transferred_in,
-		.bytes_transferred_out = real_metrics->bytes_transferred_out,
-		.total_bytes_transferred = real_metrics->total_bytes_transferred,
+						  .bytes_transferred_in = real_metrics->bytes_transferred_in,
+						  .bytes_transferred_out = real_metrics->bytes_transferred_out,
+						  .total_bytes_transferred = real_metrics->total_bytes_transferred,
 
-		.total_errors = real_metrics->total_errors,
-		.uptime_seconds = uptime,
+						  .total_errors = real_metrics->total_errors,
+						  .uptime_seconds = uptime,
 
-		.network_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_NETWORK]),
-		.protocol_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_PROTOCOL]),
-		.auth_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_AUTH]),
-		.system_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_SYSTEM]),
-		.timeout_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_TIMEOUT]),
-		.memory_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_MEMORY]),
-		.other_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_OTHER]),
+						  .network_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_NETWORK]),
+						  .protocol_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_PROTOCOL]),
+						  .auth_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_AUTH]),
+						  .system_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_SYSTEM]),
+						  .timeout_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_TIMEOUT]),
+						  .memory_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_MEMORY]),
+						  .other_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_OTHER]),
 
-		.reserved = 0,
-		.reserved2 = 0
-    };
+						  .reserved = 0,
+						  .reserved2 = 0};
 	response.total_connections = htonl(response.total_connections);
 	response.concurrent_connections = htons(response.concurrent_connections);
 	response.max_concurrent_connections = htons(response.max_concurrent_connections);
@@ -547,25 +540,127 @@ static void process_metrics_command(management_session *session) {
 	log(DEBUG, "[MANAGEMENT] Metrics response written successfully");
 }
 
-// TODO: implement actual log retrieval
+/*
+VER | STATUS | COUNT | RSV | LOG_ENTRY_1 | LOG_ENTRY_2 | ... | LOG_ENTRY_N
+ 1   |   1    |   1   |  1  | (586 bytes each)
+Total size: 4 + (586 * COUNT) bytes
+*/
 static void process_logs_command(management_session *session, uint8_t number, uint8_t offset) {
+	(void) offset; // to suppress unused parameter warning
+
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);
 
-	if (buffer_writeable_bytes(wb) < LOGS_RESPONSE_HEADER_FIXED_LEN) {
-		log(ERROR, "[MANAGEMENT] No space for logs response");
-		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
+	log_entry_t log_buffer[g_log_buffer_size];
+	int max_to_get = (number > g_log_buffer_size) ? g_log_buffer_size : number;
+	int actual_count = get_recent_logs(log_buffer, max_to_get, offset);
+
+	size_t log_entry_size = LOG_ENTRY_WIRE_SIZE;
+	size_t total_size = 4 + (actual_count * log_entry_size);
+
+	if (buffer_writeable_bytes(wb) < total_size) {
 		return;
 	}
 
-	// send logs header (TODO: implement actual log retrieval)
-	buffer_write(wb, CALSETTING_VERSION);
-	buffer_write(wb, 1); // package_id
-	buffer_write(wb, 0); // nlogs (no logs for now)
-	buffer_write(wb, 0); // reserved
+	size_t available_bytes;
+	uint8_t *write_ptr = buffer_write_ptr(wb, &available_bytes);
+	
+	if (available_bytes < 4) {
+		return;
+	}
+	
+	write_ptr[0] = CALSETTING_VERSION;
+	write_ptr[1] = RESPONSE_SUCCESS_ADMIN;
+	write_ptr[2] = actual_count;
+	write_ptr[3] = 0;
+	buffer_write_adv(wb, 4);
 
-	log(DEBUG, "[MANAGEMENT] Prepared logs response for %s (req: %d, offset: %d)", session->username, number, offset);
+	// Write real log entries
+	for (int i = 0; i < actual_count; i++) {
+		log_entry_t *entry = &log_buffer[i];
+
+		write_ptr = buffer_write_ptr(wb, &available_bytes);
+		if (available_bytes < log_entry_size) {
+			return;
+		}
+
+		size_t entry_offset = 0;
+
+		// Date (21 bytes) - already optimized with memcpy
+		memcpy(write_ptr + entry_offset, entry->date, 21);
+		entry_offset += 21;
+
+		// Username length (1 byte)
+		write_ptr[entry_offset] = entry->ulen;
+		entry_offset += 1;
+		
+		// Username (255 bytes) - write in chunks
+		size_t username_len = entry->ulen;
+		if (username_len > 0) {
+			memcpy(write_ptr + entry_offset, entry->username, username_len);
+		}
+
+		// Zero-fill remaining bytes if username is shorter than 255
+		if (username_len < 255) {
+			memset(write_ptr + entry_offset + username_len, 0, 255 - username_len);
+		}
+		entry_offset += 255;
+
+		// Register type (1 byte)
+		write_ptr[entry_offset] = entry->register_type;
+		entry_offset += 1;
+
+		// Origin IP (46 bytes) - write in chunks
+		size_t origin_ip_len = strlen(entry->origin_ip);
+		if (origin_ip_len > 0) {
+			size_t copy_len = (origin_ip_len > 46) ? 46 : origin_ip_len;
+			memcpy(write_ptr + entry_offset, entry->origin_ip, copy_len);
+			if (copy_len < 46) {
+				memset(write_ptr + entry_offset + copy_len, 0, 46 - copy_len);
+			}
+		} else {
+			memset(write_ptr + entry_offset, 0, 46);
+		}
+		entry_offset += 46;
+
+		// Origin port (2 bytes, big-endian)
+		write_ptr[entry_offset] = (entry->origin_port >> 8) & 0xFF;
+		write_ptr[entry_offset + 1] = entry->origin_port & 0xFF;
+		entry_offset += 2;
+
+		// Destination ATYP (1 byte)
+		write_ptr[entry_offset] = entry->destination_ATYP;
+		entry_offset += 1;
+
+		// Destination address (256 bytes) - write in chunks
+		size_t dest_addr_len = strlen(entry->destination_address);
+		if (dest_addr_len > 0) {
+			size_t copy_len = (dest_addr_len > 256) ? 256 : dest_addr_len;
+			memcpy(write_ptr + entry_offset, entry->destination_address, copy_len);
+			if (copy_len < 256) {
+				memset(write_ptr + entry_offset + copy_len, 0, 256 - copy_len);
+			}
+		} else {
+			memset(write_ptr + entry_offset, 0, 256);
+		}
+		entry_offset += 256;
+
+		// Destination port (2 bytes, big-endian)
+		write_ptr[entry_offset] = (entry->destination_port >> 8) & 0xFF;
+		write_ptr[entry_offset + 1] = entry->destination_port & 0xFF;
+		entry_offset += 2;
+
+		// Status code (1 byte)
+		write_ptr[entry_offset] = entry->status_code;
+		entry_offset += 1;
+
+		// Advance the buffer by the entire log entry size
+		buffer_write_adv(wb, log_entry_size);
+	}
+
+	log(DEBUG, "[MANAGEMENT] Sent %d real log entries", actual_count);
 }
+
 // TODO: implement actual user retrieval
 static void process_userlist_command(management_session *session, uint8_t number, uint8_t offset) {
 	buffer *wb = &session->write_buffer;
@@ -602,31 +697,29 @@ static void process_change_buffer_command(management_session *session, uint8_t n
 
 	// validate user permissions? tbh i feel like its unnecessary at this point
 	if (session->user_type != USER_TYPE_ADMIN) {
-        log(DEBUG, "[MANAGEMENT] Non-admin user %s attempted to change buffer size", 
-            session->username ? session->username : "unknown");
-        response_code = RESPONSE_NOT_ALLOWED;
-    }
+		log(DEBUG, "[MANAGEMENT] Non-admin user %s attempted to change buffer size",
+			session->username ? session->username : "unknown");
+		response_code = RESPONSE_NOT_ALLOWED;
+	}
 
 	if (new_size < MIN_BUFF_SIZE_KB || new_size > MAX_BUFF_SIZE_KB) {
-        log(ERROR, "[MANAGEMENT] Invalid buffer size: %d KB (valid range: %d-%d KB)", 
-            new_size, MIN_BUFF_SIZE_KB, MAX_BUFF_SIZE_KB);
-        response_code = RESPONSE_BAD_REQUEST;
-    }
-    else {
-        size_t old_buffer_size = g_socks5_buffer_size;
-        g_socks5_buffer_size = new_size * 1024; // convert KB to bytes
-        response_code = RESPONSE_SUCCESS_ADMIN;
-        
-        log(INFO, "[MANAGEMENT] Buffer size changed from %zu to %zu bytes (%d KB) by %s", 
-            old_buffer_size, g_socks5_buffer_size, new_size, 
-            session->username ? session->username : "unknown");
-            
-        // TODO: not sure whether to keep this or not in order to notify impact on active connections
-        // if (get_active_connection_count() > 0) {
-        //     log(DEBUG, "[MANAGEMENT] Buffer size changed while connections active. "
-        //               "New size will affect future connections only.");
-        // }
-    }
+		log(ERROR, "[MANAGEMENT] Invalid buffer size: %d KB (valid range: %d-%d KB)", new_size, MIN_BUFF_SIZE_KB,
+			MAX_BUFF_SIZE_KB);
+		response_code = RESPONSE_BAD_REQUEST;
+	} else {
+		size_t old_buffer_size = g_socks5_buffer_size;
+		g_socks5_buffer_size = new_size * 1024; // convert KB to bytes
+		response_code = RESPONSE_SUCCESS_ADMIN;
+
+		log(INFO, "[MANAGEMENT] Buffer size changed from %zu to %zu bytes (%d KB) by %s", old_buffer_size,
+			g_socks5_buffer_size, new_size, session->username ? session->username : "unknown");
+
+		// TODO: not sure whether to keep this or not in order to notify impact on active connections
+		// if (get_active_connection_count() > 0) {
+		//     log(DEBUG, "[MANAGEMENT] Buffer size changed while connections active. "
+		//               "New size will affect future connections only.");
+		// }
+	}
 
 	buffer_write(wb, CALSETTING_VERSION);
 	buffer_write(wb, response_code);
@@ -684,7 +777,7 @@ static bool write_to_client(struct selector_key *key, bool should_close) {
 			log(INFO, "[MANAGEMENT] Client closed connection (EPIPE)");
 			// selector_unregister_fd(key->s, key->fd);
 			close(key->fd);
-			return true; 
+			return true;
 		}
 		log(ERROR, "[MANAGEMENT] send() error: %s", strerror(errno));
 		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
@@ -698,7 +791,7 @@ static bool write_to_client(struct selector_key *key, bool should_close) {
 	log(DEBUG, "[MANAGEMENT] Sent %zd/%zu bytes", bytes_written, bytes_to_write);
 
 	if (buffer_readable_bytes(wb) > 0) {
-		return false; 
+		return false;
 	}
 
 	if (should_close) {

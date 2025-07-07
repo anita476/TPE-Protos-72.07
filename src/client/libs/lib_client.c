@@ -5,11 +5,11 @@
 #include "lib_client.h"
 #include "buffer.h"
 
-#include <bits/socket.h>
+#include <bits/socket.h> // what is this?
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
-
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -20,7 +20,7 @@
 #define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
 
 metrics_t * handle_metrics_response(int sock, metrics_t * m);
-void fill_log_struct(char * data, log_strct * log);
+void fill_log_struct(char * data, client_log_entry_t * log);
 void fill_user_list_entry(char * data, user_list_entry * user, uint8_t pack_id);
 
 static uint8_t user_type;
@@ -255,14 +255,9 @@ metrics_t * handle_metrics_response(int sock, metrics_t * m) {
 	if (sock < 0 || m == NULL) {
 		return NULL; // Invalid parameters
 	}
-
-	// char response[sizeof(metrics_t)];
-	// char * response_ptr = response;
-	// uint32_t four_byte_temp;
-	// uint16_t two_byte_temp;
 	metrics_t response;
 
-    if (recv_all(sock, &response, sizeof(metrics_t)) != sizeof(metrics_t)) {
+    if (recv_all(sock, (char *)&response, sizeof(metrics_t)) != sizeof(metrics_t)) {
 		return NULL; // Failed to read metrics
 	}
 
@@ -288,82 +283,57 @@ metrics_t * handle_metrics_response(int sock, metrics_t * m) {
     m->memory_errors = ntohs(response.memory_errors);
     m->other_errors = ntohs(response.other_errors);
 
-	// m->version = *response_ptr++;
-	// m->server_state = *response_ptr++;
-
-	// memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
-	// m->n_current_connections = ntohl(four_byte_temp);
-	// response_ptr += sizeof(uint32_t);
-
-	// memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
-	// m->n_total_connections = ntohl(four_byte_temp);
-	// response_ptr += sizeof(uint32_t);
-
-	// memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
-	// m->n_total_bytes_received = ntohl(four_byte_temp);
-	// response_ptr += sizeof(uint32_t);
-
-	// memcpy(&four_byte_temp, response_ptr, sizeof(uint32_t));
-	// m->n_total_bytes_sent = ntohl(four_byte_temp);
-	// response_ptr += sizeof(uint32_t);
-
-	// memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
-	// m->n_timeouts = ntohs(two_byte_temp);
-	// response_ptr += sizeof(uint16_t);
-
-	// memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
-	// m->n_server_errors = ntohs(two_byte_temp);
-	// response_ptr += sizeof(uint16_t);
-
-	// memcpy(&two_byte_temp, response_ptr, sizeof(uint16_t));
-	// m->n_bad_requests = ntohs(two_byte_temp);
-	// response_ptr += sizeof(uint16_t);
-
 	return m; // Return the filled metrics structure
 }
 
-log_strct * handle_log(int sock, uint8_t n, uint8_t offset) {
-	//send the request for metrics
-	if (request_send(COMMAND_LOGS, n, offset, sock) != 0) {
-		return NULL; // Failed to send request
-	}
-	char response[sizeof(log_strct)] = {0};
-	char * response_ptr = response;
-	uint32_t four_byte_temp;
-	uint16_t two_byte_temp;
+client_log_entry_t * handle_log(int sock, uint8_t n, uint8_t offset) {
+    if (request_send(COMMAND_LOGS, n, offset, sock) != 0) {
+        return NULL;
+    }
 
-	if (recv_all(sock, response, LOGS_RESPONSE_HEADER_FIXED_LEN) != LOGS_RESPONSE_HEADER_FIXED_LEN) {
-		return NULL; // Failed to read metrics
-	}
-	uint8_t nlogs = response[2];
-	if (nlogs == 0) {
-		return NULL; // No logs available
-	}
+    char header[LOGS_RESPONSE_HEADER_FIXED_LEN];
+    if (recv_all(sock, header, LOGS_RESPONSE_HEADER_FIXED_LEN) != LOGS_RESPONSE_HEADER_FIXED_LEN) {
+        return NULL;
+    }
+    
+    uint8_t nlogs = header[2];
+    if (nlogs == 0) {
+        return NULL;
+    }
 
-	log_strct * head = malloc(sizeof(log_strct));
-	head->next = NULL;
-
-	if (recv_all(sock, response_ptr, sizeof(log_strct)) != sizeof(log_strct)) {
-		free_log_list(head);
-		return NULL; // Failed to read log. should not happen
-	}
-	fill_log_struct(response_ptr, head);
-	response_ptr += sizeof(log_strct);
-	nlogs--;
-	log_strct * current_log_ptr = head;
-
-	for (;nlogs > 0; nlogs--) {
-		if (recv_all(sock, response_ptr, sizeof(log_strct)) != sizeof(log_strct)) {
-			free_log_list(head);
-			return NULL; // Failed to read log. should not happen
-		}
-		current_log_ptr->next = malloc(sizeof(log_strct));
-		fill_log_struct(response_ptr, current_log_ptr->next);
-		response_ptr += sizeof(log_strct);
-		current_log_ptr = current_log_ptr->next;
-	}
-	return head;
+    client_log_entry_t *head = NULL;
+    client_log_entry_t *current = NULL;
+        
+    for (uint8_t i = 0; i < nlogs; i++) {
+        char wire_data[LOG_ENTRY_WIRE_SIZE];
+        
+        if (recv_all(sock, wire_data, LOG_ENTRY_WIRE_SIZE) != LOG_ENTRY_WIRE_SIZE) {
+            free_log_list(head);
+            return NULL;
+        }
+        
+        client_log_entry_t *new_entry = malloc(sizeof(client_log_entry_t));
+        if (!new_entry) {
+            free_log_list(head);
+            return NULL;
+        }
+        new_entry->next = NULL;
+        
+        // Fill the entry using the same parsing logic
+        fill_log_struct(wire_data, new_entry);
+        
+        if (!head) {
+            head = new_entry;
+            current = head;
+        } else {
+            current->next = new_entry;
+            current = new_entry;
+        }
+    }
+    
+    return head;
 }
+
 
 user_list_entry * handle_get_users(uint8_t n, uint8_t offset,int sock) {
 	if (request_send(COMMAND_USER_LIST, n, offset, sock) != 0) {
@@ -371,8 +341,8 @@ user_list_entry * handle_get_users(uint8_t n, uint8_t offset,int sock) {
 	}
 	char response[sizeof(user_list_entry)] = {0};
 	char * response_ptr = response;
-	uint32_t four_byte_temp;
-	uint16_t two_byte_temp;
+	// uint32_t four_byte_temp;
+	// uint16_t two_byte_temp;
 
 	if (recv_all(sock, response, GET_USERS_RESPONSE_HEADER_FIXED_LEN) != GET_USERS_RESPONSE_HEADER_FIXED_LEN) {
 		return NULL; // Failed to read metrics
@@ -405,45 +375,99 @@ user_list_entry * handle_get_users(uint8_t n, uint8_t offset,int sock) {
 	return head;
 }
 
-void fill_log_struct(char * data, log_strct * log) {
-	memcpy(log->date,data,DATE_SIZE);
-	data += DATE_SIZE;
-	log->ulen = *data++;
-
-	memcpy(log->username, data, log->ulen);
-	data += log->ulen;
-	log->register_type = *data++;  //should be 'A' always
-
-	memcpy(log->origin_ip, data, IPV6_LEN_BYTES);
-	data += IPV6_LEN_BYTES;
-
-	uint16_t two_byte_temp;
-	memcpy(&two_byte_temp, data, sizeof(uint16_t));
-	log->origin_port = ntohs(two_byte_temp);
-	data += sizeof(uint16_t);
-
-	//TODO chequear address len que este bien o mal.
-	log->destination_ATYP = *data++;
-	if (log->destination_ATYP == DOMAIN_ATYP) {
-		uint8_t domain_len = *data++;
-		memcpy(log->destination_address, data, domain_len);
-		log->destination_address[domain_len] = '\0'; // Null-terminate the string
-		data += domain_len;
-	} else if (log->destination_ATYP == IPV4_ATYP) {
-		memcpy(log->destination_address, data, IPV4_LEN_BYTES);
-		data += IPV4_LEN_BYTES;
-	}
-	else {
-		memcpy(log->destination_address, data, IPV6_LEN_BYTES);
-		data += IPV6_LEN_BYTES;
-	}
-
-	memcpy(&two_byte_temp, data, sizeof(uint16_t));
-	log->destination_port = ntohs(two_byte_temp);
-	data += sizeof(uint16_t);
-
-	log->status_code = *data++;
+void fill_log_struct(char * data, client_log_entry_t * log) {
+    char *ptr = data;
+    
+    // Date (21 bytes fixed)
+    memcpy(log->date, ptr, DATE_SIZE);
+    log->date[DATE_SIZE - 1] = '\0';
+    ptr += 21;
+    
+    // Username length (1 byte)
+    log->ulen = *ptr++;
+    
+    // Username (255 bytes fixed, regardless of actual length)
+    memcpy(log->username, ptr, USERNAME_MAX_SIZE);
+    log->username[log->ulen] = '\0';
+    ptr += 255;
+    
+    // Register type (1 byte)
+    log->register_type = *ptr++;
+    
+    // Origin IP (46 bytes fixed - INET6_ADDRSTRLEN)
+    memcpy(log->origin_ip, ptr, INET6_ADDRSTRLEN);
+    log->origin_ip[INET6_ADDRSTRLEN - 1] = '\0'; 
+    ptr += 46;
+    
+    // Origin port (2 bytes, network order)
+    uint16_t origin_port_net;
+    memcpy(&origin_port_net, ptr, sizeof(uint16_t));
+    log->origin_port = ntohs(origin_port_net);
+    ptr += sizeof(uint16_t);
+    
+    // Destination ATYP (1 byte)
+    log->destination_ATYP = *ptr++;
+    
+    memcpy(log->destination_address, ptr, DOMAIN_MAX_SIZE + 1);
+    log->destination_address[DOMAIN_MAX_SIZE] = '\0';
+    ptr += 256;
+    
+    // Destination port (2 bytes, network order)
+    uint16_t dest_port_net;
+    memcpy(&dest_port_net, ptr, sizeof(uint16_t));
+    log->destination_port = ntohs(dest_port_net);
+    ptr += sizeof(uint16_t);
+    
+    // Status code (1 byte)
+    log->status_code = *ptr++;
+    
+    // Optional debug output
+    printf("[CLIENT DEBUG] Parsed log: %s %.*s@%s:%d -> %s:%d (status=0x%02x)\n",
+           log->date,                           
+           log->ulen, log->username, 
+           log->origin_ip, log->origin_port,
+           log->destination_address, log->destination_port, 
+           log->status_code);
 }
+// void fill_log_struct(char * data, log_entry_t * log) {
+// 	memcpy(log->date,data,DATE_SIZE);
+// 	data += DATE_SIZE;
+// 	log->ulen = *data++;
+
+// 	memcpy(log->username, data, log->ulen);
+// 	data += log->ulen;
+// 	log->register_type = *data++;  //should be 'A' always
+
+// 	memcpy(log->origin_ip, data, IPV6_LEN_BYTES);
+// 	data += IPV6_LEN_BYTES;
+
+// 	uint16_t two_byte_temp;
+// 	memcpy(&two_byte_temp, data, sizeof(uint16_t));
+// 	log->origin_port = ntohs(two_byte_temp);
+// 	data += sizeof(uint16_t);
+
+// 	//TODO chequear address len que este bien o mal.
+// 	log->destination_ATYP = *data++;
+// 	if (log->destination_ATYP == DOMAIN_ATYP) {
+// 		uint8_t domain_len = *data++;
+// 		memcpy(log->destination_address, data, domain_len);
+// 		log->destination_address[domain_len] = '\0'; // Null-terminate the string
+// 		data += domain_len;
+// 	} else if (log->destination_ATYP == IPV4_ATYP) {
+// 		memcpy(log->destination_address, data, IPV4_LEN_BYTES);
+// 		data += IPV4_LEN_BYTES;
+// 	}
+// 	else {
+// 		memcpy(log->destination_address, data, IPV6_LEN_BYTES);
+// 		data += IPV6_LEN_BYTES;
+// 	}
+
+// 	memcpy(&two_byte_temp, data, sizeof(uint16_t));
+// 	log->destination_port = ntohs(two_byte_temp);
+// 	data += sizeof(uint16_t);
+
+// 	log->status_code = *data++;
+// }
 
 void fill_user_list_entry(char * data, user_list_entry * user, uint8_t pack_id) {
 	user->ulen = *data++;
@@ -453,7 +477,7 @@ void fill_user_list_entry(char * data, user_list_entry * user, uint8_t pack_id) 
 	user->package_id = pack_id; // Set the package ID
 }
 
-void free_log_list(log_strct * node) {
+void free_log_list(client_log_entry_t * node) {
 	if (node == NULL) {
 		return; // Nothing to free
 	}

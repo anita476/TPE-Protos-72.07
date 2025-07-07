@@ -6,7 +6,7 @@ Console UI initialized
 
   SOCKS5 server admin interface
   UI Mode: Console
-  Connecting to: localhost:8080
+  Connecting to: 127.0.0.1:8080
   Press OK to continue
 
 
@@ -40,78 +40,60 @@ Select an option:
   4. Manage settings
   5. Exit
 
-Enter your choice (1-5): [H[2J[3J+----------------------------------------------------------+
-|                     Server settings                      |
-+----------------------------------------------------------+
-
-Select an option:
-
-  1. Change buffer size
-  2. Show configurations
-  3. Change timeout
-  4. Back to main menu
-
-Enter your choice (1-4): [H[2J[3J+----------------------------------------------------------+
-|                       buffer size                        |
-+----------------------------------------------------------+
-
-Enter new buffer size (KB):
-> [H[2J[3J+----------------------------------------------------------+
-|                      Confirm change                      |
-+----------------------------------------------------------+
-
-Are you sure you want to change buffer size to 40 KB?
-
-Do you want to continue? (y/N): [H[2J[3J[CLIENT DEBUG] Starting buffer size change: size=40
-[CLIENT DEBUG] User type: 1 (Admin=1)
-[CLIENT DEBUG] Socket: 3
-[CLIENT DEBUG] Min size: 1, Max size: 64
-[CLIENT DEBUG] All validations passed, sending request
-[CLIENT DEBUG] Command: 3, Arg1: 40, Arg2: 0
-[CLIENT DEBUG] request_send: cmd=3, arg1=40, arg2=0
-[CLIENT DEBUG] Sending: [0x01, 0x03, 0x28, 0x00]
+Enter your choice (1-5): [H[2J[3J[CLIENT DEBUG] request_send: cmd=0, arg1=10, arg2=0
+[CLIENT DEBUG] Sending: [0x01, 0x00, 0x0a, 0x00]
 [CLIENT DEBUG] send_all returned: 4 (expected: 4)
-[CLIENT DEBUG] request_send returned: 0
-[CLIENT DEBUG] Request sent successfully, waiting for response...
-[CLIENT DEBUG] recv_all returned: 3 (expected: 3)
-[CLIENT DEBUG] Response: [0x01, 0x01, 0x03]
+[CLIENT DEBUG] Parsed log: 2025-07-07T04:42:05 admin@::ffff:192.168.65.1:54088 -> 54.243.106.191:443 (status=0x00)
 +----------------------------------------------------------+
-|                         Success                          |
+|                       Server logs                        |
 +----------------------------------------------------------+
 
-  buffer size successfully changed to 40 KB.
+  Server logs (Page 1):
+  1. [2025-07-07T04:42:05] admin -> 54.243.106.191:443 (0x00)
+  Showing 1 of 1 logs on this page
+  Press OK to continue
 
 
 Press any key to continue...[H[2J[3J+----------------------------------------------------------+
-|                     Server settings                      |
+|                   Server logs - Page 1                   |
++----------------------------------------------------------+
+
+Choose navigation option:
+
+  1. Back to menu
+
+Enter your choice (1-1): [H[2J[3J+----------------------------------------------------------+
+|                     Admin interface                      |
 +----------------------------------------------------------+
 
 Select an option:
 
-  1. Change buffer size
-  2. Show configurations
-  3. Change timeout
-  4. Back to main menu
+  1. View metrics
+  2. View logs
+  3. Manage users
+  4. Manage settings
+  5. Exit
 
-Enter your choice (1-4): [H[2J[3J+----------------------------------------------------------+
-|                         timeout                          |
-+----------------------------------------------------------+
-
-Enter new timeout (seconds):
-> [H[2J[3J+----------------------------------------------------------+
-|                      Confirm change                      |
-+----------------------------------------------------------+
-
-Are you sure you want to change timeout to 10 seconds?
-
-Do you want to continue? (y/N): [H[2J[3J[CLIENT DEBUG] request_send: cmd=4, arg1=10, arg2=0
-[CLIENT DEBUG] Sending: [0x01, 0x04, 0x0a, 0x00]
+Enter your choice (1-5): [H[2J[3J[CLIENT DEBUG] request_send: cmd=0, arg1=10, arg2=0
+[CLIENT DEBUG] Sending: [0x01, 0x00, 0x0a, 0x00]
 [CLIENT DEBUG] send_all returned: 4 (expected: 4)
 +----------------------------------------------------------+
-|                         Success                          |
+|                           Info                           |
 +----------------------------------------------------------+
 
-  timeout successfully changed to 10 seconds.
+  No logs available
 
 
-Press any key to continue...
+Press any key to continue...[H[2J[3J+----------------------------------------------------------+
+|                     Admin interface                      |
++----------------------------------------------------------+
+
+Select an option:
+
+  1. View metrics
+  2. View logs
+  3. Manage users
+  4. Manage settings
+  5. Exit
+
+Enter your choice (1-5): [H[2J[3J

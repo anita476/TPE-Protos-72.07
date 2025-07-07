@@ -62,34 +62,12 @@
 #define GET_USERS_RESPONSE_HEADER_FIXED_LEN      4
 #define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
 
+#define DATE_SIZE 21                    // ISO-8601 timestamp
+#define USERNAME_MAX_SIZE 255           // Max username length  
+#define DOMAIN_MAX_SIZE 255             // Max domain length
+#define INET6_ADDRSTRLEN 46              // IPv6 address string length
 
-// typedef struct __attribute__((packed)) {
-//     uint8_t version;                    // Protocol version
-//     uint8_t server_state;               // 1 = running, 0 = stopping
-    
-//     // Connection metrics (20 bytes)
-//     uint32_t concurrent_connections;    // Current active connections
-//     uint64_t total_connections;         // All-time total connections
-//     uint32_t max_concurrent_connections; // Peak concurrent connections
-    
-//     // Transfer metrics (24 bytes)  
-//     uint64_t bytes_transferred_in;      // Total bytes received
-//     uint64_t bytes_transferred_out;     // Total bytes sent
-//     uint64_t total_bytes_transferred;   // Sum of in + out
-    
-//     // General metrics (8 bytes)
-//     uint32_t total_errors;              // All errors combined
-//     uint32_t uptime_seconds;            // Server uptime in seconds
-    
-//     // Detailed error breakdown (28 bytes)
-//     uint32_t network_errors;            // ERROR_TYPE_NETWORK
-//     uint32_t protocol_errors;           // ERROR_TYPE_PROTOCOL  
-//     uint32_t auth_errors;               // ERROR_TYPE_AUTH
-//     uint32_t system_errors;             // ERROR_TYPE_SYSTEM
-//     uint32_t timeout_errors;            // ERROR_TYPE_TIMEOUT
-//     uint32_t memory_errors;             // ERROR_TYPE_MEMORY
-//     uint32_t other_errors;              // ERROR_TYPE_OTHER
-// } metrics_t;
+#define LOG_ENTRY_WIRE_SIZE 586 // 21 + 1 + 255 + 1 + 46 + 2 + 1 + 256 + 2 + 1 = 586 bytes
 
 // (mucho texto perdon)
 // IMPORTANT: This struct is deliberately ordered and sized to ensure proper alignment.
@@ -126,19 +104,25 @@ typedef struct __attribute__((packed)) {
     uint16_t reserved2; // to align to 8 bytes
 } metrics_t; // total = 60 bytes
 
-typedef struct log_strct {
+typedef struct log_entry_t {
 	char date[DATE_SIZE];  //date in ISO-8601 format YYYY-MM-DDTHH:MM:SS
 	uint8_t ulen;
 	char username[USERNAME_MAX_SIZE];
 	char register_type; //always 'A'
-	char origin_ip[INET_ADDRSTRLEN];
+	char origin_ip[INET6_ADDRSTRLEN];
 	uint16_t origin_port; //origin port
 	uint8_t destination_ATYP; //0x01 for IPv4, 0x04 for IPv6, 0x03 for domain
 	char destination_address[DOMAIN_MAX_SIZE + 1]; //destination address, if IPv4 or IPv6. in socks5 protocol domains need the first byte for domainLen so max len will be 255 + 1
 	uint16_t destination_port; //origin port
 	uint8_t status_code;
-	struct log_strct * next; //pointer to the next log in the linked list
-} log_strct;
+	// struct log_entry_t * next; //pointer to the next log in the linked list
+} log_entry_t;
+
+// client side 
+typedef struct {
+    log_entry_t *entries;    // Array of log entries
+    uint8_t count;           // Number of entries
+} log_response_t;
 
 typedef struct user_list_entry {
 	uint8_t ulen;

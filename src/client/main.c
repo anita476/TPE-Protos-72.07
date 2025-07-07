@@ -170,7 +170,7 @@ static int count_users(void *data) {
 
 static int count_logs(void *data) {
 	int count = 0;
-	log_strct *current = (log_strct *) data;
+	client_log_entry_t *current = (client_log_entry_t *) data;
 	while (current != NULL) {
 		count++;
 		current = current->next;
@@ -210,33 +210,42 @@ static void display_users(void *data, int count, int page) {
 }
 
 static void display_logs(void *data, int count, int page) {
-	if (count == 0) {
-		ui_show_message("Info", "No logs found");
-		return;
-	}
+    if (count == 0) {
+        ui_show_message("Info", "No logs found");
+        return;
+    }
 
-	char logs_info[2048];
-	char log_list[1536] = "";
-	log_strct *current = (log_strct *) data;
-	int display_count = 0;
-	int start_index = page * ITEMS_PER_PAGE;
+    char logs_info[2048];
+    char log_list[1536] = "";
+    client_log_entry_t *current = (client_log_entry_t *) data;
+    int display_count = 0;
+    int start_index = page * ITEMS_PER_PAGE;
 
-	while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
-		char log_line[600];
-		snprintf(log_line, sizeof(log_line), "%d. %.*s -> %s:%d\n", start_index + display_count + 1, current->ulen,
-				 current->username, current->destination_address, current->destination_port);
-		strcat(log_list, log_line);
-		current = current->next;
-		display_count++;
-	}
+    while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
+        char log_line[600];
+        
+        // More compact format - date on separate line
+        snprintf(log_line, sizeof(log_line), 
+                 "%d. [%s] %.*s -> %s:%d (0x%02x)\n", 
+                 start_index + display_count + 1,
+                 current->date,
+                 current->ulen, current->username,
+                 current->destination_address, 
+                 current->destination_port,
+                 current->status_code);
+        
+        strcat(log_list, log_line);
+        current = current->next;
+        display_count++;
+    }
 
-	snprintf(logs_info, sizeof(logs_info),
-			 "Server logs (Page %d):\n%s\n"
-			 "Showing %d of %d logs on this page\n\n"
-			 "Press OK to continue",
-			 page + 1, log_list, display_count, count);
+    snprintf(logs_info, sizeof(logs_info),
+             "Server logs (Page %d):\n%s\n"
+             "Showing %d of %d logs on this page\n\n"
+             "Press OK to continue",
+             page + 1, log_list, display_count, count);
 
-	ui_show_message("Server logs", logs_info);
+    ui_show_message("Server logs", logs_info);
 }
 
 static void free_users(void *data) {
@@ -244,7 +253,7 @@ static void free_users(void *data) {
 }
 
 static void free_logs(void *data) {
-	free_log_list((log_strct *) data);
+	free_log_list((client_log_entry_t *) data);
 }
 
 /* Server interaction functions */
