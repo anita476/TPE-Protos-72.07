@@ -51,7 +51,7 @@ void ui_whiptail_show_message(const char *title, const char *message) {
     int lines = count_lines(message);
     
     if (lines > 6) {
-        snprintf(command, sizeof(command), "dialog --title \"%s\" --msgbox \"%s\" 16 45 2", title, message);
+        snprintf(command, sizeof(command), "dialog --title \"%s\" --msgbox \"%s\" 16 45 2>/dev/null", title, message);
         system(command);
     } else {
         snprintf(command, sizeof(command), "whiptail --title \"%s\" --msgbox \"%s\" 8 45", title, message);
