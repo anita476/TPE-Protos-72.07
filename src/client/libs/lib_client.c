@@ -162,7 +162,8 @@ int request_send(uint8_t command_code, uint8_t arg_1, uint8_t arg_2, int sock) {
 }
 
 uint8_t handle_add_client(int sock, char * username, char * password) {
-	if (uint8_t r = add_user_send_req(sock, username, password, COMMAND_ADD_CLIENT) != 0) {
+	uint8_t r = add_user_send_req(sock, username, password, COMMAND_ADD_CLIENT);
+	if (r != 0) {
 		return r; // Failed to send request
 	}
 	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
@@ -173,9 +174,10 @@ uint8_t handle_add_client(int sock, char * username, char * password) {
 
 }
 uint8_t handle_add_admin(int sock, char * username, char * password) {
-	if (uint8_t r = add_user_send_req(sock, username, password, COMMAND_ADD_ADMIN) != 0) {
-		return r; // Failed to send request
-	}
+	uint8_t r = add_user_send_req(sock, username, password, COMMAND_ADD_ADMIN);
+	if (r != 0) {
+        return r;
+    }
 	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
 	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
@@ -199,7 +201,7 @@ uint8_t add_user_send_req(int sock, char * username, char * password, uint8_t us
 	uint8_t password_len = raw_len_pwd;
 	char data[username_len + password_len + ADD_USER_FIXED_HEADER_LEN];
 	uint8_t * data_ptr = data;
-	data_ptr[0] = METRICS_PROTOCOL_VERSION;
+	data_ptr[0] = CALSETTING_VERSION;
 	data_ptr[1] = user_type_command_code;
 	data_ptr[2] = username_len;
 	data_ptr[3] = password_len;
@@ -237,7 +239,7 @@ uint8_t remove_user_send_req(int sock, char * username) {
 
 	char data[username_len +  REMOVE_USER_FIXED_HEADER_LEN];
 	uint8_t * data_ptr = data;
-	data_ptr[0] = METRICS_PROTOCOL_VERSION;
+	data_ptr[0] = CALSETTING_VERSION;
 	data_ptr[1] = COMMAND_REMOVE_USER;
 	data_ptr[2] = username_len;
 	data_ptr += REMOVE_USER_FIXED_HEADER_LEN;

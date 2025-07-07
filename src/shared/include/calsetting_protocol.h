@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <netinet/in.h>
 
+
 // Protocol version
 #define CALSETTING_VERSION 0x01
 
@@ -15,6 +16,8 @@
 #define RESPONSE_GENERAL_SERVER_FAILURE 0x03 // General server error
 #define RESPONSE_WRONG_VERSION      0x04    // Versión incorrecta
 #define RESPONSE_NOT_ALLOWED        0x05    // Not allowed
+#define RESPONSE_USER_NOT_FOUND 0x06
+
 
 // Client-side error code (not sent over network)
 #define RESPONSE_BAD_REQUEST        0x06    // Client validation error
@@ -30,6 +33,10 @@
 #define COMMAND_METRICS            0x02    // Métricas
 #define COMMAND_CHANGE_BUFFER_SIZE 0x03    // Change Buffer Size
 #define COMMAND_CHANGE_TIMEOUT     0x04    // Change Timeout
+#define COMMAND_GET_CURRENT_CONFIG 0x05
+#define COMMAND_ADD_CLIENT 0x06
+#define COMMAND_ADD_ADMIN 0x07
+#define COMMAND_REMOVE_USER 0x08
 
 // User types
 #define USER_TYPE_CLIENT           0x00
@@ -58,6 +65,7 @@
 
 #define DATE_SIZE 21                    // ISO-8601 timestamp
 #define USERNAME_MAX_SIZE 255           // Max username length  
+#define PASSWORD_MAX_SIZE 255
 #define DOMAIN_MAX_SIZE 255             // Max domain length
 #define INET6_ADDRSTRLEN 46              // IPv6 address string length
 

@@ -733,7 +733,6 @@ static void process_userlist_command(management_session *session, uint8_t number
         uint8_t user_index = offset + i;
         if (user_index < nusers) {
             uint8_t username_len = strlen(us[user_index].name);
-            if (username_len > 255) username_len = 255; // Limit to uint8_t max
             required_space += 1 + username_len + 1 + 1; // ulen + username + user_type + package_id
         }
     }
@@ -754,8 +753,7 @@ static void process_userlist_command(management_session *session, uint8_t number
         if (user_index >= nusers) break;
         
         struct users *current_user = &us[user_index];
-        uint8_t username_len = strlen(current_user->name);
-        if (username_len > 255) username_len = 255;
+        uint8_t username_len = strlen(current_user->name); // max uint8 is 255, so this is safe (i think)
         
         buffer_write(wb, username_len);
         for (int j = 0; j < username_len; j++) {
