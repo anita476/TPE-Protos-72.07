@@ -51,7 +51,7 @@ void ui_whiptail_show_message(const char *title, const char *message) {
     int lines = count_lines(message);
     
     if (lines > 6) {
-        snprintf(command, sizeof(command), "dialog --title \"%s\" --msgbox \"%s\" 16 45 2>/dev/null", title, message);
+        snprintf(command, sizeof(command), "dialog --title \"%s\" --msgbox \"%s\" 16 45 2", title, message);
         system(command);
     } else {
         snprintf(command, sizeof(command), "whiptail --title \"%s\" --msgbox \"%s\" 8 45", title, message);
@@ -86,7 +86,7 @@ int ui_whiptail_get_menu_selection(const char *title, const char *text, char ite
     for (int i = 0; i < count; i++) {
         char item[256];
         snprintf(item, sizeof(item), "\"%s\" \"%s\" ", items[i][0], items[i][1]);
-        strcat(menu_items, item);
+        strncat(menu_items, item, sizeof(menu_items) - strlen(menu_items) - 1);
     }
 
     int menu_height = count + 7;

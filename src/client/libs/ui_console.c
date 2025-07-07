@@ -37,14 +37,6 @@ static void print_text_line(const char *text, int width) {
     printf("|\n");
 }
 
-static void print_empty_line(int width) {
-    printf("|");
-    for (int i = 0; i < width - 2; i++) {
-        printf(" ");
-    }
-    printf("|\n");
-}
-
 void ui_print_header(const char *title) {
     int title_len = strlen(title);
     int box_width = (title_len > BOX_WIDTH - 4) ? title_len + 4 : BOX_WIDTH;
@@ -88,6 +80,7 @@ void ui_console_show_message(const char *title, const char *message) {
 }
 
 char *ui_console_get_input(const char *title, const char *text, int hidden) {
+    (void)hidden;
     static char result[MAX_INPUT];
 
     ui_clear_screen();

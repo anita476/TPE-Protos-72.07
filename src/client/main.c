@@ -1,5 +1,5 @@
 #include <ctype.h>
-#include <inttypes.h> // for PRIu64
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -195,7 +195,7 @@ static void display_users(void *data, int count, int page) {
 		char user_line[128];
 		snprintf(user_line, sizeof(user_line), "%d. %.*s (%s)\n", start_index + display_count + 1, current->ulen,
 				 current->username, role);
-		strcat(user_list, user_line);
+		strncat(user_list, user_line, sizeof(user_list) - strlen(user_list) - 1);
 		current = current->next;
 		display_count++;
 	}
@@ -224,7 +224,6 @@ static void display_logs(void *data, int count, int page) {
     while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
         char log_line[600];
         
-        // More compact format - date on separate line
         snprintf(log_line, sizeof(log_line), 
                  "%d. [%s] %.*s -> %s:%d (0x%02x)\n", 
                  start_index + display_count + 1,
@@ -234,7 +233,7 @@ static void display_logs(void *data, int count, int page) {
                  current->destination_port,
                  current->status_code);
         
-        strcat(log_list, log_line);
+        strncat(log_list, log_line, sizeof(log_list) - strlen(log_list) - 1);
         current = current->next;
         display_count++;
     }
@@ -297,25 +296,6 @@ static void show_metrics() {
 			 server_metrics.system_errors, server_metrics.timeout_errors, server_metrics.memory_errors,
 			 server_metrics.other_errors);
 
-	// snprintf(status_info, sizeof(status_info),
-	//          "Server status: %s\n"
-	//          "Current connections: %u\n"
-	//          "Total connections: %u\n"
-	//          "Bytes received: %u\n"
-	//          "Bytes sent: %u\n"
-	//          "Timeouts: %u\n"
-	//          "Server errors: %u\n"
-	//          "Bad requests: %u\n\n"
-	//          "Press OK to continue",
-	//          server_metrics.server_state == 1 ? "Running" : "Stopped",
-	//          server_metrics.n_current_connections,
-	//          server_metrics.n_total_connections,
-	//          server_metrics.n_total_bytes_received,
-	//          server_metrics.n_total_bytes_sent,
-	//          server_metrics.n_timeouts,
-	//          server_metrics.n_server_errors,
-	//          server_metrics.n_bad_requests);
-
 	ui_show_message("Server metrics", status_info);
 }
 
@@ -348,13 +328,12 @@ static void show_logs() {
 static void show_config() {
 	char config_info[1024];
 	snprintf(config_info, sizeof(config_info),
-			 "Current Connection:\n"
-			 "Server Address: %s\n"
-			 "Admin Port: %s\n\n"
-			 "Server Configuration:\n"
-			 "SOCKS5 Port: 1080\n"
-			 "Connection Timeout: 30 seconds\n"
-			 "Buffer Size: 8192 bytes\n\n"
+			 "Current connection:\n"
+			 "Server address: %s\n"
+			 "Admin port: %s\n\n"
+			 "Server configuration:\n"
+			 "Connection timeout: 30 seconds\n"
+			 "Buffer size: 8192 bytes\n\n"
 			 "Press OK to continue",
 			 server_address, server_port);
 
@@ -628,10 +607,8 @@ static void manage_users() {
 
 static void configure_settings() {
 	while (1) {
-		char items[4][2][64] = {{"1", "Change buffer size"},
-								{"2", "Show configurations"},
-								{"3", "Change timeout"},
-								{"4", "Back to main menu"}};
+		char items[4][2][64] = {
+			{"1", "Change buffer size"}, {"2", "Show configurations"}, {"3", "Change timeout"}, {"4", "Back to main menu"}};
 
 		int selected = ui_get_menu_selection("Server settings", "Select an option:", items, 4);
 		if (selected == -1 || selected == 4)
