@@ -380,7 +380,7 @@ static void command_read(struct selector_key *key) {
 	uint8_t arg1 = data[2];
 	uint8_t arg2 = data[3];
 
-	log(DEBUG, "[MANAGEMENT] Command: ver=%d cmd=%d arg1=%d arg2=%d", version, cmd, arg1, arg2);
+	log(DEBUG, "[MANAGEMENT] Command: ver=0x%02x cmd=0x%02x arg1=0x%02x arg2=0x%02x", version, cmd, arg1, arg2);
 
 	if (version != CALSETTING_VERSION) {
 		log(ERROR, "[MANAGEMENT] Wrong version in command: %d", version);
@@ -397,26 +397,20 @@ static void command_read(struct selector_key *key) {
 	// 	return;
 	// }
 
-	buffer_read_adv(rb, REQUEST_SIZE);
-
-	session->current_command = cmd;
-	session->current_arg1 = arg1;
-	session->current_arg2 = arg2;
-
 	// check permissions
-	if (session->user_type != USER_TYPE_ADMIN) {
-		switch (cmd) {
-			case COMMAND_LOGS:
-			case COMMAND_USER_LIST:
-			case COMMAND_CHANGE_BUFFER_SIZE:
-			case COMMAND_CHANGE_TIMEOUT:
-				// admin-only commands
-				log(DEBUG, "[MANAGEMENT] User %s attempted admin command %d", session->username, cmd);
-				set_error_state(session, RESPONSE_NOT_ALLOWED);
-				handle_error(key);
-				return;
-		}
-	}
+	// if (session->user_type != USER_TYPE_ADMIN) {
+	// 	switch (cmd) {
+	// 		case COMMAND_LOGS:
+	// 		case COMMAND_USER_LIST:
+	// 		case COMMAND_CHANGE_BUFFER_SIZE:
+	// 		case COMMAND_CHANGE_TIMEOUT:
+	// 			// admin-only commands
+	// 			log(DEBUG, "[MANAGEMENT] User %s attempted admin command %d", session->username, cmd);
+	// 			set_error_state(session, RESPONSE_NOT_ALLOWED);
+	// 			handle_error(key);
+	// 			return;
+	// 	}
+	// }
 
 	switch (cmd) {
 		case COMMAND_METRICS:
@@ -895,7 +889,7 @@ static void process_add_user_command(management_session *session, uint8_t arg1, 
 
 	buffer *rb = &session->read_buffer;
 	size_t available;
-	uint8_t *data = buffer_read_ptr(rb, &available); // this warning is wrong
+	uint8_t *data = buffer_read_ptr(rb, &available);
 
 	if (available < (size_t) (username_len + password_len)) {
 		return; // wait...
@@ -925,6 +919,7 @@ static void process_add_user_command(management_session *session, uint8_t arg1, 
 	}
 }
 
+// TODO: this function is wrong
 static void process_remove_user_command(management_session *session, uint8_t arg1, uint8_t arg2) {
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);

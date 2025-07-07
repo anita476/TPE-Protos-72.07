@@ -124,10 +124,10 @@ static int authenticate() {
 		}
 
 		int auth_result = hello_read(server_socket);
-		if (auth_result == 1) {
+		if (auth_result == RESPONSE_SUCCESS_ADMIN) {
 			ui_show_message("Success", "Authentication successful. Welcome to the admin panel.");
 			return 1;
-		} else if (auth_result == 0) {
+		} else if (auth_result == RESPONSE_SUCCESS_CLIENT) {
 			ui_show_message("Info", "Authenticated as regular user. Admin privileges required.");
 			close(server_socket);
 			return 0;
