@@ -421,13 +421,13 @@ void fill_log_struct(char * data, client_log_entry_t * log) {
     // Status code (1 byte)
     log->status_code = *ptr++;
     
-    // Optional debug output
-    printf("[CLIENT DEBUG] Parsed log: %s %.*s@%s:%d -> %s:%d (status=0x%02x)\n",
-           log->date,                           
-           log->ulen, log->username, 
-           log->origin_ip, log->origin_port,
-           log->destination_address, log->destination_port, 
-           log->status_code);
+    // Expensive printf for debugging
+    // printf("[CLIENT DEBUG] Parsed log: %s %.*s@%s:%d -> %s:%d (status=0x%02x)\n",
+    //        log->date,                           
+    //        log->ulen, log->username, 
+    //        log->origin_ip, log->origin_port,
+    //        log->destination_address, log->destination_port, 
+    //        log->status_code);
 }
 // void fill_log_struct(char * data, log_entry_t * log) {
 // 	memcpy(log->date,data,DATE_SIZE);

@@ -50,12 +50,6 @@
 #define IPV4_LEN_BYTES             4
 #define IPV6_LEN_BYTES             16
 
-// Configuration limits
-#define MIN_BUFF_SIZE_KB           1
-#define MAX_BUFF_SIZE_KB           64    // Updated to match server (64KB max)
-#define MIN_TIMEOUT_SECONDS        1
-#define MAX_TIMEOUT_SECONDS        60    // Updated to match server (60s max)
-
 // Fixed header lengths
 #define HELLO_HEADER_FIXED_LEN                    3
 #define LOGS_RESPONSE_HEADER_FIXED_LEN           4
@@ -68,6 +62,19 @@
 #define INET6_ADDRSTRLEN 46              // IPv6 address string length
 
 #define LOG_ENTRY_WIRE_SIZE 586 // 21 + 1 + 255 + 1 + 46 + 2 + 1 + 256 + 2 + 1 = 586 bytes
+
+// LIMITS
+// Buffer size limits (in KB for admin interface)
+#define MIN_BUFF_SIZE_KB           1
+#define MAX_BUFF_SIZE_KB           64
+
+// Timeout limits (in seconds)
+#define MIN_TIMEOUT_SECONDS        1
+#define MAX_TIMEOUT_SECONDS        60
+
+// Internal buffer limits (in bytes)
+#define BUFFER_SIZE_MIN            1024        // 1KB
+#define BUFFER_SIZE_MAX            (64 * 1024) // 64KB
 
 // (mucho texto perdon)
 // IMPORTANT: This struct is deliberately ordered and sized to ensure proper alignment.
@@ -117,12 +124,6 @@ typedef struct log_entry_t {
 	uint8_t status_code;
 	// struct log_entry_t * next; //pointer to the next log in the linked list
 } log_entry_t;
-
-// client side 
-typedef struct {
-    log_entry_t *entries;    // Array of log entries
-    uint8_t count;           // Number of entries
-} log_response_t;
 
 typedef struct user_list_entry {
 	uint8_t ulen;

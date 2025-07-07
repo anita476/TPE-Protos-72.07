@@ -15,7 +15,7 @@
 #define MAX_INPUT 256
 
 #define ITEMS_PER_PAGE 10
-#define MAX_DISPLAY_ITEMS 8
+#define MAX_DISPLAY_ITEMS 10
 
 #define DEFAULT_SERVER_ADDRESS "localhost"
 #define DEFAULT_SERVER_PORT "8080"

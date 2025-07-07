@@ -14,6 +14,9 @@
 #define MAX_INPUT_SIZE 256
 #define CLAMP_UINT16(value) ((value) > UINT16_MAX ? UINT16_MAX : (uint16_t) (value))
 
+static log_entry_t *reusable_log_buffer = NULL;
+static size_t reusable_buffer_capacity = 0;
+
 // State machine handlers
 static void management_handle_read(struct selector_key *key);
 static void management_handle_write(struct selector_key *key);
@@ -92,7 +95,7 @@ void management_handle_new_connection(struct selector_key *key) {
 	session->cleaned_up = false;
 
 	// allocating buffers (following SOCKS5 pattern)
-	session->buffer_size = g_socks5_buffer_size;
+	session->buffer_size = g_management_buffer_size;
 	session->raw_read_buffer = malloc(session->buffer_size);
 	session->raw_write_buffer = malloc(session->buffer_size);
 
@@ -545,120 +548,157 @@ VER | STATUS | COUNT | RSV | LOG_ENTRY_1 | LOG_ENTRY_2 | ... | LOG_ENTRY_N
  1   |   1    |   1   |  1  | (586 bytes each)
 Total size: 4 + (586 * COUNT) bytes
 */
-static void process_logs_command(management_session *session, uint8_t number, uint8_t offset) {
-	(void) offset; // to suppress unused parameter warning
+// Example calculation for different buffer sizes:
 
+/*
+Buffer Size | Max Logs | Wire Size per Log | Total Size
+------------|----------|-------------------|------------
+4KB (4096)  |    6     |       586         |   3520
+8KB (8192)  |   13     |       586         |   7622  
+16KB        |   28     |       586         |  16404
+
+*/
+static void process_logs_command(management_session *session, uint8_t number, uint8_t offset) {
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);
 
-	log_entry_t log_buffer[g_log_buffer_size];
-	int max_to_get = (number > g_log_buffer_size) ? g_log_buffer_size : number;
-	int actual_count = get_recent_logs(log_buffer, max_to_get, offset);
+	size_t available = g_management_buffer_size - LOGS_RESPONSE_HEADER_FIXED_LEN;
+    int max_logs_per_response = (int)available / LOG_ENTRY_WIRE_SIZE;
 
-	size_t log_entry_size = LOG_ENTRY_WIRE_SIZE;
-	size_t total_size = 4 + (actual_count * log_entry_size);
+	log(DEBUG, "[MANAGEMENT] Buffer can handle max %d logs per response", max_logs_per_response);
 
-	if (buffer_writeable_bytes(wb) < total_size) {
-		return;
-	}
+	if (max_logs_per_response <= 0) {
+        log(ERROR, "[MANAGEMENT] Buffer too small for even one log entry");
+        buffer_write(wb, CALSETTING_VERSION);
+        buffer_write(wb, RESPONSE_GENERAL_SERVER_FAILURE);
+        buffer_write(wb, 0);
+        buffer_write(wb, 0);
+        return;
+    }
 
-	size_t available_bytes;
-	uint8_t *write_ptr = buffer_write_ptr(wb, &available_bytes);
-	
-	if (available_bytes < 4) {
-		return;
-	}
-	
-	write_ptr[0] = CALSETTING_VERSION;
-	write_ptr[1] = RESPONSE_SUCCESS_ADMIN;
-	write_ptr[2] = actual_count;
-	write_ptr[3] = 0;
-	buffer_write_adv(wb, 4);
+	// Cap the request to what fits in buffer
+    int logs_to_fetch = (number > max_logs_per_response) ? max_logs_per_response : number;
 
-	// Write real log entries
-	for (int i = 0; i < actual_count; i++) {
-		log_entry_t *entry = &log_buffer[i];
+	if (logs_to_fetch != number) {
+        log(DEBUG, "[MANAGEMENT] Capping request from %d to %d logs (buffer limit)", 
+            number, logs_to_fetch);
+    }
 
-		write_ptr = buffer_write_ptr(wb, &available_bytes);
-		if (available_bytes < log_entry_size) {
-			return;
-		}
+    log_entry_t *log_buffer = get_reusable_log_buffer(logs_to_fetch);
+    if (!log_buffer) {
+        log(ERROR, "[MANAGEMENT] Failed to allocate temp log buffer");
+        buffer_write(wb, CALSETTING_VERSION);
+        buffer_write(wb, RESPONSE_GENERAL_SERVER_FAILURE);
+        buffer_write(wb, 0);
+        buffer_write(wb, 0);
+        return;
+    }
 
-		size_t entry_offset = 0;
+	int actual_count = get_recent_logs(log_buffer, logs_to_fetch, offset);
 
-		// Date (21 bytes) - already optimized with memcpy
-		memcpy(write_ptr + entry_offset, entry->date, 21);
-		entry_offset += 21;
+	log(DEBUG, "[MANAGEMENT] Retrieved %d logs from offset %d", actual_count, offset);
 
-		// Username length (1 byte)
-		write_ptr[entry_offset] = entry->ulen;
-		entry_offset += 1;
-		
-		// Username (255 bytes) - write in chunks
-		size_t username_len = entry->ulen;
-		if (username_len > 0) {
-			memcpy(write_ptr + entry_offset, entry->username, username_len);
-		}
+	size_t total_size = LOGS_RESPONSE_HEADER_FIXED_LEN + (actual_count * LOG_ENTRY_WIRE_SIZE);
+    
+    // This should never fail since we calculated based on buffer size
+    if (buffer_writeable_bytes(wb) < total_size) {
+        log(ERROR, "[MANAGEMENT] CRITICAL: Buffer calculation error! Need %zu, have %zu", total_size, buffer_writeable_bytes(wb));
+        free(log_buffer);
+        buffer_write(wb, CALSETTING_VERSION);
+        buffer_write(wb, RESPONSE_GENERAL_SERVER_FAILURE);
+        buffer_write(wb, 0);
+        buffer_write(wb, 0);
+        return;
+    }
 
-		// Zero-fill remaining bytes if username is shorter than 255
-		if (username_len < 255) {
-			memset(write_ptr + entry_offset + username_len, 0, 255 - username_len);
-		}
-		entry_offset += 255;
+	buffer_write(wb, CALSETTING_VERSION);
+    buffer_write(wb, RESPONSE_SUCCESS_ADMIN);
+    buffer_write(wb, actual_count);
+    buffer_write(wb, 0);
 
-		// Register type (1 byte)
-		write_ptr[entry_offset] = entry->register_type;
-		entry_offset += 1;
+	// Write each log entry (payload)
+	 for (int i = 0; i < actual_count; i++) {
+        log_entry_t *entry = &log_buffer[i];
 
-		// Origin IP (46 bytes) - write in chunks
-		size_t origin_ip_len = strlen(entry->origin_ip);
-		if (origin_ip_len > 0) {
-			size_t copy_len = (origin_ip_len > 46) ? 46 : origin_ip_len;
-			memcpy(write_ptr + entry_offset, entry->origin_ip, copy_len);
-			if (copy_len < 46) {
-				memset(write_ptr + entry_offset + copy_len, 0, 46 - copy_len);
-			}
-		} else {
-			memset(write_ptr + entry_offset, 0, 46);
-		}
-		entry_offset += 46;
+        size_t available_bytes;
+        uint8_t *write_ptr = buffer_write_ptr(wb, &available_bytes);
 
-		// Origin port (2 bytes, big-endian)
-		write_ptr[entry_offset] = (entry->origin_port >> 8) & 0xFF;
-		write_ptr[entry_offset + 1] = entry->origin_port & 0xFF;
-		entry_offset += 2;
+        if (available_bytes < LOG_ENTRY_WIRE_SIZE) {
+            log(ERROR, "[MANAGEMENT] Buffer exhausted at entry %d/%d", i, actual_count);
+            return;
+        }
 
-		// Destination ATYP (1 byte)
-		write_ptr[entry_offset] = entry->destination_ATYP;
-		entry_offset += 1;
+        size_t entry_offset = 0;
 
-		// Destination address (256 bytes) - write in chunks
-		size_t dest_addr_len = strlen(entry->destination_address);
-		if (dest_addr_len > 0) {
-			size_t copy_len = (dest_addr_len > 256) ? 256 : dest_addr_len;
-			memcpy(write_ptr + entry_offset, entry->destination_address, copy_len);
-			if (copy_len < 256) {
-				memset(write_ptr + entry_offset + copy_len, 0, 256 - copy_len);
-			}
-		} else {
-			memset(write_ptr + entry_offset, 0, 256);
-		}
-		entry_offset += 256;
+        // Date (21 bytes)
+        memcpy(write_ptr + entry_offset, entry->date, 21);
+        entry_offset += 21;
 
-		// Destination port (2 bytes, big-endian)
-		write_ptr[entry_offset] = (entry->destination_port >> 8) & 0xFF;
-		write_ptr[entry_offset + 1] = entry->destination_port & 0xFF;
-		entry_offset += 2;
+        // Username length (1 byte)
+        write_ptr[entry_offset] = entry->ulen;
+        entry_offset += 1;
+        
+        // Username (255 bytes)
+        size_t username_len = entry->ulen;
+        if (username_len > 0) {
+            memcpy(write_ptr + entry_offset, entry->username, username_len);
+        }
+        if (username_len < 255) {
+            memset(write_ptr + entry_offset + username_len, 0, 255 - username_len);
+        }
+        entry_offset += 255;
 
-		// Status code (1 byte)
-		write_ptr[entry_offset] = entry->status_code;
-		entry_offset += 1;
+        // Register type (1 byte)
+        write_ptr[entry_offset] = entry->register_type;
+        entry_offset += 1;
 
-		// Advance the buffer by the entire log entry size
-		buffer_write_adv(wb, log_entry_size);
-	}
+        // Origin IP (46 bytes)
+        size_t origin_ip_len = strlen(entry->origin_ip);
+        if (origin_ip_len > 0) {
+            size_t copy_len = (origin_ip_len > 46) ? 46 : origin_ip_len;
+            memcpy(write_ptr + entry_offset, entry->origin_ip, copy_len);
+            if (copy_len < 46) {
+                memset(write_ptr + entry_offset + copy_len, 0, 46 - copy_len);
+            }
+        } else {
+            memset(write_ptr + entry_offset, 0, 46);
+        }
+        entry_offset += 46;
 
-	log(DEBUG, "[MANAGEMENT] Sent %d real log entries", actual_count);
+        // Origin port (2 bytes, big-endian)
+        write_ptr[entry_offset] = (entry->origin_port >> 8) & 0xFF;
+        write_ptr[entry_offset + 1] = entry->origin_port & 0xFF;
+        entry_offset += 2;
+
+        // Destination ATYP (1 byte)
+        write_ptr[entry_offset] = entry->destination_ATYP;
+        entry_offset += 1;
+
+        // Destination address (256 bytes)
+        size_t dest_addr_len = strlen(entry->destination_address);
+        if (dest_addr_len > 0) {
+            size_t copy_len = (dest_addr_len > 256) ? 256 : dest_addr_len;
+            memcpy(write_ptr + entry_offset, entry->destination_address, copy_len);
+            if (copy_len < 256) {
+                memset(write_ptr + entry_offset + copy_len, 0, 256 - copy_len);
+            }
+        } else {
+            memset(write_ptr + entry_offset, 0, 256);
+        }
+        entry_offset += 256;
+
+        // Destination port (2 bytes, big-endian)
+        write_ptr[entry_offset] = (entry->destination_port >> 8) & 0xFF;
+        write_ptr[entry_offset + 1] = entry->destination_port & 0xFF;
+        entry_offset += 2;
+
+        // Status code (1 byte)
+        write_ptr[entry_offset] = entry->status_code;
+
+        buffer_write_adv(wb, LOG_ENTRY_WIRE_SIZE);
+    }
+
+    log(DEBUG, "[MANAGEMENT] Successfully sent %d logs for offset %d", actual_count, offset);
 }
 
 // TODO: implement actual user retrieval
@@ -835,6 +875,12 @@ static void cleanup_session(management_session *session) {
 		session->raw_write_buffer = NULL;
 	}
 
+	if (reusable_log_buffer) {
+        free(reusable_log_buffer);
+        reusable_log_buffer = NULL;
+        reusable_buffer_capacity = 0;
+    }
+
 	session->cleaned_up = true;
 	log(DEBUG, "[MANAGEMENT] Session cleanup complete");
 }
@@ -864,4 +910,20 @@ static uint8_t authenticate_user(const char *username, const char *password) {
 	}
 
 	return RESPONSE_AUTH_FAILURE;
+}
+
+static log_entry_t* get_reusable_log_buffer(size_t required_count) {
+    if (required_count > reusable_buffer_capacity) {
+        log_entry_t *new_buffer = realloc(reusable_log_buffer, required_count * sizeof(log_entry_t));
+        if (!new_buffer) {
+            log(ERROR, "[MANAGEMENT] Failed to resize reusable buffer to %zu entries", required_count);
+            return NULL;
+        }
+        
+        reusable_log_buffer = new_buffer;
+        reusable_buffer_capacity = required_count;
+        log(DEBUG, "[MANAGEMENT] Resized reusable buffer to %zu entries", required_count);
+    }
+    
+    return reusable_log_buffer;
 }

@@ -20,8 +20,7 @@ Enter username:
 +----------------------------------------------------------+
 
 Enter password:
-> *****[H[2J[3J
-+----------------------------------------------------------+
+> [H[2J[3J+----------------------------------------------------------+
 |                         Success                          |
 +----------------------------------------------------------+
 
@@ -43,14 +42,32 @@ Select an option:
 Enter your choice (1-5): [H[2J[3J[CLIENT DEBUG] request_send: cmd=0, arg1=10, arg2=0
 [CLIENT DEBUG] Sending: [0x01, 0x00, 0x0a, 0x00]
 [CLIENT DEBUG] send_all returned: 4 (expected: 4)
-[CLIENT DEBUG] Parsed log: 2025-07-07T04:42:05 admin@::ffff:192.168.65.1:54088 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:49 nep@::ffff:192.168.65.1:61403 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:47 nep@::ffff:192.168.65.1:59120 -> 3.233.51.125:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:46 nep@::ffff:192.168.65.1:18788 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:32 nep@::ffff:192.168.65.1:25888 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:30 nep@::ffff:192.168.65.1:63277 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:28 nep@::ffff:192.168.65.1:42107 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:25 nep@::ffff:192.168.65.1:49865 -> 3.233.51.125:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:24 nep@::ffff:192.168.65.1:57873 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:23 nep@::ffff:192.168.65.1:46572 -> 3.229.116.23:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:21 nep@::ffff:192.168.65.1:58005 -> 44.207.188.95:443 (status=0x00)
 +----------------------------------------------------------+
 |                       Server logs                        |
 +----------------------------------------------------------+
 
   Server logs (Page 1):
-  1. [2025-07-07T04:42:05] admin -> 54.243.106.191:443 (0x00)
-  Showing 1 of 1 logs on this page
+  1. [2025-07-07T18:44:49] nep -> 54.243.106.191:443 (0x00)
+  2. [2025-07-07T18:44:47] nep -> 3.233.51.125:443 (0x00)
+  3. [2025-07-07T18:44:46] nep -> 44.207.188.95:443 (0x00)
+  4. [2025-07-07T18:44:32] nep -> 44.207.188.95:443 (0x00)
+  5. [2025-07-07T18:44:30] nep -> 44.207.188.95:443 (0x00)
+  6. [2025-07-07T18:44:28] nep -> 44.207.188.95:443 (0x00)
+  7. [2025-07-07T18:44:25] nep -> 3.233.51.125:443 (0x00)
+  8. [2025-07-07T18:44:24] nep -> 54.243.106.191:443 (0x00)
+  9. [2025-07-07T18:44:23] nep -> 3.229.116.23:443 (0x00)
+  10. [2025-07-07T18:44:21] nep -> 44.207.188.95:443 (0x00)
+  Showing 10 of 10 logs on this page
   Press OK to continue
 
 
@@ -60,9 +77,77 @@ Press any key to continue...[H[2J[3J+----------------------------------------
 
 Choose navigation option:
 
-  1. Back to menu
+  1. Next page
+  2. Back to menu
 
-Enter your choice (1-1): [H[2J[3J+----------------------------------------------------------+
+Enter your choice (1-2): [H[2J[3J[CLIENT DEBUG] request_send: cmd=0, arg1=10, arg2=10
+[CLIENT DEBUG] Sending: [0x01, 0x00, 0x0a, 0x0a]
+[CLIENT DEBUG] send_all returned: 4 (expected: 4)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:58 nep@::ffff:192.168.65.1:65423 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:56 nep@::ffff:192.168.65.1:46620 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:48 nep@::ffff:192.168.65.1:21681 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:46 nep@::ffff:192.168.65.1:49196 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:44 nep@::ffff:192.168.65.1:40716 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:42 nep@::ffff:192.168.65.1:51087 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:41 nep@::ffff:192.168.65.1:35836 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:38 nep@::ffff:192.168.65.1:58940 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:25 nep@::ffff:192.168.65.1:32832 -> 3.229.116.23:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:19 nep@::ffff:192.168.65.1:25135 -> 3.233.51.125:443 (status=0x00)
++----------------------------------------------------------+
+|                       Server logs                        |
++----------------------------------------------------------+
+
+  Server logs (Page 2):
+  11. [2025-07-07T18:41:58] nep -> 54.243.106.191:443 (0x00)
+  12. [2025-07-07T18:41:56] nep -> 54.243.106.191:443 (0x00)
+  13. [2025-07-07T18:41:48] nep -> 54.243.106.191:443 (0x00)
+  14. [2025-07-07T18:41:46] nep -> 54.243.106.191:443 (0x00)
+  15. [2025-07-07T18:41:44] nep -> 54.243.106.191:443 (0x00)
+  16. [2025-07-07T18:41:42] nep -> 54.243.106.191:443 (0x00)
+  17. [2025-07-07T18:41:41] nep -> 54.243.106.191:443 (0x00)
+  18. [2025-07-07T18:41:38] nep -> 54.243.106.191:443 (0x00)
+  19. [2025-07-07T18:41:25] nep -> 3.229.116.23:443 (0x00)
+  20. [2025-07-07T18:41:19] nep -> 3.233.51.125:443 (0x00)
+  Showing 10 of 10 logs on this page
+  Press OK to continue
+
+
+Press any key to continue...[H[2J[3J+----------------------------------------------------------+
+|                   Server logs - Page 2                   |
++----------------------------------------------------------+
+
+Choose navigation option:
+
+  1. Previous page
+  2. Next page
+  3. Back to menu
+
+Enter your choice (1-3): [H[2J[3J[CLIENT DEBUG] request_send: cmd=0, arg1=10, arg2=20
+[CLIENT DEBUG] Sending: [0x01, 0x00, 0x0a, 0x14]
+[CLIENT DEBUG] send_all returned: 4 (expected: 4)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:18 nep@::ffff:192.168.65.1:39014 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:16 nep@::ffff:192.168.65.1:48034 -> 44.207.188.95:443 (status=0x00)
++----------------------------------------------------------+
+|                       Server logs                        |
++----------------------------------------------------------+
+
+  Server logs (Page 3):
+  21. [2025-07-07T18:41:18] nep -> 54.243.106.191:443 (0x00)
+  22. [2025-07-07T18:41:16] nep -> 44.207.188.95:443 (0x00)
+  Showing 2 of 2 logs on this page
+  Press OK to continue
+
+
+Press any key to continue...[H[2J[3J+----------------------------------------------------------+
+|                   Server logs - Page 3                   |
++----------------------------------------------------------+
+
+Choose navigation option:
+
+  1. Previous page
+  2. Back to menu
+
+Enter your choice (1-2): [H[2J[3J+----------------------------------------------------------+
 |                     Admin interface                      |
 +----------------------------------------------------------+
 
@@ -77,23 +162,148 @@ Select an option:
 Enter your choice (1-5): [H[2J[3J[CLIENT DEBUG] request_send: cmd=0, arg1=10, arg2=0
 [CLIENT DEBUG] Sending: [0x01, 0x00, 0x0a, 0x00]
 [CLIENT DEBUG] send_all returned: 4 (expected: 4)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:27 nep@::ffff:192.168.65.1:61261 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:25 nep@::ffff:192.168.65.1:49910 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:23 nep@::ffff:192.168.65.1:35580 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:22 nep@::ffff:192.168.65.1:43961 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:20 nep@::ffff:192.168.65.1:63040 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:19 nep@::ffff:192.168.65.1:20060 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:18 nep@::ffff:192.168.65.1:18557 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:16 nep@::ffff:192.168.65.1:40394 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:15 nep@::ffff:192.168.65.1:56434 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:12 nep@::ffff:192.168.65.1:19179 -> 3.229.116.23:443 (status=0x00)
 +----------------------------------------------------------+
-|                           Info                           |
+|                       Server logs                        |
 +----------------------------------------------------------+
 
-  No logs available
+  Server logs (Page 1):
+  1. [2025-07-07T18:45:27] nep -> 44.207.188.95:443 (0x00)
+  2. [2025-07-07T18:45:25] nep -> 44.207.188.95:443 (0x00)
+  3. [2025-07-07T18:45:23] nep -> 44.207.188.95:443 (0x00)
+  4. [2025-07-07T18:45:22] nep -> 44.207.188.95:443 (0x00)
+  5. [2025-07-07T18:45:20] nep -> 44.207.188.95:443 (0x00)
+  6. [2025-07-07T18:45:19] nep -> 44.207.188.95:443 (0x00)
+  7. [2025-07-07T18:45:18] nep -> 44.207.188.95:443 (0x00)
+  8. [2025-07-07T18:45:16] nep -> 44.207.188.95:443 (0x00)
+  9. [2025-07-07T18:45:15] nep -> 44.207.188.95:443 (0x00)
+  10. [2025-07-07T18:45:12] nep -> 3.229.116.23:443 (0x00)
+  Showing 10 of 10 logs on this page
+  Press OK to continue
 
 
 Press any key to continue...[H[2J[3J+----------------------------------------------------------+
-|                     Admin interface                      |
+|                   Server logs - Page 1                   |
 +----------------------------------------------------------+
 
-Select an option:
+Choose navigation option:
 
-  1. View metrics
-  2. View logs
-  3. Manage users
-  4. Manage settings
-  5. Exit
+  1. Next page
+  2. Back to menu
 
-Enter your choice (1-5): [H[2J[3J
+Enter your choice (1-2): [H[2J[3J[CLIENT DEBUG] request_send: cmd=0, arg1=10, arg2=10
+[CLIENT DEBUG] Sending: [0x01, 0x00, 0x0a, 0x0a]
+[CLIENT DEBUG] send_all returned: 4 (expected: 4)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:10 nep@::ffff:192.168.65.1:46925 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:09 nep@::ffff:192.168.65.1:60032 -> 3.233.51.125:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:45:05 nep@::ffff:192.168.65.1:42417 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:49 nep@::ffff:192.168.65.1:61403 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:47 nep@::ffff:192.168.65.1:59120 -> 3.233.51.125:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:46 nep@::ffff:192.168.65.1:18788 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:32 nep@::ffff:192.168.65.1:25888 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:30 nep@::ffff:192.168.65.1:63277 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:28 nep@::ffff:192.168.65.1:42107 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:25 nep@::ffff:192.168.65.1:49865 -> 3.233.51.125:443 (status=0x00)
++----------------------------------------------------------+
+|                       Server logs                        |
++----------------------------------------------------------+
+
+  Server logs (Page 2):
+  11. [2025-07-07T18:45:10] nep -> 54.243.106.191:443 (0x00)
+  12. [2025-07-07T18:45:09] nep -> 3.233.51.125:443 (0x00)
+  13. [2025-07-07T18:45:05] nep -> 44.207.188.95:443 (0x00)
+  14. [2025-07-07T18:44:49] nep -> 54.243.106.191:443 (0x00)
+  15. [2025-07-07T18:44:47] nep -> 3.233.51.125:443 (0x00)
+  16. [2025-07-07T18:44:46] nep -> 44.207.188.95:443 (0x00)
+  17. [2025-07-07T18:44:32] nep -> 44.207.188.95:443 (0x00)
+  18. [2025-07-07T18:44:30] nep -> 44.207.188.95:443 (0x00)
+  19. [2025-07-07T18:44:28] nep -> 44.207.188.95:443 (0x00)
+  20. [2025-07-07T18:44:25] nep -> 3.233.51.125:443 (0x00)
+  Showing 10 of 10 logs on this page
+  Press OK to continue
+
+
+Press any key to continue...[H[2J[3J+----------------------------------------------------------+
+|                   Server logs - Page 2                   |
++----------------------------------------------------------+
+
+Choose navigation option:
+
+  1. Previous page
+  2. Next page
+  3. Back to menu
+
+Enter your choice (1-3): [H[2J[3J[CLIENT DEBUG] request_send: cmd=0, arg1=10, arg2=20
+[CLIENT DEBUG] Sending: [0x01, 0x00, 0x0a, 0x14]
+[CLIENT DEBUG] send_all returned: 4 (expected: 4)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:24 nep@::ffff:192.168.65.1:57873 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:23 nep@::ffff:192.168.65.1:46572 -> 3.229.116.23:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:44:21 nep@::ffff:192.168.65.1:58005 -> 44.207.188.95:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:58 nep@::ffff:192.168.65.1:65423 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:56 nep@::ffff:192.168.65.1:46620 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:48 nep@::ffff:192.168.65.1:21681 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:46 nep@::ffff:192.168.65.1:49196 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:44 nep@::ffff:192.168.65.1:40716 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:42 nep@::ffff:192.168.65.1:51087 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:41 nep@::ffff:192.168.65.1:35836 -> 54.243.106.191:443 (status=0x00)
++----------------------------------------------------------+
+|                       Server logs                        |
++----------------------------------------------------------+
+
+  Server logs (Page 3):
+  21. [2025-07-07T18:44:24] nep -> 54.243.106.191:443 (0x00)
+  22. [2025-07-07T18:44:23] nep -> 3.229.116.23:443 (0x00)
+  23. [2025-07-07T18:44:21] nep -> 44.207.188.95:443 (0x00)
+  24. [2025-07-07T18:41:58] nep -> 54.243.106.191:443 (0x00)
+  25. [2025-07-07T18:41:56] nep -> 54.243.106.191:443 (0x00)
+  26. [2025-07-07T18:41:48] nep -> 54.243.106.191:443 (0x00)
+  27. [2025-07-07T18:41:46] nep -> 54.243.106.191:443 (0x00)
+  28. [2025-07-07T18:41:44] nep -> 54.243.106.191:443 (0x00)
+  29. [2025-07-07T18:41:42] nep -> 54.243.106.191:443 (0x00)
+  30. [2025-07-07T18:41:41] nep -> 54.243.106.191:443 (0x00)
+  Showing 10 of 10 logs on this page
+  Press OK to continue
+
+
+Press any key to continue...[H[2J[3J+----------------------------------------------------------+
+|                   Server logs - Page 3                   |
++----------------------------------------------------------+
+
+Choose navigation option:
+
+  1. Previous page
+  2. Next page
+  3. Back to menu
+
+Enter your choice (1-3): [H[2J[3J[CLIENT DEBUG] request_send: cmd=0, arg1=10, arg2=30
+[CLIENT DEBUG] Sending: [0x01, 0x00, 0x0a, 0x1e]
+[CLIENT DEBUG] send_all returned: 4 (expected: 4)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:38 nep@::ffff:192.168.65.1:58940 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:25 nep@::ffff:192.168.65.1:32832 -> 3.229.116.23:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:19 nep@::ffff:192.168.65.1:25135 -> 3.233.51.125:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:18 nep@::ffff:192.168.65.1:39014 -> 54.243.106.191:443 (status=0x00)
+[CLIENT DEBUG] Parsed log: 2025-07-07T18:41:16 nep@::ffff:192.168.65.1:48034 -> 44.207.188.95:443 (status=0x00)
++----------------------------------------------------------+
+|                       Server logs                        |
++----------------------------------------------------------+
+
+  Server logs (Page 4):
+  31. [2025-07-07T18:41:38] nep -> 54.243.106.191:443 (0x00)
+  32. [2025-07-07T18:41:25] nep -> 3.229.116.23:443 (0x00)
+  33. [2025-07-07T18:41:19] nep -> 3.233.51.125:443 (0x00)
+  34. [2025-07-07T18:41:18] nep -> 54.243.106.191:443 (0x00)
+  35. [2025-07-07T18:41:16] nep -> 44.207.188.95:443 (0x00)
+  Showing 5 of 5 logs on this page
+  Press OK to continue
+
+
+Press any key to continue...

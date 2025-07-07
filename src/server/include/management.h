@@ -11,8 +11,6 @@
 #define TIMEOUT_SEC_MAX 60
 #define TIMEOUT_SEC_MIN 1
 
-#define MANAGEMENT_VERSION 0x01
-
 // Management connection states (similar to SOCKS5 states)
 typedef enum {
     MNG_STATE_HELLO_READ,       // Reading authentication request
