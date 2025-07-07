@@ -18,11 +18,15 @@
 #define LOGS_RESPONSE_HEADER_FIXED_LEN 4
 #define GET_USERS_RESPONSE_HEADER_FIXED_LEN 4
 #define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
+#define SERVER_CONFIG_RESPONSE_LEN 4
+#define ADD_USER_FIXED_HEADER_LEN 4
+#define REMOVE_USER_FIXED_HEADER_LEN 3
 
 metrics_t * handle_metrics_response(int sock, metrics_t * m);
 void fill_log_struct(char * data, client_log_entry_t * log);
 void fill_user_list_entry(char * data, user_list_entry * user, uint8_t pack_id);
-
+uint8_t add_user_send_req(int sock, char * username, char * password, uint8_t user_type_command_code);
+uint8_t remove_user_send_req(int sock, char * username);
 static uint8_t user_type;
 
 static uint8_t get_user_type() {
@@ -157,6 +161,93 @@ int request_send(uint8_t command_code, uint8_t arg_1, uint8_t arg_2, int sock) {
     return 0;
 }
 
+uint8_t handle_add_client(int sock, char * username, char * password) {
+	if (uint8_t r = add_user_send_req(sock, username, password, COMMAND_ADD_CLIENT) != 0) {
+		return r; // Failed to send request
+	}
+	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
+	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
+	}
+	return response[1]; // Return the response code
+
+}
+uint8_t handle_add_admin(int sock, char * username, char * password) {
+	if (uint8_t r = add_user_send_req(sock, username, password, COMMAND_ADD_ADMIN) != 0) {
+		return r; // Failed to send request
+	}
+	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
+	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
+	}
+	return response[1]; // Return the response code
+}
+
+uint8_t add_user_send_req(int sock, char * username, char * password, uint8_t user_type_command_code) {
+	if (user_type != USER_TYPE_ADMIN) {
+		return RESPONSE_NOT_ALLOWED; // Only admin can add users
+	}
+	if (sock < 0) {
+		return RESPONSE_BAD_REQUEST; // Invalid socket
+	}
+	const unsigned int raw_len_usrname = strlen(username);
+	const unsigned int raw_len_pwd = strlen(password);
+	if (raw_len_usrname > USERNAME_MAX_SIZE || raw_len_pwd > PASSWORD_MAX_SIZE || raw_len_usrname == 0 || raw_len_pwd == 0) {
+		return RESPONSE_BAD_REQUEST; // Username too long
+	}
+	uint8_t username_len = raw_len_usrname;
+	uint8_t password_len = raw_len_pwd;
+	char data[username_len + password_len + ADD_USER_FIXED_HEADER_LEN];
+	uint8_t * data_ptr = data;
+	data_ptr[0] = METRICS_PROTOCOL_VERSION;
+	data_ptr[1] = user_type_command_code;
+	data_ptr[2] = username_len;
+	data_ptr[3] = password_len;
+	data_ptr += ADD_USER_FIXED_HEADER_LEN;
+	memcpy(data_ptr, username, username_len);
+	data_ptr += username_len;
+	memcpy(data_ptr, password, password_len);
+	if (send_all(sock, data, username_len + password_len + ADD_USER_FIXED_HEADER_LEN) != username_len + password_len + ADD_USER_FIXED_HEADER_LEN) {
+		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to send request
+	}
+	return 0;
+}
+
+uint8_t handle_remove_user(int sock, char * username) {
+	remove_user_send_req(sock, username);
+	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
+	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
+	}
+	return response[1]; // Return the response code
+}
+uint8_t remove_user_send_req(int sock, char * username) {
+	if (user_type != USER_TYPE_ADMIN) {
+		return RESPONSE_NOT_ALLOWED; // Only admin can add users
+	}
+	if (sock < 0) {
+		return RESPONSE_BAD_REQUEST; // Invalid socket
+	}
+	const unsigned int raw_len_usrname = strlen(username);
+	if (raw_len_usrname > USERNAME_MAX_SIZE  || raw_len_usrname == 0 ) {
+		return RESPONSE_BAD_REQUEST; // Username too long
+	}
+	uint8_t username_len = raw_len_usrname;
+
+
+	char data[username_len +  REMOVE_USER_FIXED_HEADER_LEN];
+	uint8_t * data_ptr = data;
+	data_ptr[0] = METRICS_PROTOCOL_VERSION;
+	data_ptr[1] = COMMAND_REMOVE_USER;
+	data_ptr[2] = username_len;
+	data_ptr += REMOVE_USER_FIXED_HEADER_LEN;
+	memcpy(data_ptr, username, username_len);
+	if (send_all(sock, data, username_len + REMOVE_USER_FIXED_HEADER_LEN) != username_len + REMOVE_USER_FIXED_HEADER_LEN) {
+		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to send request
+	}
+	return 0;
+}
+
 uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
 	printf("[CLIENT DEBUG] Starting buffer size change: size=%d\n", new_size);
     printf("[CLIENT DEBUG] User type: %d (Admin=%d)\n", user_type, USER_TYPE_ADMIN);
@@ -240,6 +331,30 @@ uint8_t handle_change_timeout(int sock, uint8_t new_timeout) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
 	}
 	return response[1]; // Return the response code
+}
+
+server_current_config * handle_get_current_config(int sock, server_current_config * config) {
+	if (user_type != USER_TYPE_ADMIN) {
+		return NULL; // Only admin can get current config
+	}
+	if (config == NULL) {
+		return NULL; // Invalid config pointer
+	}
+	if (sock < 0) {
+		return NULL; // Invalid socket
+	}
+
+	if (request_send(COMMAND_GET_CURRENT_CONFIG, RESERVED_BYTE, RESERVED_BYTE, sock) != 0) {
+		return NULL; // Failed to send request
+	}
+
+	char response[SERVER_CONFIG_RESPONSE_LEN];
+	if (recv_all(sock, response, SERVER_CONFIG_RESPONSE_LEN) != SERVER_CONFIG_RESPONSE_LEN) {
+		return NULL; // Failed to read current config
+	}
+	config->buffer_size_kb = response[1];
+	config->timeout_seconds = response[2];
+	return config; // Return the filled server_current_config structure
 }
 
 metrics_t * handle_metrics(int sock, metrics_t * m) {
