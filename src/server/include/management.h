@@ -6,10 +6,10 @@
 #include "buffer.h"
 #include "metrics.h"
 
-#define BUFFER_SIZE_MAX 1024 * 64
-#define BUFFER_SIZE_MIN 1024
-#define TIMEOUT_SEC_MAX 60
-#define TIMEOUT_SEC_MIN 1
+// #define BUFFER_SIZE_MAX 1024 * 64
+// #define BUFFER_SIZE_MIN 1024
+// #define TIMEOUT_SEC_MAX 60
+// #define TIMEOUT_SEC_MIN 1
 
 // Management connection states (similar to SOCKS5 states)
 typedef enum {

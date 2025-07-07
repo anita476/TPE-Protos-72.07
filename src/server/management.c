@@ -14,9 +14,6 @@
 #define MAX_INPUT_SIZE 256
 #define CLAMP_UINT16(value) ((value) > UINT16_MAX ? UINT16_MAX : (uint16_t) (value))
 
-static log_entry_t *reusable_log_buffer = NULL;
-static size_t reusable_buffer_capacity = 0;
-
 // State machine handlers
 static void management_handle_read(struct selector_key *key);
 static void management_handle_write(struct selector_key *key);
@@ -41,13 +38,17 @@ static void set_error_state(management_session *session, uint8_t error_code);
 static void cleanup_session(management_session *session);
 static bool write_to_client(struct selector_key *key, bool should_close);
 static uint8_t authenticate_user(const char *username, const char *password);
+static log_entry_t* get_reusable_log_buffer(size_t required_count);
 
 // External configuration variables
 extern size_t g_socks5_buffer_size;
 extern int g_connection_timeout;
-extern int g_log_buffer_size;
+extern size_t g_management_buffer_size;
 extern struct users *us;
 extern uint8_t nusers;
+
+static log_entry_t *reusable_log_buffer = NULL;
+static size_t reusable_buffer_capacity = 0;
 
 /**************** Handler structures (following SOCKS5 pattern) *****************/
 
@@ -701,25 +702,79 @@ static void process_logs_command(management_session *session, uint8_t number, ui
     log(DEBUG, "[MANAGEMENT] Successfully sent %d logs for offset %d", actual_count, offset);
 }
 
-// TODO: implement actual user retrieval
 static void process_userlist_command(management_session *session, uint8_t number, uint8_t offset) {
-	buffer *wb = &session->write_buffer;
-	buffer_reset(wb);
+    buffer *wb = &session->write_buffer;
+    buffer_reset(wb);
 
-	if (buffer_writeable_bytes(wb) < GET_USERS_RESPONSE_HEADER_FIXED_LEN) {
-		log(ERROR, "[MANAGEMENT] No space for user list response");
-		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
-		return;
-	}
+    uint8_t total_users = nusers;
+    uint8_t users_to_send = 0;
+    
+    if (offset >= total_users) {
+        // Invalid offset, send empty response
+        if (buffer_writeable_bytes(wb) < GET_USERS_RESPONSE_HEADER_FIXED_LEN) {
+            log(ERROR, "[MANAGEMENT] No space for user list response");
+            set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
+            return;
+        }
+        
+        buffer_write(wb, CALSETTING_VERSION);
+        buffer_write(wb, 1); // package_id
+        buffer_write(wb, 0); // nusers = 0
+        buffer_write(wb, 0); // reserved
+        return;
+    }
+    
+    uint8_t remaining_users = total_users - offset;
+    users_to_send = (number > remaining_users) ? remaining_users : number;
+    
+    // Calculate required space for variable-length entries
+    size_t required_space = GET_USERS_RESPONSE_HEADER_FIXED_LEN;
+    for (uint8_t i = 0; i < users_to_send; i++) {
+        uint8_t user_index = offset + i;
+        if (user_index < nusers) {
+            uint8_t username_len = strlen(us[user_index].name);
+            if (username_len > 255) username_len = 255; // Limit to uint8_t max
+            required_space += 1 + username_len + 1 + 1; // ulen + username + user_type + package_id
+        }
+    }
+    
+    if (buffer_writeable_bytes(wb) < required_space) {
+        log(ERROR, "[MANAGEMENT] No space for user list response (need %zu bytes)", required_space);
+        set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
+        return;
+    }
 
-	// send user list header (TODO: implement actual user retrieval)
-	buffer_write(wb, CALSETTING_VERSION);
-	buffer_write(wb, 1); // package_id
-	buffer_write(wb, 0); // nusers (no users for now)
-	buffer_write(wb, 0); // reserved
+    buffer_write(wb, CALSETTING_VERSION);
+    buffer_write(wb, 1); // package_id
+    buffer_write(wb, users_to_send);
+    buffer_write(wb, 0); // reserved
 
-	log(DEBUG, "[MANAGEMENT] Prepared user list response for %s (req: %d, offset: %d)", session->username, number,
-		offset);
+    for (uint8_t i = 0; i < users_to_send; i++) {
+        uint8_t user_index = offset + i;
+        if (user_index >= nusers) break;
+        
+        struct users *current_user = &us[user_index];
+        uint8_t username_len = strlen(current_user->name);
+        if (username_len > 255) username_len = 255;
+        
+        buffer_write(wb, username_len);
+        for (int j = 0; j < username_len; j++) {
+            buffer_write(wb, current_user->name[j]);
+        }
+		// is it faster to memcpy + write?
+        
+        // Determine user type
+        uint8_t user_type = USER_TYPE_CLIENT;
+        if (strstr(current_user->name, "admin") != NULL) {
+            user_type = USER_TYPE_ADMIN;
+        }
+        
+        buffer_write(wb, user_type);
+        buffer_write(wb, 1); // package_id
+    }
+
+    log(DEBUG, "[MANAGEMENT] Prepared user list response for %s (req: %d, offset: %d, sent: %d)", 
+        session->username, number, offset, users_to_send);
 }
 
 // TODO: check if it's actually working properly and what happens in the midst of connection

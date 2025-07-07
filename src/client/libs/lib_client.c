@@ -339,40 +339,73 @@ user_list_entry * handle_get_users(uint8_t n, uint8_t offset,int sock) {
 	if (request_send(COMMAND_USER_LIST, n, offset, sock) != 0) {
 		return NULL; // Failed to send request
 	}
-	char response[sizeof(user_list_entry)] = {0};
-	char * response_ptr = response;
-	// uint32_t four_byte_temp;
-	// uint16_t two_byte_temp;
 
-	if (recv_all(sock, response, GET_USERS_RESPONSE_HEADER_FIXED_LEN) != GET_USERS_RESPONSE_HEADER_FIXED_LEN) {
-		return NULL; // Failed to read metrics
-	}
-	uint8_t nusers = response[2];
-	if (nusers == 0) {
-		return NULL; // No logs available
-	}
-	user_list_entry * head = malloc(sizeof(user_list_entry));
-	head->next = NULL;
+	char header[GET_USERS_RESPONSE_HEADER_FIXED_LEN] = {0};
+    if (recv_all(sock, header, GET_USERS_RESPONSE_HEADER_FIXED_LEN) != GET_USERS_RESPONSE_HEADER_FIXED_LEN) {
+        return NULL;
+    }
+
+	uint8_t nusers = header[2];
+    if (nusers == 0) {
+        return NULL;
+    }
 	
-	if (recv_all(sock, response_ptr, sizeof(user_list_entry)) != sizeof(user_list_entry)) {
-		free_user_list(head);
-		return NULL; // Failed to read user. should not happen
-	}
-	fill_user_list_entry(response_ptr, head, 0);
-	response_ptr += sizeof(user_list_entry);
-	user_list_entry * current_usr_ptr = head;
+	user_list_entry *head = NULL;
+    user_list_entry *current = NULL;
 
-	for (uint8_t i = 1; i < nusers; i++) {
-		if (recv_all(sock, response_ptr, sizeof(user_list_entry)) != sizeof(user_list_entry)) {
-			free_user_list(head);
-			return NULL; // Failed to read log. should not happen
-		}
-		current_usr_ptr->next = malloc(sizeof(user_list_entry));
-		fill_user_list_entry(response_ptr, current_usr_ptr->next, i);
-		response_ptr += sizeof(user_list_entry);
-		current_usr_ptr = current_usr_ptr->next;
-	}
-	return head;
+	for (uint8_t i = 0; i < nusers; i++) {
+        // Read ulen
+        uint8_t ulen;
+        if (recv_all(sock, (char*)&ulen, 1) != 1) {
+            free_user_list(head);
+            return NULL;
+        }
+        
+        // Read username
+        char username[256]; // Temporary buffer
+        if (recv_all(sock, username, ulen) != ulen) {
+            free_user_list(head);
+            return NULL;
+        }
+        
+        // Read user_type
+        uint8_t user_type;
+        if (recv_all(sock, (char*)&user_type, 1) != 1) {
+            free_user_list(head);
+            return NULL;
+        }
+        
+        // Read package_id
+        uint8_t package_id;
+        if (recv_all(sock, (char*)&package_id, 1) != 1) {
+            free_user_list(head);
+            return NULL;
+        }
+        
+        // Create new user entry
+        user_list_entry *new_user = malloc(sizeof(user_list_entry));
+        if (!new_user) {
+            free_user_list(head);
+            return NULL;
+        }
+        
+        new_user->ulen = ulen;
+        memcpy(new_user->username, username, ulen);
+        new_user->username[ulen] = '\0';
+        new_user->user_type = user_type;
+        new_user->package_id = package_id;
+        new_user->next = NULL;
+        
+        if (head == NULL) {
+            head = new_user;
+            current = head;
+        } else {
+            current->next = new_user;
+            current = new_user;
+        }
+    }
+    
+    return head;
 }
 
 void fill_log_struct(char * data, client_log_entry_t * log) {
@@ -472,9 +505,10 @@ void fill_log_struct(char * data, client_log_entry_t * log) {
 void fill_user_list_entry(char * data, user_list_entry * user, uint8_t pack_id) {
 	user->ulen = *data++;
 	memcpy(user->username, data, user->ulen);
+	user->username[user->ulen] = '\0';
 	data += user->ulen;
 	user->user_type = *data++;
-	user->package_id = pack_id; // Set the package ID
+	user->package_id = *data++; // Set the package ID
 }
 
 void free_log_list(client_log_entry_t * node) {
