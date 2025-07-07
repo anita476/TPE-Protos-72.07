@@ -47,11 +47,8 @@ void ui_dialog_show_message(const char *title, const char *message) {
     char command[4096];
     int lines = count_lines(message);
 
-    char formatted[3072];
-    snprintf(formatted, sizeof(formatted), "\n%s", message);
-
     snprintf(command, sizeof(command), "dialog --title \"%s\" --msgbox \"%s\" %d 45 2>/dev/null",
-             title, formatted, (lines > 6) ? 16 : 8);
+             title, message, (lines > 6) ? 16 : 8);
     system(command);
 }
 
