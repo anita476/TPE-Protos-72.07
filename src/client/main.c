@@ -1,5 +1,5 @@
 #include <ctype.h>
-#include <inttypes.h> // for PRIu64
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -86,7 +86,7 @@ static int get_username(char *username, int size) {
 }
 
 static int get_password(char *password, int size) {
-	return get_user_input("Login", "Enter password:", 1, password, size);
+	return get_user_input("Login", "Enter password (hidden):", 1, password, size);
 }
 
 static int authenticate() {
@@ -195,7 +195,7 @@ static void display_users(void *data, int count, int page) {
 		char user_line[128];
 		snprintf(user_line, sizeof(user_line), "%d. %.*s (%s)\n", start_index + display_count + 1, current->ulen,
 				 current->username, role);
-		strcat(user_list, user_line);
+		strncat(user_list, user_line, sizeof(user_list) - strlen(user_list) - 1);
 		current = current->next;
 		display_count++;
 	}
@@ -224,7 +224,6 @@ static void display_logs(void *data, int count, int page) {
     while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
         char log_line[600];
         
-        // More compact format - date on separate line
         snprintf(log_line, sizeof(log_line), 
                  "%d. [%s] %.*s -> %s:%d (0x%02x)\n", 
                  start_index + display_count + 1,
@@ -234,7 +233,7 @@ static void display_logs(void *data, int count, int page) {
                  current->destination_port,
                  current->status_code);
         
-        strcat(log_list, log_line);
+        strncat(log_list, log_line, sizeof(log_list) - strlen(log_list) - 1);
         current = current->next;
         display_count++;
     }
@@ -297,25 +296,6 @@ static void show_metrics() {
 			 server_metrics.system_errors, server_metrics.timeout_errors, server_metrics.memory_errors,
 			 server_metrics.other_errors);
 
-	// snprintf(status_info, sizeof(status_info),
-	//          "Server status: %s\n"
-	//          "Current connections: %u\n"
-	//          "Total connections: %u\n"
-	//          "Bytes received: %u\n"
-	//          "Bytes sent: %u\n"
-	//          "Timeouts: %u\n"
-	//          "Server errors: %u\n"
-	//          "Bad requests: %u\n\n"
-	//          "Press OK to continue",
-	//          server_metrics.server_state == 1 ? "Running" : "Stopped",
-	//          server_metrics.n_current_connections,
-	//          server_metrics.n_total_connections,
-	//          server_metrics.n_total_bytes_received,
-	//          server_metrics.n_total_bytes_sent,
-	//          server_metrics.n_timeouts,
-	//          server_metrics.n_server_errors,
-	//          server_metrics.n_bad_requests);
-
 	ui_show_message("Server metrics", status_info);
 }
 
@@ -346,17 +326,28 @@ static void show_logs() {
 }
 
 static void show_config() {
+	if (server_socket < 0) {
+		ui_show_message("Error", "No server connection");
+		return;
+	}
+
+	server_current_config server_config;
+	if (handle_get_current_config(server_socket, &server_config) == NULL) {
+		ui_show_message("Error", "Failed to retrieve server configuration");
+		return;
+	}
+
 	char config_info[1024];
+
 	snprintf(config_info, sizeof(config_info),
-			 "Current Connection:\n"
-			 "Server Address: %s\n"
-			 "Admin Port: %s\n\n"
-			 "Server Configuration:\n"
-			 "SOCKS5 Port: 1080\n"
-			 "Connection Timeout: 30 seconds\n"
-			 "Buffer Size: 8192 bytes\n\n"
+			 "Current connection:\n"
+			 "Server address: %s\n"
+			 "Admin port: %s\n\n"
+			 "Server configuration:\n"
+			 "Connection timeout: %u seconds\n"
+			 "Buffer size: %u bytes\n\n"
 			 "Press OK to continue",
-			 server_address, server_port);
+			 server_address, server_port, server_config.timeout_seconds, server_config.buffer_size_kb);
 
 	ui_show_message("Server Configuration", config_info);
 }
@@ -550,11 +541,11 @@ static void change_server_setting(const char *setting_name, const char *unit,
 }
 
 static void change_buffer_size() {
-	change_server_setting("buffer size", "KB", validate_buffer_size, handle_change_buffer_size);
+	change_server_setting("Buffer size", "KB", validate_buffer_size, handle_change_buffer_size);
 }
 
 static void change_timeout() {
-	change_server_setting("timeout", "seconds", validate_timeout, handle_change_timeout);
+	change_server_setting("Timeout", "seconds", validate_timeout, handle_change_timeout);
 }
 
 /* Menu functions */
@@ -628,10 +619,8 @@ static void manage_users() {
 
 static void configure_settings() {
 	while (1) {
-		char items[4][2][64] = {{"1", "Change buffer size"},
-								{"2", "Show configurations"},
-								{"3", "Change timeout"},
-								{"4", "Back to main menu"}};
+		char items[4][2][64] = {
+			{"1", "Show configurations"}, {"2", "Change buffer size"}, {"3", "Change timeout"}, {"4", "Back to main menu"}};
 
 		int selected = ui_get_menu_selection("Server settings", "Select an option:", items, 4);
 		if (selected == -1 || selected == 4)
@@ -639,10 +628,10 @@ static void configure_settings() {
 
 		switch (selected) {
 			case 1:
-				change_buffer_size();
+				show_config();
 				break;
 			case 2:
-				show_config();
+				change_buffer_size();
 				break;
 			case 3:
 				change_timeout();
@@ -702,7 +691,7 @@ static void print_usage(void) {
 	printf("Options:\n");
 	printf("  -h host      Server hostname or IP address (default: %s)\n", DEFAULT_SERVER_ADDRESS);
 	printf("  -p port      Server port number (default: %s)\n", DEFAULT_SERVER_PORT);
-	printf("  --console    Use console UI instead of whiptail\n");
+	printf("  --console    Use console UI instead of Dialog\n");
 	printf("  --help       Show this help message\n");
 	printf("\nExample:\n");
 	printf("  client -h 192.168.1.100 -p 9090\n");
@@ -726,7 +715,7 @@ int main(int argc, char *argv[]) {
 			 "UI Mode: %s\n"
 			 "Connecting to: %s:%s\n\n"
 			 "Press OK to continue",
-			 use_console_ui ? "Console" : "Whiptail", server_address, server_port);
+			 use_console_ui ? "Console" : "Dialog", server_address, server_port);
 
 	ui_show_message("Welcome", welcome_msg);
 

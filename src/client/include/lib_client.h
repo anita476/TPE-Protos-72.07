@@ -24,7 +24,7 @@ typedef struct client_log_entry {
 typedef struct server_current_config {
 	uint8_t buffer_size_kb; // Buffer size in KB
 	uint8_t timeout_seconds; // Timeout in seconds
-}server_current_config;
+} server_current_config;
 
 // Connection functions
 int setup_tcp_client_Socket(char *address, char *port);
@@ -37,6 +37,7 @@ int hello_read(int sock);
 metrics_t *handle_metrics(int sock, metrics_t *m);
 client_log_entry_t * handle_log(int sock, uint8_t n, uint8_t offset);
 user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock);
+server_current_config * handle_get_current_config(int sock, server_current_config * config);
 
 // Server configuration functions
 uint8_t handle_change_buffer_size(int sock, uint8_t new_size);
@@ -48,6 +49,5 @@ uint8_t handle_remove_user(int sock, char * username);
 // Memory management functions
 void free_log_list(client_log_entry_t *head);
 void free_user_list(user_list_entry *head);
-
 
 #endif //LIB_CLIENT_H
