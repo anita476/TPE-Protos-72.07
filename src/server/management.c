@@ -388,6 +388,7 @@ static void command_read(struct selector_key *key) {
 		handle_error(key);
 		return;
 	}
+	buffer_read_adv(rb, REQUEST_SIZE);
 
 	// TODO: check if command is valid (within range) -> size of commands could change so maybe figure out a better way
 	// if (cmd < COMMAND_LOGS || cmd > COMMAND_CHANGE_TIMEOUT) {

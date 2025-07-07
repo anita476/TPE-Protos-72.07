@@ -186,9 +186,10 @@ uint8_t handle_add_admin(int sock, char * username, char * password) {
 }
 
 uint8_t add_user_send_req(int sock, char * username, char * password, uint8_t user_type_command_code) {
-	if (user_type != USER_TYPE_ADMIN) {
-		return RESPONSE_NOT_ALLOWED; // Only admin can add users
-	}
+	// TODO: this user_type is not proplery stored 
+	// if (user_type != USER_TYPE_ADMIN) {
+	// 	return RESPONSE_NOT_ALLOWED; // Only admin can add users
+	// }
 	if (sock < 0) {
 		return RESPONSE_BAD_REQUEST; // Invalid socket
 	}

@@ -27,24 +27,24 @@
 #define RESPONSE_BAD_REQUEST        0x06    // Client validation error
                                             //not for server but used by lib to let the frontend know
 // CLIENT RESPONSE CODES
-#define HELLO_CLIENT_RESPONSE_CODE 0x00
-#define HELLO_ADMIN_RESPONSE_CODE 0x01
-#define HELLO_ERROR_RESPONSE_CODE 0x02
+#define HELLO_CLIENT_RESPONSE_CODE  0x00
+#define HELLO_ADMIN_RESPONSE_CODE   0x01
+#define HELLO_ERROR_RESPONSE_CODE   0x02
 
 // Command codes
 #define COMMAND_LOGS                0x00    // Logs
-#define COMMAND_USER_LIST          0x01    // Lista de usuarios  
-#define COMMAND_METRICS            0x02    // Métricas
-#define COMMAND_CHANGE_BUFFER_SIZE 0x03    // Change Buffer Size
-#define COMMAND_CHANGE_TIMEOUT     0x04    // Change Timeout
-#define COMMAND_GET_CURRENT_CONFIG 0x05
-#define COMMAND_ADD_CLIENT         0x06
-#define COMMAND_ADD_ADMIN          0x07
-#define COMMAND_REMOVE_USER        0x08
+#define COMMAND_USER_LIST           0x01    // Lista de usuarios  
+#define COMMAND_METRICS             0x02    // Métricas
+#define COMMAND_CHANGE_BUFFER_SIZE  0x03    // Change Buffer Size
+#define COMMAND_CHANGE_TIMEOUT      0x04    // Change Timeout
+#define COMMAND_GET_CURRENT_CONFIG  0x05
+#define COMMAND_ADD_CLIENT          0x06
+#define COMMAND_ADD_ADMIN           0x07
+#define COMMAND_REMOVE_USER         0x08
 
 // User types
-#define USER_TYPE_CLIENT           0x00
-#define USER_TYPE_ADMIN            0x01
+#define USER_TYPE_CLIENT            0x00
+#define USER_TYPE_ADMIN             0x01
 
 // Protocol constants
 #define RESERVED_BYTE              0x00
