@@ -43,33 +43,26 @@ static int read_temp_file_as_int(void) {
     return -1;
 }
 
-static void prepend_newline(const char *input, char *output, size_t output_size) {
-    snprintf(output, output_size, "\n%s", input);
-}
-
 void ui_dialog_show_message(const char *title, const char *message) {
     char command[4096];
     int lines = count_lines(message);
 
     char formatted[3072];
-    prepend_newline(message, formatted, sizeof(formatted));
+    snprintf(formatted, sizeof(formatted), "\n%s", message);
 
     snprintf(command, sizeof(command), "dialog --title \"%s\" --msgbox \"%s\" %d 45 2>/dev/null",
-             title, formatted, (lines > 4) ? 16 : 8);
+             title, formatted, (lines > 6) ? 16 : 8);
     system(command);
 }
 
 char *ui_dialog_get_input(const char *title, const char *text, int hidden) {
     static char result[MAX_INPUT];
-    char command[4096];
-
-    char formatted[3072];
-    prepend_newline(text, formatted, sizeof(formatted));
+    char command[1024];
 
     if (hidden) {
-        snprintf(command, sizeof(command), "dialog --title \"%s\" --passwordbox \"%s\" 8 35 2>%s", title, formatted, TEMP_FILE);
+        snprintf(command, sizeof(command), "dialog --title \"%s\" --passwordbox \"%s\" 8 35 2>%s", title, text, TEMP_FILE);
     } else {
-        snprintf(command, sizeof(command), "dialog --title \"%s\" --inputbox \"%s\" 8 35 2>%s", title, formatted, TEMP_FILE);
+        snprintf(command, sizeof(command), "dialog --title \"%s\" --inputbox \"%s\" 8 35 2>%s", title, text, TEMP_FILE);
     }
 
     int ret = system(command);
@@ -93,11 +86,8 @@ int ui_dialog_get_menu_selection(const char *title, const char *text, char items
     int menu_height = count + 7;
     int menu_width = 45;
 
-    char formatted[3072];
-    prepend_newline(text, formatted, sizeof(formatted));
-
     snprintf(command, sizeof(command), "dialog --title \"%s\" --menu \"%s\" %d %d %d %s 2>%s",
-             title, formatted, menu_height > 20 ? 20 : menu_height, menu_width, count, menu_items, TEMP_FILE);
+             title, text, menu_height > 20 ? 20 : menu_height, menu_width, count, menu_items, TEMP_FILE);
 
     int ret = system(command);
     if (ret == 0) {
@@ -108,11 +98,7 @@ int ui_dialog_get_menu_selection(const char *title, const char *text, char items
 }
 
 int ui_dialog_get_confirmation(const char *title, const char *text) {
-    char command[4096];
-
-    char formatted[3072];
-    prepend_newline(text, formatted, sizeof(formatted));
-
-    snprintf(command, sizeof(command), "dialog --title \"%s\" --yesno \"%s\" 8 45 2>/dev/null", title, formatted);
+    char command[1024];
+    snprintf(command, sizeof(command), "dialog --title \"%s\" --yesno \"%s\" 8 45 2>/dev/null", title, text);
     return (system(command) == 0);
 }

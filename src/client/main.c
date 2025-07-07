@@ -326,16 +326,28 @@ static void show_logs() {
 }
 
 static void show_config() {
+	if (server_socket < 0) {
+		ui_show_message("Error", "No server connection");
+		return;
+	}
+
+	server_current_config server_config;
+	if (handle_get_current_config(server_socket, &server_config) == NULL) {
+		ui_show_message("Error", "Failed to retrieve server configuration");
+		return;
+	}
+
 	char config_info[1024];
+
 	snprintf(config_info, sizeof(config_info),
 			 "Current connection:\n"
 			 "Server address: %s\n"
 			 "Admin port: %s\n\n"
 			 "Server configuration:\n"
-			 "Connection timeout: 30 seconds\n"
-			 "Buffer size: 8192 bytes\n\n"
+			 "Connection timeout: %u seconds\n"
+			 "Buffer size: %u bytes\n\n"
 			 "Press OK to continue",
-			 server_address, server_port);
+			 server_address, server_port, server_config.timeout_seconds, server_config.buffer_size_kb);
 
 	ui_show_message("Server Configuration", config_info);
 }
@@ -608,7 +620,7 @@ static void manage_users() {
 static void configure_settings() {
 	while (1) {
 		char items[4][2][64] = {
-			{"1", "Change buffer size"}, {"2", "Show configurations"}, {"3", "Change timeout"}, {"4", "Back to main menu"}};
+			{"1", "Show configurations"}, {"2", "Change buffer size"}, {"3", "Change timeout"}, {"4", "Back to main menu"}};
 
 		int selected = ui_get_menu_selection("Server settings", "Select an option:", items, 4);
 		if (selected == -1 || selected == 4)
@@ -616,10 +628,10 @@ static void configure_settings() {
 
 		switch (selected) {
 			case 1:
-				change_buffer_size();
+				show_config();
 				break;
 			case 2:
-				show_config();
+				change_buffer_size();
 				break;
 			case 3:
 				change_timeout();
