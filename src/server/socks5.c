@@ -13,6 +13,8 @@
 
 extern struct timespec g_select_timeout;
 extern size_t g_socks5_buffer_size;
+extern struct user* users;
+extern uint8_t nusers; // Number of users loaded from args
 
 static void log_socks5_attempt(client_session *session, uint8_t status_code);
 
@@ -48,7 +50,6 @@ static void request_read(struct selector_key *key);
 static void request_write(struct selector_key *key);
 static void request_resolve(struct selector_key *key);
 static void request_connect(struct selector_key *key);
-static void close_client(struct selector_key *key);
 static void relay_data(struct selector_key *key);
 static void handle_error(struct selector_key *key);
 
@@ -63,21 +64,13 @@ static void log_resolved_addresses(const char *domain,
 static void *dns_resolution_thread(void *arg);
 static void handle_connect_failure(struct selector_key *key, int error);
 static void handle_connect_success(struct selector_key *key);
-static bool valid_user(char *username, char *password);
+bool valid_user(const char *username, const char *password, uint8_t *out_type);
 static bool build_socks5_success_response(client_session *session);
 void store_client_info(client_session *session, struct sockaddr_storage *client_addr);
 void store_dest_info(client_session *session, uint8_t atyp, const char *addr, uint16_t port);
 
 // Destructor
 static void cleanup_session(client_session *session);
-
-struct users *us = NULL;
-uint8_t nusers = 0;
-void load_users(struct users *u, uint8_t n) {
-	us = u;
-	nusers = n;
-}
-
 
 void socks5_handle_new_connection(struct selector_key *key) {
 	int listen_fd = key->fd;
@@ -648,7 +641,8 @@ static void auth_read(struct selector_key *key) {
 
 	// now safe to write the response
 	buffer_write(wb, SOCKS5_AUTH_VERSION);
-	if (!valid_user(username, password)) {
+	uint8_t user_type;
+	if (!valid_user(username, password, &user_type)) {
 		log_socks5_attempt(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED);
 		buffer_write(wb, SOCKS5_REPLY_GENERAL_FAILURE); // TODO: CHECK THIS!
 		// set_error_state(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED);
@@ -657,6 +651,7 @@ static void auth_read(struct selector_key *key) {
 		if (session->username) {
 			free(session->username);
 		}
+		session->user_type = user_type;
 		session->username = strdup(username);
 		buffer_write(wb, SOCKS5_AUTH_SUCCESS);
 		session->current_state = STATE_AUTH_WRITE;
@@ -1280,29 +1275,6 @@ static bool build_socks5_success_response(client_session *session) {
 	return true;
 }
 
-// Not being used atm
-static void close_client(struct selector_key *key) {
-	char dummy[256];
-	ssize_t bytes_read = recv(key->fd, dummy, sizeof(dummy), 0);
-
-	if (bytes_read == 0) {
-		log(DEBUG, "[CLOSE_CLIENT] Client closed connection gracefully.");
-		selector_unregister_fd(key->s, key->fd); // This will trigger handle_close
-		close(key->fd);
-	} else if (bytes_read < 0) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			return;
-		} else {
-			log(ERROR, "[CLOSE_CLIENT] recv() error: %s", strerror(errno));
-			metrics_increment_errors(ERROR_TYPE_NETWORK);
-			selector_unregister_fd(key->s, key->fd);
-			close(key->fd);
-		}
-	} else {
-		log(DEBUG, "[CLOSE_CLIENT] Unexpected data from client during close. Ignoring and waiting for proper close.");
-	}
-}
-
 static void relay_data(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
@@ -1552,15 +1524,16 @@ static void log_resolved_addresses(const char *domain, struct addrinfo *addr_lis
 	log(INFO, "[DNS_RESOLVE] Total addresses resolved: %d", count);
 }
 
-static bool valid_user(char *username, char *password) {
-	for (int i = 0; i < nusers; i++) {
-		if (strcmp(username, us[i].name) == 0 && strcmp(password, us[i].pass) == 0) {
-			return true;
-		}
-	}
-	return strcmp(username, "nep") == 0 && strcmp(password, "nep") == 0;
-	/// TODO implement proper validation
+bool valid_user(const char *username, const char *password, uint8_t *out_type) {
+    for (int i = 0; i < nusers; i++) {
+        if (strcmp(username, users[i].name) == 0 && strcmp(password, users[i].pass) == 0) {
+            *out_type = users[i].type;
+            return true;
+        }
+    }
+    return false;
 }
+
 static void cleanup_session(client_session *session) {
     if (!session || session->cleaned_up) return;
 

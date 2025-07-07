@@ -10,13 +10,17 @@
 #define CALSETTING_VERSION 0x01
 
 // SERVER RESPONSE CODES
-#define RESPONSE_SUCCESS_CLIENT     0x00    // Usuario autenticado
-#define RESPONSE_SUCCESS_ADMIN      0x01    // Admin autenticado  
-#define RESPONSE_AUTH_FAILURE       0x02    // Error de autenticación
-#define RESPONSE_GENERAL_SERVER_FAILURE 0x03 // General server error
-#define RESPONSE_WRONG_VERSION      0x04    // Versión incorrecta
-#define RESPONSE_NOT_ALLOWED        0x05    // Not allowed
-#define RESPONSE_USER_NOT_FOUND 0x06
+#define RESPONSE_SUCCESS                0x00    // Success
+#define RESPONSE_SUCCESS_CLIENT         0x01    // Usuario autenticado <- this is the default response code...
+#define RESPONSE_SUCCESS_ADMIN          0x02    // Admin autenticado  
+#define RESPONSE_AUTH_FAILURE           0x03    // Error de autenticación
+#define RESPONSE_GENERAL_SERVER_FAILURE 0x04 // General server error
+#define RESPONSE_WRONG_VERSION          0x05   // Versión incorrecta
+#define RESPONSE_NOT_ALLOWED            0x06    // Not allowed
+#define RESPONSE_USER_NOT_FOUND         0x07
+#define RESPONSE_INVALID_CREDENTIALS    0x08 // Invalid credentials
+#define RESPONSE_USER_ALREADY_EXISTS    0x09 // User already exists
+#define RESPONSE_MAX_USERS_REACHED      0x0A   // Max users reached
 
 
 // Client-side error code (not sent over network)
@@ -27,16 +31,16 @@
 #define HELLO_ADMIN_RESPONSE_CODE 0x01
 #define HELLO_ERROR_RESPONSE_CODE 0x02
 
-// Command codes (exactly matching your lib_client.h)
+// Command codes
 #define COMMAND_LOGS                0x00    // Logs
 #define COMMAND_USER_LIST          0x01    // Lista de usuarios  
 #define COMMAND_METRICS            0x02    // Métricas
 #define COMMAND_CHANGE_BUFFER_SIZE 0x03    // Change Buffer Size
 #define COMMAND_CHANGE_TIMEOUT     0x04    // Change Timeout
 #define COMMAND_GET_CURRENT_CONFIG 0x05
-#define COMMAND_ADD_CLIENT 0x06
-#define COMMAND_ADD_ADMIN 0x07
-#define COMMAND_REMOVE_USER 0x08
+#define COMMAND_ADD_CLIENT         0x06
+#define COMMAND_ADD_ADMIN          0x07
+#define COMMAND_REMOVE_USER        0x08
 
 // User types
 #define USER_TYPE_CLIENT           0x00

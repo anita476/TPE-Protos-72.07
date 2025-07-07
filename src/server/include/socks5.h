@@ -108,6 +108,7 @@ typedef struct {
 	// Authentication
 	bool authenticated;
 	char* username; // TODO: later should point to a struct with more user info 
+	uint8_t user_type; 
 
 	// Lifecycle
     bool cleaned_up;
@@ -116,9 +117,6 @@ typedef struct {
 } client_session;
 
 void socks5_handle_new_connection(struct selector_key *key);
-
-// Todo this should be in its own library
-void load_users(struct users *u, uint8_t n);
 
 #endif
 

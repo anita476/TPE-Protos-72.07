@@ -32,19 +32,23 @@ static void process_logs_command(management_session *session, uint8_t number, ui
 static void process_userlist_command(management_session *session, uint8_t number, uint8_t offset);
 static void process_change_buffer_command(management_session *session, uint8_t new_size);
 static void process_change_timeout_command(management_session *session, uint8_t new_timeout);
+static void process_add_user_command(management_session *session, uint8_t arg1, uint8_t arg2, uint8_t type);
+static void process_remove_user_command(management_session *session, uint8_t arg1, uint8_t arg2);
 
 // Helper functions
 static void set_error_state(management_session *session, uint8_t error_code);
 static void cleanup_session(management_session *session);
 static bool write_to_client(struct selector_key *key, bool should_close);
 static uint8_t authenticate_user(const char *username, const char *password);
-static log_entry_t* get_reusable_log_buffer(size_t required_count);
+static log_entry_t *get_reusable_log_buffer(size_t required_count);
+static uint8_t add_user_to_system(const char *username, const char *password, uint8_t user_type);
+static uint8_t remove_user_from_system(const char *username);
 
 // External configuration variables
 extern size_t g_socks5_buffer_size;
 extern int g_connection_timeout;
 extern size_t g_management_buffer_size;
-extern struct users *us;
+extern struct user *users;
 extern uint8_t nusers;
 
 static log_entry_t *reusable_log_buffer = NULL;
@@ -430,6 +434,17 @@ static void command_read(struct selector_key *key) {
 		case COMMAND_CHANGE_TIMEOUT:
 			process_change_timeout_command(session, arg1);
 			break;
+		case COMMAND_ADD_ADMIN:
+			process_add_user_command(session, arg1, arg2, USER_TYPE_ADMIN);
+			break;
+		case COMMAND_ADD_CLIENT:
+			process_add_user_command(session, arg1, arg2, USER_TYPE_CLIENT);
+			break;
+		case COMMAND_REMOVE_USER:
+			process_remove_user_command(session, arg1, arg2);
+		case COMMAND_GET_CURRENT_CONFIG:
+			// process_get_current_config_command(session);
+			break;
 		default:
 			// TODO: this should never happen due to earlier validation
 			log(ERROR, "[MANAGEMENT] Unknown command: %d", cmd);
@@ -555,7 +570,7 @@ Total size: 4 + (586 * COUNT) bytes
 Buffer Size | Max Logs | Wire Size per Log | Total Size
 ------------|----------|-------------------|------------
 4KB (4096)  |    6     |       586         |   3520
-8KB (8192)  |   13     |       586         |   7622  
+8KB (8192)  |   13     |       586         |   7622
 16KB        |   28     |       586         |  16404
 
 */
@@ -564,216 +579,218 @@ static void process_logs_command(management_session *session, uint8_t number, ui
 	buffer_reset(wb);
 
 	size_t available = g_management_buffer_size - LOGS_RESPONSE_HEADER_FIXED_LEN;
-    int max_logs_per_response = (int)available / LOG_ENTRY_WIRE_SIZE;
+	int max_logs_per_response = (int) available / LOG_ENTRY_WIRE_SIZE;
 
 	log(DEBUG, "[MANAGEMENT] Buffer can handle max %d logs per response", max_logs_per_response);
 
 	if (max_logs_per_response <= 0) {
-        log(ERROR, "[MANAGEMENT] Buffer too small for even one log entry");
-        buffer_write(wb, CALSETTING_VERSION);
-        buffer_write(wb, RESPONSE_GENERAL_SERVER_FAILURE);
-        buffer_write(wb, 0);
-        buffer_write(wb, 0);
-        return;
-    }
+		log(ERROR, "[MANAGEMENT] Buffer too small for even one log entry");
+		buffer_write(wb, CALSETTING_VERSION);
+		buffer_write(wb, RESPONSE_GENERAL_SERVER_FAILURE);
+		buffer_write(wb, 0);
+		buffer_write(wb, 0);
+		return;
+	}
 
 	// Cap the request to what fits in buffer
-    int logs_to_fetch = (number > max_logs_per_response) ? max_logs_per_response : number;
+	int logs_to_fetch = (number > max_logs_per_response) ? max_logs_per_response : number;
 
 	if (logs_to_fetch != number) {
-        log(DEBUG, "[MANAGEMENT] Capping request from %d to %d logs (buffer limit)", 
-            number, logs_to_fetch);
-    }
+		log(DEBUG, "[MANAGEMENT] Capping request from %d to %d logs (buffer limit)", number, logs_to_fetch);
+	}
 
-    log_entry_t *log_buffer = get_reusable_log_buffer(logs_to_fetch);
-    if (!log_buffer) {
-        log(ERROR, "[MANAGEMENT] Failed to allocate temp log buffer");
-        buffer_write(wb, CALSETTING_VERSION);
-        buffer_write(wb, RESPONSE_GENERAL_SERVER_FAILURE);
-        buffer_write(wb, 0);
-        buffer_write(wb, 0);
-        return;
-    }
+	log_entry_t *log_buffer = get_reusable_log_buffer(logs_to_fetch);
+	if (!log_buffer) {
+		log(ERROR, "[MANAGEMENT] Failed to allocate temp log buffer");
+		buffer_write(wb, CALSETTING_VERSION);
+		buffer_write(wb, RESPONSE_GENERAL_SERVER_FAILURE);
+		buffer_write(wb, 0);
+		buffer_write(wb, 0);
+		return;
+	}
 
 	int actual_count = get_recent_logs(log_buffer, logs_to_fetch, offset);
 
 	log(DEBUG, "[MANAGEMENT] Retrieved %d logs from offset %d", actual_count, offset);
 
 	size_t total_size = LOGS_RESPONSE_HEADER_FIXED_LEN + (actual_count * LOG_ENTRY_WIRE_SIZE);
-    
-    // This should never fail since we calculated based on buffer size
-    if (buffer_writeable_bytes(wb) < total_size) {
-        log(ERROR, "[MANAGEMENT] CRITICAL: Buffer calculation error! Need %zu, have %zu", total_size, buffer_writeable_bytes(wb));
-        free(log_buffer);
-        buffer_write(wb, CALSETTING_VERSION);
-        buffer_write(wb, RESPONSE_GENERAL_SERVER_FAILURE);
-        buffer_write(wb, 0);
-        buffer_write(wb, 0);
-        return;
-    }
+
+	// This should never fail since we calculated based on buffer size
+	if (buffer_writeable_bytes(wb) < total_size) {
+		log(ERROR, "[MANAGEMENT] CRITICAL: Buffer calculation error! Need %zu, have %zu", total_size,
+			buffer_writeable_bytes(wb));
+		free(log_buffer);
+		buffer_write(wb, CALSETTING_VERSION);
+		buffer_write(wb, RESPONSE_GENERAL_SERVER_FAILURE);
+		buffer_write(wb, 0);
+		buffer_write(wb, 0);
+		return;
+	}
 
 	buffer_write(wb, CALSETTING_VERSION);
-    buffer_write(wb, RESPONSE_SUCCESS_ADMIN);
-    buffer_write(wb, actual_count);
-    buffer_write(wb, 0);
+	buffer_write(wb, RESPONSE_SUCCESS_ADMIN);
+	buffer_write(wb, actual_count);
+	buffer_write(wb, 0);
 
 	// Write each log entry (payload)
-	 for (int i = 0; i < actual_count; i++) {
-        log_entry_t *entry = &log_buffer[i];
+	for (int i = 0; i < actual_count; i++) {
+		log_entry_t *entry = &log_buffer[i];
 
-        size_t available_bytes;
-        uint8_t *write_ptr = buffer_write_ptr(wb, &available_bytes);
+		size_t available_bytes;
+		uint8_t *write_ptr = buffer_write_ptr(wb, &available_bytes);
 
-        if (available_bytes < LOG_ENTRY_WIRE_SIZE) {
-            log(ERROR, "[MANAGEMENT] Buffer exhausted at entry %d/%d", i, actual_count);
-            return;
-        }
+		if (available_bytes < LOG_ENTRY_WIRE_SIZE) {
+			log(ERROR, "[MANAGEMENT] Buffer exhausted at entry %d/%d", i, actual_count);
+			return;
+		}
 
-        size_t entry_offset = 0;
+		size_t entry_offset = 0;
 
-        // Date (21 bytes)
-        memcpy(write_ptr + entry_offset, entry->date, 21);
-        entry_offset += 21;
+		// Date (21 bytes)
+		memcpy(write_ptr + entry_offset, entry->date, 21);
+		entry_offset += 21;
 
-        // Username length (1 byte)
-        write_ptr[entry_offset] = entry->ulen;
-        entry_offset += 1;
-        
-        // Username (255 bytes)
-        size_t username_len = entry->ulen;
-        if (username_len > 0) {
-            memcpy(write_ptr + entry_offset, entry->username, username_len);
-        }
-        if (username_len < 255) {
-            memset(write_ptr + entry_offset + username_len, 0, 255 - username_len);
-        }
-        entry_offset += 255;
+		// Username length (1 byte)
+		write_ptr[entry_offset] = entry->ulen;
+		entry_offset += 1;
 
-        // Register type (1 byte)
-        write_ptr[entry_offset] = entry->register_type;
-        entry_offset += 1;
+		// Username (255 bytes)
+		size_t username_len = entry->ulen;
+		if (username_len > 0) {
+			memcpy(write_ptr + entry_offset, entry->username, username_len);
+		}
+		if (username_len < 255) {
+			memset(write_ptr + entry_offset + username_len, 0, 255 - username_len);
+		}
+		entry_offset += 255;
 
-        // Origin IP (46 bytes)
-        size_t origin_ip_len = strlen(entry->origin_ip);
-        if (origin_ip_len > 0) {
-            size_t copy_len = (origin_ip_len > 46) ? 46 : origin_ip_len;
-            memcpy(write_ptr + entry_offset, entry->origin_ip, copy_len);
-            if (copy_len < 46) {
-                memset(write_ptr + entry_offset + copy_len, 0, 46 - copy_len);
-            }
-        } else {
-            memset(write_ptr + entry_offset, 0, 46);
-        }
-        entry_offset += 46;
+		// Register type (1 byte)
+		write_ptr[entry_offset] = entry->register_type;
+		entry_offset += 1;
 
-        // Origin port (2 bytes, big-endian)
-        write_ptr[entry_offset] = (entry->origin_port >> 8) & 0xFF;
-        write_ptr[entry_offset + 1] = entry->origin_port & 0xFF;
-        entry_offset += 2;
+		// Origin IP (46 bytes)
+		size_t origin_ip_len = strlen(entry->origin_ip);
+		if (origin_ip_len > 0) {
+			size_t copy_len = (origin_ip_len > 46) ? 46 : origin_ip_len;
+			memcpy(write_ptr + entry_offset, entry->origin_ip, copy_len);
+			if (copy_len < 46) {
+				memset(write_ptr + entry_offset + copy_len, 0, 46 - copy_len);
+			}
+		} else {
+			memset(write_ptr + entry_offset, 0, 46);
+		}
+		entry_offset += 46;
 
-        // Destination ATYP (1 byte)
-        write_ptr[entry_offset] = entry->destination_ATYP;
-        entry_offset += 1;
+		// Origin port (2 bytes, big-endian)
+		write_ptr[entry_offset] = (entry->origin_port >> 8) & 0xFF;
+		write_ptr[entry_offset + 1] = entry->origin_port & 0xFF;
+		entry_offset += 2;
 
-        // Destination address (256 bytes)
-        size_t dest_addr_len = strlen(entry->destination_address);
-        if (dest_addr_len > 0) {
-            size_t copy_len = (dest_addr_len > 256) ? 256 : dest_addr_len;
-            memcpy(write_ptr + entry_offset, entry->destination_address, copy_len);
-            if (copy_len < 256) {
-                memset(write_ptr + entry_offset + copy_len, 0, 256 - copy_len);
-            }
-        } else {
-            memset(write_ptr + entry_offset, 0, 256);
-        }
-        entry_offset += 256;
+		// Destination ATYP (1 byte)
+		write_ptr[entry_offset] = entry->destination_ATYP;
+		entry_offset += 1;
 
-        // Destination port (2 bytes, big-endian)
-        write_ptr[entry_offset] = (entry->destination_port >> 8) & 0xFF;
-        write_ptr[entry_offset + 1] = entry->destination_port & 0xFF;
-        entry_offset += 2;
+		// Destination address (256 bytes)
+		size_t dest_addr_len = strlen(entry->destination_address);
+		if (dest_addr_len > 0) {
+			size_t copy_len = (dest_addr_len > 256) ? 256 : dest_addr_len;
+			memcpy(write_ptr + entry_offset, entry->destination_address, copy_len);
+			if (copy_len < 256) {
+				memset(write_ptr + entry_offset + copy_len, 0, 256 - copy_len);
+			}
+		} else {
+			memset(write_ptr + entry_offset, 0, 256);
+		}
+		entry_offset += 256;
 
-        // Status code (1 byte)
-        write_ptr[entry_offset] = entry->status_code;
+		// Destination port (2 bytes, big-endian)
+		write_ptr[entry_offset] = (entry->destination_port >> 8) & 0xFF;
+		write_ptr[entry_offset + 1] = entry->destination_port & 0xFF;
+		entry_offset += 2;
 
-        buffer_write_adv(wb, LOG_ENTRY_WIRE_SIZE);
-    }
+		// Status code (1 byte)
+		write_ptr[entry_offset] = entry->status_code;
 
-    log(DEBUG, "[MANAGEMENT] Successfully sent %d logs for offset %d", actual_count, offset);
+		buffer_write_adv(wb, LOG_ENTRY_WIRE_SIZE);
+	}
+
+	log(DEBUG, "[MANAGEMENT] Successfully sent %d logs for offset %d", actual_count, offset);
 }
 
 static void process_userlist_command(management_session *session, uint8_t number, uint8_t offset) {
-    buffer *wb = &session->write_buffer;
-    buffer_reset(wb);
+	buffer *wb = &session->write_buffer;
+	buffer_reset(wb);
 
-    uint8_t total_users = nusers;
-    uint8_t users_to_send = 0;
-    
-    if (offset >= total_users) {
-        // Invalid offset, send empty response
-        if (buffer_writeable_bytes(wb) < GET_USERS_RESPONSE_HEADER_FIXED_LEN) {
-            log(ERROR, "[MANAGEMENT] No space for user list response");
-            set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
-            return;
-        }
-        
-        buffer_write(wb, CALSETTING_VERSION);
-        buffer_write(wb, 1); // package_id
-        buffer_write(wb, 0); // nusers = 0
-        buffer_write(wb, 0); // reserved
-        return;
-    }
-    
-    uint8_t remaining_users = total_users - offset;
-    users_to_send = (number > remaining_users) ? remaining_users : number;
-    
-    // Calculate required space for variable-length entries
-    size_t required_space = GET_USERS_RESPONSE_HEADER_FIXED_LEN;
-    for (uint8_t i = 0; i < users_to_send; i++) {
-        uint8_t user_index = offset + i;
-        if (user_index < nusers) {
-            uint8_t username_len = strlen(us[user_index].name);
-            required_space += 1 + username_len + 1 + 1; // ulen + username + user_type + package_id
-        }
-    }
-    
-    if (buffer_writeable_bytes(wb) < required_space) {
-        log(ERROR, "[MANAGEMENT] No space for user list response (need %zu bytes)", required_space);
-        set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
-        return;
-    }
+	uint8_t total_users = nusers;
+	uint8_t users_to_send = 0;
 
-    buffer_write(wb, CALSETTING_VERSION);
-    buffer_write(wb, 1); // package_id
-    buffer_write(wb, users_to_send);
-    buffer_write(wb, 0); // reserved
+	if (offset >= total_users) {
+		// Invalid offset, send empty response
+		if (buffer_writeable_bytes(wb) < GET_USERS_RESPONSE_HEADER_FIXED_LEN) {
+			log(ERROR, "[MANAGEMENT] No space for user list response");
+			set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
+			return;
+		}
 
-    for (uint8_t i = 0; i < users_to_send; i++) {
-        uint8_t user_index = offset + i;
-        if (user_index >= nusers) break;
-        
-        struct users *current_user = &us[user_index];
-        uint8_t username_len = strlen(current_user->name); // max uint8 is 255, so this is safe (i think)
-        
-        buffer_write(wb, username_len);
-        for (int j = 0; j < username_len; j++) {
-            buffer_write(wb, current_user->name[j]);
-        }
+		buffer_write(wb, CALSETTING_VERSION);
+		buffer_write(wb, 1); // package_id
+		buffer_write(wb, 0); // nusers = 0
+		buffer_write(wb, 0); // reserved
+		return;
+	}
+
+	uint8_t remaining_users = total_users - offset;
+	users_to_send = (number > remaining_users) ? remaining_users : number;
+
+	// Calculate required space for variable-length entries
+	size_t required_space = GET_USERS_RESPONSE_HEADER_FIXED_LEN;
+	for (uint8_t i = 0; i < users_to_send; i++) {
+		uint8_t user_index = offset + i;
+		if (user_index < nusers) {
+			uint8_t username_len = strlen(users[user_index].name);
+			required_space += 1 + username_len + 1 + 1; // ulen + username + user_type + package_id
+		}
+	}
+
+	if (buffer_writeable_bytes(wb) < required_space) {
+		log(ERROR, "[MANAGEMENT] No space for user list response (need %zu bytes)", required_space);
+		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
+		return;
+	}
+
+	buffer_write(wb, CALSETTING_VERSION);
+	buffer_write(wb, 1); // package_id
+	buffer_write(wb, users_to_send);
+	buffer_write(wb, 0); // reserved
+
+	for (uint8_t i = 0; i < users_to_send; i++) {
+		uint8_t user_index = offset + i;
+		if (user_index >= nusers)
+			break;
+
+		struct user *current_user = &users[user_index];
+		uint8_t username_len = strlen(current_user->name); // max uint8 is 255, so this is safe (i think)
+
+		buffer_write(wb, username_len);
+		for (int j = 0; j < username_len; j++) {
+			buffer_write(wb, current_user->name[j]);
+		}
 		// is it faster to memcpy + adv?
-        
-		// TODO: admin users should be determined by their type, for now just check if "admin" is in name
-        // Determine user type
-        uint8_t user_type = USER_TYPE_CLIENT;
-        if (strstr(current_user->name, "admin") != NULL) {
-            user_type = USER_TYPE_ADMIN;
-        }
-        
-        buffer_write(wb, user_type);
-        buffer_write(wb, 1); // package_id
-    }
 
-    log(DEBUG, "[MANAGEMENT] Prepared user list response for %s (req: %d, offset: %d, sent: %d)", 
-        session->username, number, offset, users_to_send);
+		// TODO: needs proper implementation
+		// Determine user type
+		// uint8_t user_type = USER_TYPE_CLIENT;
+		// if (strstr(current_user->name, "admin") != NULL) {
+		// 	user_type = USER_TYPE_ADMIN;
+		// }
+		uint8_t user_type = current_user->type;
+
+		buffer_write(wb, user_type); // user_type
+		buffer_write(wb, 1); // package_id
+	}
+
+	log(DEBUG, "[MANAGEMENT] Prepared user list response for %s (req: %d, offset: %d, sent: %d)", session->username,
+		number, offset, users_to_send);
 }
 
 // TODO: check if it's actually working properly and what happens in the midst of connection
@@ -847,6 +864,122 @@ static void process_change_timeout_command(management_session *session, uint8_t 
 	buffer_write(wb, COMMAND_CHANGE_TIMEOUT);
 
 	log(DEBUG, "[MANAGEMENT] Prepared change timeout response for %s", session->username);
+}
+
+/*
+VER | STATUS | CMD
+*/
+static void process_add_user_command(management_session *session, uint8_t arg1, uint8_t arg2, uint8_t type) {
+	buffer *wb = &session->write_buffer;
+	buffer_reset(wb);
+
+	// Check permissions first
+	if (session->user_type != USER_TYPE_ADMIN) {
+		buffer_write(wb, CALSETTING_VERSION);
+		buffer_write(wb, RESPONSE_NOT_ALLOWED);
+		buffer_write(wb, COMMAND_ADD_ADMIN);
+		log(INFO, "[MANAGEMENT] Non-admin user %s attempted to add admin", session->username);
+		return;
+	}
+
+	// arg1 = username_len, arg2 = password_len (from the command header)
+	uint8_t username_len = arg1;
+	uint8_t password_len = arg2;
+
+	if (username_len == 0 || password_len == 0) {
+		buffer_write(wb, CALSETTING_VERSION);
+		buffer_write(wb, RESPONSE_INVALID_CREDENTIALS);
+		buffer_write(wb, COMMAND_ADD_ADMIN);
+		return;
+	}
+
+	buffer *rb = &session->read_buffer;
+	size_t available;
+	uint8_t *data = buffer_read_ptr(rb, &available); // this warning is wrong
+
+	if (available < (size_t) (username_len + password_len)) {
+		return; // wait...
+	}
+
+	char username[USERNAME_MAX_SIZE + 1];
+	char password[PASSWORD_MAX_SIZE + 1];
+
+	for (int i = 0; i < username_len; i++) {
+		username[i] = buffer_read(rb);
+	}
+	username[username_len] = '\0';
+
+	for (int i = 0; i < password_len; i++) {
+		password[i] = buffer_read(rb);
+	}
+	password[password_len] = '\0';
+
+	uint8_t result = add_user_to_system(username, password, type);
+
+	buffer_write(wb, CALSETTING_VERSION);
+	buffer_write(wb, result);
+	buffer_write(wb, COMMAND_ADD_ADMIN);
+
+	if (result == RESPONSE_SUCCESS) {
+		log(INFO, "[MANAGEMENT] Admin %s added new user: %s", session->username, username);
+	}
+}
+
+static void process_remove_user_command(management_session *session, uint8_t arg1, uint8_t arg2) {
+	buffer *wb = &session->write_buffer;
+	buffer_reset(wb);
+
+	// Check permissions
+	if (session->user_type != USER_TYPE_ADMIN) {
+		buffer_write(wb, CALSETTING_VERSION);
+		buffer_write(wb, RESPONSE_NOT_ALLOWED);
+		buffer_write(wb, COMMAND_REMOVE_USER);
+		log(INFO, "[MANAGEMENT] Non-admin user %s attempted to remove user", session->username);
+		return;
+	}
+
+	uint8_t username_len = arg1;
+
+	if (username_len == 0) {
+		buffer_write(wb, CALSETTING_VERSION);
+		buffer_write(wb, RESPONSE_INVALID_CREDENTIALS);
+		buffer_write(wb, COMMAND_REMOVE_USER);
+		return;
+	}
+
+	buffer *rb = &session->read_buffer;
+	size_t available;
+	uint8_t *data = buffer_read_ptr(rb, &available);
+
+	if (available < username_len) {
+		return; // wait..
+	}
+
+	char username[USERNAME_MAX_SIZE + 1];
+
+	for (int i = 0; i < username_len; i++) {
+		username[i] = buffer_read(rb);
+	}
+	username[username_len] = '\0';
+
+	// Prevent self-removal
+	if (strcmp(username, session->username) == 0) {
+		buffer_write(wb, CALSETTING_VERSION);
+		buffer_write(wb, RESPONSE_BAD_REQUEST); // or a more specific error code
+		buffer_write(wb, COMMAND_REMOVE_USER);
+		log(INFO, "[MANAGEMENT] Admin %s attempted to remove themselves", session->username);
+		return;
+	}
+
+	uint8_t result = remove_user_from_system(username);
+
+	buffer_write(wb, CALSETTING_VERSION);
+	buffer_write(wb, result);
+	buffer_write(wb, COMMAND_REMOVE_USER);
+
+	if (result == RESPONSE_SUCCESS) {
+		log(INFO, "[MANAGEMENT] Admin %s removed user: %s", session->username, username);
+	}
 }
 
 /**************** Helper functions *****************/
@@ -930,10 +1063,10 @@ static void cleanup_session(management_session *session) {
 	}
 
 	if (reusable_log_buffer) {
-        free(reusable_log_buffer);
-        reusable_log_buffer = NULL;
-        reusable_buffer_capacity = 0;
-    }
+		free(reusable_log_buffer);
+		reusable_log_buffer = NULL;
+		reusable_buffer_capacity = 0;
+	}
 
 	session->cleaned_up = true;
 	log(DEBUG, "[MANAGEMENT] Session cleanup complete");
@@ -941,43 +1074,112 @@ static void cleanup_session(management_session *session) {
 
 // TODO: MUST CHANGE LATER!! for now uses the same validation function as SOCKSs
 static uint8_t authenticate_user(const char *username, const char *password) {
-	if (us != NULL && nusers > 0) {
+	if (users != NULL && nusers > 0) {
 		for (int i = 0; i < nusers; i++) {
-			if (strcmp(username, us[i].name) == 0 && strcmp(password, us[i].pass) == 0) {
+			if (strcmp(username, users[i].name) == 0 && strcmp(password, users[i].pass) == 0) {
 				// Determine user type based on username
-				if (strstr(username, "admin") != NULL) {
+				if (users[i].type == USER_TYPE_ADMIN) {
 					return USER_TYPE_ADMIN;
-				} else {
+				} else if (users[i].type == USER_TYPE_CLIENT) {
 					return USER_TYPE_CLIENT;
+				} else {
+					log(ERROR, "[MANAGEMENT] Unknown user type for user %s", username);
+					return RESPONSE_AUTH_FAILURE; // unknown user type
 				}
 			}
 		}
 	}
 
-	// fallback hardcoded users (for now matching socks5)
-	if (strcmp(username, "nep") == 0 && strcmp(password, "nep") == 0) {
-		return USER_TYPE_ADMIN;
-	} else if (strcmp(username, "admin") == 0 && strcmp(password, "admin") == 0) {
-		return USER_TYPE_ADMIN;
-	} else if (strcmp(username, "user") == 0 && strcmp(password, "user") == 0) {
-		return USER_TYPE_CLIENT;
-	}
+	// // fallback hardcoded users (for now matching socks5)
+	// if (strcmp(username, "nep") == 0 && strcmp(password, "nep") == 0) {
+	// 	return USER_TYPE_ADMIN;
+	// } else if (strcmp(username, "admin") == 0 && strcmp(password, "admin") == 0) {
+	// 	return USER_TYPE_ADMIN;
+	// } else if (strcmp(username, "user") == 0 && strcmp(password, "user") == 0) {
+	// 	return USER_TYPE_CLIENT;
+	// }
 
 	return RESPONSE_AUTH_FAILURE;
 }
 
-static log_entry_t* get_reusable_log_buffer(size_t required_count) {
-    if (required_count > reusable_buffer_capacity) {
-        log_entry_t *new_buffer = realloc(reusable_log_buffer, required_count * sizeof(log_entry_t));
-        if (!new_buffer) {
-            log(ERROR, "[MANAGEMENT] Failed to resize reusable buffer to %zu entries", required_count);
-            return NULL;
-        }
-        
-        reusable_log_buffer = new_buffer;
-        reusable_buffer_capacity = required_count;
-        log(DEBUG, "[MANAGEMENT] Resized reusable buffer to %zu entries", required_count);
-    }
-    
-    return reusable_log_buffer;
+static log_entry_t *get_reusable_log_buffer(size_t required_count) {
+	if (required_count > reusable_buffer_capacity) {
+		log_entry_t *new_buffer = realloc(reusable_log_buffer, required_count * sizeof(log_entry_t));
+		if (!new_buffer) {
+			log(ERROR, "[MANAGEMENT] Failed to resize reusable buffer to %zu entries", required_count);
+			return NULL;
+		}
+
+		reusable_log_buffer = new_buffer;
+		reusable_buffer_capacity = required_count;
+		log(DEBUG, "[MANAGEMENT] Resized reusable buffer to %zu entries", required_count);
+	}
+
+	return reusable_log_buffer;
+}
+
+static uint8_t add_user_to_system(const char *username, const char *password, uint8_t user_type) {
+	// Check if user already exists (maybe should be by id)
+	for (int i = 0; i < nusers; i++) {
+		if (users[i].name && strcmp(username, users[i].name) == 0) {
+			return RESPONSE_USER_ALREADY_EXISTS;
+		}
+	}
+
+	if (nusers >= MAX_USERS) {
+		return RESPONSE_MAX_USERS_REACHED;
+	}
+
+	users[nusers].name = malloc(strlen(username) + 1);
+	if (!users[nusers].name) {
+		return RESPONSE_GENERAL_SERVER_FAILURE;
+	}
+	strcpy(users[nusers].name, username);
+
+	users[nusers].pass = malloc(strlen(password) + 1);
+	if (!users[nusers].pass) {
+		free(users[nusers].name);
+		return RESPONSE_GENERAL_SERVER_FAILURE;
+	}
+	strcpy(users[nusers].pass, password);
+
+	users[nusers].type = user_type;
+
+	nusers++;
+
+	log(INFO, "[MANAGEMENT] Added new user: %s (type: %d)", username, user_type);
+	return RESPONSE_SUCCESS;
+}
+
+// not a very efficient way to do this, but for now it works
+static uint8_t remove_user_from_system(const char *username) {
+	int user_index = -1;
+	for (int i = 0; i < nusers; i++) {
+		if (users[i].name && strcmp(username, users[i].name) == 0) {
+			user_index = i;
+			break;
+		}
+	}
+
+	if (user_index == -1) {
+		return RESPONSE_USER_NOT_FOUND;
+	}
+
+	free(users[user_index].name);
+	free(users[user_index].pass);
+
+	// Shift remaining users down
+	for (int i = user_index; i < nusers - 1; i++) {
+		users[i].name = users[i + 1].name;
+		users[i].pass = users[i + 1].pass;
+	}
+
+	// Clear the last entry
+	users[nusers - 1].name = NULL;
+	users[nusers - 1].pass = NULL;
+
+	nusers--;
+
+	log(INFO, "[MANAGEMENT] Removed user: %s", username);
+	return RESPONSE_SUCCESS;
 }

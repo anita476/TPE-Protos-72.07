@@ -4,8 +4,10 @@
 #include <stdio.h>	/* for printf */
 #include <stdlib.h> /* for exit */
 #include <string.h> /* memset */
+#include <stdint.h> /* for uint8_t */
 
 #include "../include/args.h"
+#include "../../shared/include/calsetting_protocol.h"
 
 static unsigned short port(const char *s) {
 	char *end = 0;
@@ -20,7 +22,7 @@ static unsigned short port(const char *s) {
 	return (unsigned short) sl;
 }
 
-static void user(char *s, struct users *user) {
+static void user(char *s, struct user *user) {
 	char *p = strchr(s, ':');
 	if (p == NULL) {
 		fprintf(stderr, "Password not found\n");
@@ -30,6 +32,21 @@ static void user(char *s, struct users *user) {
 		p++;
 		user->name = s;
 		user->pass = p;
+		user->type = USER_TYPE_CLIENT;
+	}
+}
+
+static void admin(char *s, struct user *user) {
+	char *p = strchr(s, ':');
+	if (p == NULL) {
+		fprintf(stderr, "Password not found\n");
+		exit(1);
+	} else {
+		*p = 0;
+		p++;
+		user->name = s;
+		user->pass = p;
+		user->type = USER_TYPE_ADMIN;
 	}
 }
 
@@ -66,6 +83,7 @@ static void usage(const char *progname) {
 			"   -p <SOCKS port>  Puerto entrante conexiones SOCKS.\n"
 			"   -P <conf port>   Puerto entrante conexiones configuracion\n"
 			"   -u <name>:<pass> Usuario y contraseña de usuario que puede usar el proxy. Hasta 10.\n"
+			"   -a <name>:<pass> Usuario y contraseña de administrador que puede usar el proxy. Hasta 10.\n"
 			"   -v               Imprime información sobre la versión versión y termina.\n"
 
 			"\n",
@@ -91,7 +109,7 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
 		int option_index = 0;
 		static struct option long_options[] = {{0, 0, 0, 0}};
 
-		c = getopt_long(argc, argv, "hl:L:Np:P:u:v", long_options, &option_index);
+		c = getopt_long(argc, argv, "hl:L:Np:P:u:a:v", long_options, &option_index);
 		if (c == -1)
 			break;
 
@@ -121,6 +139,15 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
 					exit(1);
 				} else {
 					user(optarg, args->users + nusers);
+					nusers++;
+				}
+				break;
+			case 'a': 
+				if (nusers >= MAX_USERS) {
+					fprintf(stderr, "Maximum number of command line admins reached: %d.\n", MAX_USERS);
+					exit(1);
+				} else {
+					admin(optarg, args->users + nusers);
 					nusers++;
 				}
 				break;

@@ -129,17 +129,17 @@ int hello_read(int sock) {
 	if (recv_all(sock, buff, 2) < 0) {
 		return -1; // Failed to read
 	}
-	user_type = buff[1] == 1? USER_TYPE_ADMIN : USER_TYPE_CLIENT; // 1 for admin, 0 for client
+	user_type = buff[1] == RESPONSE_SUCCESS_CLIENT ? USER_TYPE_ADMIN : USER_TYPE_CLIENT; // 1 for admin, 0 for client
 	return buff[1]; //returns hello_response code
 }
 
 int request_send(uint8_t command_code, uint8_t arg_1, uint8_t arg_2, int sock) {
     printf("[CLIENT DEBUG] request_send: cmd=%d, arg1=%d, arg2=%d\n", command_code, arg_1, arg_2);
     
-    if (command_code > COMMAND_CHANGE_TIMEOUT || command_code < COMMAND_LOGS) {
-        printf("[CLIENT DEBUG] Invalid command code: %d\n", command_code);
-        return RESPONSE_BAD_REQUEST;
-    }
+    // if (command_code > COMMAND_CHANGE_TIMEOUT || command_code < COMMAND_LOGS) {
+    //     printf("[CLIENT DEBUG] Invalid command code: %d\n", command_code);
+    //     return RESPONSE_BAD_REQUEST;
+    // }
     
     char request[REQUEST_SIZE];
     request[0] = CALSETTING_VERSION;
@@ -171,8 +171,8 @@ uint8_t handle_add_client(int sock, char * username, char * password) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
 	}
 	return response[1]; // Return the response code
-
 }
+
 uint8_t handle_add_admin(int sock, char * username, char * password) {
 	uint8_t r = add_user_send_req(sock, username, password, COMMAND_ADD_ADMIN);
 	if (r != 0) {
@@ -212,6 +212,8 @@ uint8_t add_user_send_req(int sock, char * username, char * password, uint8_t us
 	if (send_all(sock, data, username_len + password_len + ADD_USER_FIXED_HEADER_LEN) != username_len + password_len + ADD_USER_FIXED_HEADER_LEN) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to send request
 	}
+	printf("[CLIENT DEBUG] Sent add user request: cmd=%d, username_len=%d, password_len=%d\n", 
+		   user_type_command_code, username_len, password_len);
 	return 0;
 }
 

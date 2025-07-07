@@ -6,7 +6,7 @@ Console UI initialized
 
   SOCKS5 server admin interface
   UI Mode: Console
-  Connecting to: 127.0.0.1:8080
+  Connecting to: localhost:8080
   Press OK to continue
 
 
@@ -50,25 +50,17 @@ Select an option:
   3. Remove user
   4. Back to main menu
 
-Enter your choice (1-4): [H[2J[3J[CLIENT DEBUG] request_send: cmd=1, arg1=10, arg2=0
+Enter your choice (1-4): [H[2J[3J+----------------------------------------------------------+
+|                         Username                         |
++----------------------------------------------------------+
+
+Enter username:
+> [H[2J[3J[CLIENT DEBUG] request_send: cmd=1, arg1=10, arg2=0
 [CLIENT DEBUG] Sending: [0x01, 0x01, 0x0a, 0x00]
 [CLIENT DEBUG] send_all returned: 4 (expected: 4)
 +----------------------------------------------------------+
-|                        User list                         |
+|                         Password                         |
 +----------------------------------------------------------+
 
-  Server users (Page 1):
-  1. admin (Administrator)
-  Showing 1 of 1 users on this page
-  Press OK to continue
-
-
-Press any key to continue...[H[2J[3J+----------------------------------------------------------+
-|                    User list - Page 1                    |
-+----------------------------------------------------------+
-
-Choose navigation option:
-
-  1. Back to menu
-
-Enter your choice (1-1): 
+Enter password:
+> 

@@ -22,6 +22,14 @@
 static fd_selector selector = NULL;
 static bool done = false; // Flag to indicate when the server should stop
 
+struct user *users = NULL; // global users
+uint8_t nusers = 0;
+
+void load_users(struct user *u, uint8_t n) {  // Change the parameter type
+    users = u;
+    nusers = n;
+}
+
 static void sigterm_handler(const int signal);
 static void exit_error(const char *error_msg, int errnum);
 
@@ -136,7 +144,7 @@ int main(int argc, char **argv) {
 	printf("Starting server...\n");
 	// parse args is in charge of initializing the args struct, all info will be there (already should be rfc compliant)
 	parse_args(argc, argv, &args);
-	load_users(args.users, args.nusers);
+	load_users(args.users, args.nusers); // 
 	metrics_init();
 
 	close(0); // Close stdin we dont need it
