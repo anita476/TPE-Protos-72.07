@@ -86,7 +86,7 @@ static int get_username(char *username, int size) {
 }
 
 static int get_password(char *password, int size) {
-	return get_user_input("Login", "Enter password:", 1, password, size);
+	return get_user_input("Login", "Enter password (hidden):", 1, password, size);
 }
 
 static int authenticate() {
@@ -541,11 +541,11 @@ static void change_server_setting(const char *setting_name, const char *unit,
 }
 
 static void change_buffer_size() {
-	change_server_setting("buffer size", "KB", validate_buffer_size, handle_change_buffer_size);
+	change_server_setting("Buffer size", "KB", validate_buffer_size, handle_change_buffer_size);
 }
 
 static void change_timeout() {
-	change_server_setting("timeout", "seconds", validate_timeout, handle_change_timeout);
+	change_server_setting("Timeout", "seconds", validate_timeout, handle_change_timeout);
 }
 
 /* Menu functions */
