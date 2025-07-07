@@ -761,8 +761,9 @@ static void process_userlist_command(management_session *session, uint8_t number
         for (int j = 0; j < username_len; j++) {
             buffer_write(wb, current_user->name[j]);
         }
-		// is it faster to memcpy + write?
+		// is it faster to memcpy + adv?
         
+		// TODO: admin users should be determined by their type, for now just check if "admin" is in name
         // Determine user type
         uint8_t user_type = USER_TYPE_CLIENT;
         if (strstr(current_user->name, "admin") != NULL) {
