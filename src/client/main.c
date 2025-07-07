@@ -679,7 +679,7 @@ static void print_usage(void) {
 	printf("Options:\n");
 	printf("  -h host      Server hostname or IP address (default: %s)\n", DEFAULT_SERVER_ADDRESS);
 	printf("  -p port      Server port number (default: %s)\n", DEFAULT_SERVER_PORT);
-	printf("  --console    Use console UI instead of whiptail\n");
+	printf("  --console    Use console UI instead of Dialog\n");
 	printf("  --help       Show this help message\n");
 	printf("\nExample:\n");
 	printf("  client -h 192.168.1.100 -p 9090\n");
@@ -703,7 +703,7 @@ int main(int argc, char *argv[]) {
 			 "UI Mode: %s\n"
 			 "Connecting to: %s:%s\n\n"
 			 "Press OK to continue",
-			 use_console_ui ? "Console" : "Whiptail", server_address, server_port);
+			 use_console_ui ? "Console" : "Dialog", server_address, server_port);
 
 	ui_show_message("Welcome", welcome_msg);
 
