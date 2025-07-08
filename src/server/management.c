@@ -1174,9 +1174,6 @@ static uint8_t remove_user_from_system(const char *username) {
 		return RESPONSE_USER_NOT_FOUND;
 	}
 
-	free(users[user_index].name);
-	free(users[user_index].pass);
-
 	// Shift remaining users down
 	for (int i = user_index; i < nusers - 1; i++) {
 		users[i].name = users[i + 1].name;
