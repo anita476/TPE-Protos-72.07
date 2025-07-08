@@ -362,38 +362,90 @@ metrics_t *handle_metrics(int sock, metrics_t *m) {
 }
 
 metrics_t *handle_metrics_response(int sock, metrics_t *m) {
-	if (sock < 0 || m == NULL) {
-		return NULL; // Invalid parameters
-	}
-	metrics_t response;
+    if (sock < 0 || m == NULL) {
+        return NULL;
+    }
 
-	if (recv_all(sock, (char *) &response, sizeof(metrics_t)) != sizeof(metrics_t)) {
-		return NULL; // Failed to read metrics
-	}
+    uint8_t response[METRICS_RESPONSE_SIZE];
+    if (recv_all(sock, (char *)response, METRICS_RESPONSE_SIZE) != METRICS_RESPONSE_SIZE) {
+        return NULL;
+    }
 
-	m->version = response.version;
-	m->server_state = response.server_state;
+    int offset = 0;
 
-	m->total_connections = ntohl(response.total_connections);
-	m->concurrent_connections = ntohs(response.concurrent_connections);
-	m->max_concurrent_connections = ntohs(response.max_concurrent_connections);
+    m->version = response[offset++];
+    m->server_state = response[offset++];
 
-	m->bytes_transferred_in = be64toh(response.bytes_transferred_in);
-	m->bytes_transferred_out = be64toh(response.bytes_transferred_out);
-	m->total_bytes_transferred = be64toh(response.total_bytes_transferred);
+    uint32_t temp32;
+    uint64_t temp64;
 
-	m->total_errors = ntohl(response.total_errors);
-	m->uptime_seconds = ntohl(response.uptime_seconds);
+    // 32-bit concurrent_connections
+    memcpy(&temp32, &response[offset], 4);
+    m->concurrent_connections = ntohl(temp32);
+    offset += 4;
 
-	m->network_errors = ntohs(response.network_errors);
-	m->protocol_errors = ntohs(response.protocol_errors);
-	m->auth_errors = ntohs(response.auth_errors);
-	m->system_errors = ntohs(response.system_errors);
-	m->timeout_errors = ntohs(response.timeout_errors);
-	m->memory_errors = ntohs(response.memory_errors);
-	m->other_errors = ntohs(response.other_errors);
+    // 64-bit total_connections
+    memcpy(&temp64, &response[offset], 8);
+    m->total_connections = be64toh(temp64);
+    offset += 8;
 
-	return m; // Return the filled metrics structure
+    // 32-bit max_concurrent_connections
+    memcpy(&temp32, &response[offset], 4);
+    m->max_concurrent_connections = ntohl(temp32);
+    offset += 4;
+
+    // 64-bit bytes_transferred_in
+    memcpy(&temp64, &response[offset], 8);
+    m->bytes_transferred_in = be64toh(temp64);
+    offset += 8;
+
+    // 64-bit bytes_transferred_out
+    memcpy(&temp64, &response[offset], 8);
+    m->bytes_transferred_out = be64toh(temp64);
+    offset += 8;
+
+    // 64-bit total_bytes_transferred
+    memcpy(&temp64, &response[offset], 8);
+    m->total_bytes_transferred = be64toh(temp64);
+    offset += 8;
+
+    // Continue with all the 32-bit error fields...
+    memcpy(&temp32, &response[offset], 4);
+    m->total_errors = ntohl(temp32);
+    offset += 4;
+
+    memcpy(&temp32, &response[offset], 4);
+    m->uptime_seconds = ntohl(temp32);
+    offset += 4;
+
+    memcpy(&temp32, &response[offset], 4);
+    m->network_errors = ntohl(temp32);
+    offset += 4;
+
+    memcpy(&temp32, &response[offset], 4);
+    m->protocol_errors = ntohl(temp32);
+    offset += 4;
+
+    memcpy(&temp32, &response[offset], 4);
+    m->auth_errors = ntohl(temp32);
+    offset += 4;
+
+    memcpy(&temp32, &response[offset], 4);
+    m->system_errors = ntohl(temp32);
+    offset += 4;
+
+    memcpy(&temp32, &response[offset], 4);
+    m->timeout_errors = ntohl(temp32);
+    offset += 4;
+
+    memcpy(&temp32, &response[offset], 4);
+    m->memory_errors = ntohl(temp32);
+    offset += 4;
+
+    memcpy(&temp32, &response[offset], 4);
+    m->other_errors = ntohl(temp32);
+
+    return m;
 }
 
 client_log_entry_t *handle_log(int sock, uint8_t n, uint8_t offset) {

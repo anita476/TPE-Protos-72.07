@@ -52,67 +52,84 @@ void process_metrics_command(management_session *session) {
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);
 
-	if (buffer_writeable_bytes(wb) < sizeof(metrics_t)) {
-		return;
-	}
+	if (buffer_writeable_bytes(wb) < METRICS_RESPONSE_SIZE) {
+        log(ERROR, "[MANAGEMENT] Insufficient buffer space for metrics response");
+        set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
+        return;
+    }
+
+    // Build response in temporary buffer with proper byte order
+    uint8_t response[METRICS_RESPONSE_SIZE];
+    uint8_t *ptr = response;
+
+    uint32_t uptime = (uint32_t)(time(NULL) - real_metrics->start_time);
+
+    // Pack data efficiently
+    *ptr++ = CALSETTING_VERSION;
+    *ptr++ = 1; // TODO: get server state properly, currently hardcoded to 1
+
+    uint32_t concurrent = htonl(real_metrics->concurrent_connections);
+    memcpy(ptr, &concurrent, 4); ptr += 4;
+
+    uint64_t total_conn = htobe64(real_metrics->total_connections);
+    memcpy(ptr, &total_conn, 8); ptr += 8;
+
+    uint32_t max_concurrent = htonl(real_metrics->max_concurrent_connections);
+    memcpy(ptr, &max_concurrent, 4); ptr += 4;
+
+    uint64_t bytes_in = htobe64(real_metrics->bytes_transferred_in);
+    memcpy(ptr, &bytes_in, 8); ptr += 8;
+
+    uint64_t bytes_out = htobe64(real_metrics->bytes_transferred_out);
+    memcpy(ptr, &bytes_out, 8); ptr += 8;
+
+    uint64_t total_bytes = htobe64(real_metrics->total_bytes_transferred);
+    memcpy(ptr, &total_bytes, 8); ptr += 8;
+
+    uint32_t total_errors = htonl(real_metrics->total_errors);
+    memcpy(ptr, &total_errors, 4); ptr += 4;
+
+    uint32_t uptime_net = htonl(uptime);
+    memcpy(ptr, &uptime_net, 4); ptr += 4;
+
+    // Error counts
+    uint32_t network_errors = htonl(real_metrics->error_counts[ERROR_TYPE_NETWORK]);
+    memcpy(ptr, &network_errors, 4); ptr += 4;
+
+    uint32_t protocol_errors = htonl(real_metrics->error_counts[ERROR_TYPE_PROTOCOL]);
+    memcpy(ptr, &protocol_errors, 4); ptr += 4;
+
+    uint32_t auth_errors = htonl(real_metrics->error_counts[ERROR_TYPE_AUTH]);
+    memcpy(ptr, &auth_errors, 4); ptr += 4;
+
+    uint32_t system_errors = htonl(real_metrics->error_counts[ERROR_TYPE_SYSTEM]);
+    memcpy(ptr, &system_errors, 4); ptr += 4;
+
+    uint32_t timeout_errors = htonl(real_metrics->error_counts[ERROR_TYPE_TIMEOUT]);
+    memcpy(ptr, &timeout_errors, 4); ptr += 4;
+
+    uint32_t memory_errors = htonl(real_metrics->error_counts[ERROR_TYPE_MEMORY]);
+    memcpy(ptr, &memory_errors, 4); ptr += 4;
+
+    uint32_t other_errors = htonl(real_metrics->error_counts[ERROR_TYPE_OTHER]);
+    memcpy(ptr, &other_errors, 4); ptr += 4;
+
+    // Single write to buffer
+    size_t writable;
+    uint8_t *write_ptr = buffer_write_ptr(wb, &writable);
+    
+    if (writable >= METRICS_RESPONSE_SIZE) {
+        memcpy(write_ptr, response, METRICS_RESPONSE_SIZE);
+        buffer_write_adv(wb, METRICS_RESPONSE_SIZE);
+    } else {
+        // Fallback to individual writes
+        for (int i = 0; i < METRICS_RESPONSE_SIZE; i++) {
+            buffer_write(wb, response[i]);
+        }
+    }
+
+    log(DEBUG, "[MANAGEMENT] Bulk metrics response written successfully (%d bytes)", METRICS_RESPONSE_SIZE);
 	
-	uint32_t uptime = (uint32_t) (time(NULL) - real_metrics->start_time);
-
-	metrics_t response = {.version = CALSETTING_VERSION,
-						  .server_state = 1, // TODO: determine server state propelry
-
-						  .total_connections = real_metrics->total_connections > UINT32_MAX ?
-												   UINT32_MAX :
-												   (uint32_t) real_metrics->total_connections,
-						  .concurrent_connections = CLAMP_UINT16(real_metrics->concurrent_connections),
-						  .max_concurrent_connections = CLAMP_UINT16(real_metrics->max_concurrent_connections),
-
-						  .bytes_transferred_in = real_metrics->bytes_transferred_in,
-						  .bytes_transferred_out = real_metrics->bytes_transferred_out,
-						  .total_bytes_transferred = real_metrics->total_bytes_transferred,
-
-						  .total_errors = real_metrics->total_errors,
-						  .uptime_seconds = uptime,
-
-						  .network_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_NETWORK]),
-						  .protocol_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_PROTOCOL]),
-						  .auth_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_AUTH]),
-						  .system_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_SYSTEM]),
-						  .timeout_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_TIMEOUT]),
-						  .memory_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_MEMORY]),
-						  .other_errors = CLAMP_UINT16(real_metrics->error_counts[ERROR_TYPE_OTHER]),
-
-						  .reserved = 0,
-						  .reserved2 = 0};
-	response.total_connections = htonl(response.total_connections);
-	response.concurrent_connections = htons(response.concurrent_connections);
-	response.max_concurrent_connections = htons(response.max_concurrent_connections);
-	response.bytes_transferred_in = htobe64(response.bytes_transferred_in);
-	response.bytes_transferred_out = htobe64(response.bytes_transferred_out);
-	response.total_bytes_transferred = htobe64(response.total_bytes_transferred);
-	response.total_errors = htonl(response.total_errors);
-	response.uptime_seconds = htonl(response.uptime_seconds);
-	response.network_errors = htons(response.network_errors);
-	response.protocol_errors = htons(response.protocol_errors);
-	response.auth_errors = htons(response.auth_errors);
-	response.system_errors = htons(response.system_errors);
-	response.timeout_errors = htons(response.timeout_errors);
-	response.memory_errors = htons(response.memory_errors);
-	response.other_errors = htons(response.other_errors);
-
-	size_t writable;
-	uint8_t *write_ptr = buffer_write_ptr(wb, &writable);
-
-	if (writable < sizeof(metrics_t)) {
-		log(ERROR, "[MANAGEMENT] Buffer space lost between initial check and write");
-		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
-		return;
-	}
-
-	memcpy(write_ptr, &response, sizeof(metrics_t));
-	buffer_write_adv(wb, sizeof(metrics_t));
-
-	log(DEBUG, "[MANAGEMENT] Metrics response written successfully");
 }
 
 /*

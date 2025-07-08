@@ -54,7 +54,8 @@
 #define RESPONSE_HEADER_LEN        4
 #define USER_ENTRY_SIZE (1 + 1 + USERNAME_MAX_SIZE)
 #define HELLO_HEADER_FIXED_LEN     3
-#define LOG_ENTRY_WIRE_SIZE 586 // 21 + 1 + 255 + 1 + 46 + 2 + 1 + 256 + 2 + 1 = 586 bytes
+#define LOG_ENTRY_WIRE_SIZE        586 // 21 + 1 + 255 + 1 + 46 + 2 + 1 + 256 + 2 + 1 = 586 bytes
+#define METRICS_RESPONSE_SIZE      78 // Size of metrics_t struct
 
 
 // Address types
@@ -80,21 +81,13 @@
 #define BUFFER_SIZE_MIN            1024        // 1KB
 #define BUFFER_SIZE_MAX            (64 * 1024) // 64KB
 
-// (mucho texto perdon)
-// IMPORTANT: This struct is deliberately ordered and sized to ensure proper alignment.
-// Fields and sizes were chosen to minimize padding and maintain alignment.
-// If you modify this struct, double-check the alignment and total size to avoid misalignment or inefficient memory layout.
-// Note: The `__attribute__((packed))` is used here to ensure no padding is added between fields.
-// This guarantees that the memory layout matches the expected wire format when sending the struct as raw bytes.
-// Reference: https://stackoverflow.com/questions/12304326/padded-structures-using-attribute-packed-is-it-really-worth-it
-// 
-// TODO: Consider manually writing each field directly to the buffer instead of sending the struct as raw bytes.
-typedef struct __attribute__((packed)) {
+
+// Only client uses metrics_t
+typedef struct metrics_t {
     // Header
     uint8_t version;
     uint8_t server_state;
-    uint16_t reserved;
-    
+
     uint32_t total_connections;
     uint16_t concurrent_connections;
     uint16_t max_concurrent_connections;
@@ -112,9 +105,10 @@ typedef struct __attribute__((packed)) {
     uint16_t timeout_errors;
     uint16_t memory_errors;
     uint16_t other_errors;
-    uint16_t reserved2; // to align to 8 bytes
-} metrics_t; // total = 60 bytes
 
+} metrics_t;
+
+// Only server uses log_entry_t
 typedef struct log_entry_t {
 	char date[DATE_SIZE];  //date in ISO-8601 format YYYY-MM-DDTHH:MM:SS
 	uint8_t ulen;
@@ -128,6 +122,7 @@ typedef struct log_entry_t {
 	uint8_t status_code;
 } log_entry_t;
 
+// Only client uses user_list_entry
 typedef struct user_list_entry {
 	uint8_t ulen;
 	char username[USERNAME_MAX_SIZE];
