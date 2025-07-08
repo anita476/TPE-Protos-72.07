@@ -2,7 +2,7 @@
 // Created by nep on 7/4/25.
 //
 
-#include <bits/socket.h>
+#include <sys/socket.h>
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
