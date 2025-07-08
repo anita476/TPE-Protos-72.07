@@ -3,10 +3,10 @@
 #ifndef LOGGER_H
 #define LOGGER_H
 
+#include "../../shared/include/calsetting_protocol.h" // for log_entry_t
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "../../shared/include/calsetting_protocol.h" // for log_entry_t
 
 /*
  *  Macros y funciones simples para log de errores.
@@ -24,12 +24,12 @@ extern bool disabled;
  **/
 void setLogLevel(LOG_LEVEL newLevel);
 void disableLogging();
+void enableLogging();
 char *levelDescription(LOG_LEVEL level);
 
 int get_recent_logs(log_entry_t *buffer, int max_logs, int offset);
-void add_access_log(const char *username, const char *client_ip, uint16_t client_port,
-                   uint8_t dest_atyp, const char *dest_addr, uint16_t dest_port, 
-                   uint8_t status_code);
+void add_access_log(const char *username, const char *client_ip, uint16_t client_port, uint8_t dest_atyp,
+					const char *dest_addr, uint16_t dest_port, uint8_t status_code);
 
 // Debe ser una macro para poder obtener nombre y linea de archivo.
 // fprintf (stderr, "%s %s %s: %s:%d, ",__DATE__, __TIME__, levelDescription(level), __FILE__, __LINE__); <- took out

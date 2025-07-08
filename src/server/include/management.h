@@ -31,7 +31,6 @@ typedef struct {
     uint8_t user_type;              // USER_TYPE_CLIENT or USER_TYPE_ADMIN
     bool authenticated;
     
-    // Buffers (following SOCKS5 pattern)
     size_t buffer_size;
     buffer read_buffer;
     buffer write_buffer;
@@ -43,11 +42,6 @@ typedef struct {
     uint8_t error_code;
     bool error_response_sent;
     bool cleaned_up;
-    
-    // Current command context
-    uint8_t current_command;
-    uint8_t current_arg1;
-    uint8_t current_arg2;
     
 } management_session;
 

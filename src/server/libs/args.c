@@ -1,13 +1,14 @@
+#include <../include/logger.h> /* to set log level */
 #include <errno.h>
 #include <getopt.h>
 #include <limits.h> /* LONG_MIN et al */
+#include <stdint.h> /* for uint8_t */
 #include <stdio.h>	/* for printf */
 #include <stdlib.h> /* for exit */
 #include <string.h> /* memset */
-#include <stdint.h> /* for uint8_t */
 
-#include "../include/args.h"
 #include "../../shared/include/calsetting_protocol.h"
+#include "../include/args.h"
 
 static unsigned short port(const char *s) {
 	char *end = 0;
@@ -51,9 +52,9 @@ static void admin(char *s, struct user *user) {
 }
 
 static void version(void) {
-	fprintf(stderr, "socks5v version 0.0\n"
+	fprintf(stderr, "socks5v version 1.0\n"
 					"ITBA Protocolos de Comunicación 2025/1 -- Grupo 04\n"
-					"MIT License"
+					"MIT License\n"
 					"Copyright (c) 2025 Ana Negre, Matías Leporini, Camila Lee, Juan Amancio Oliva Morroni\n"
 					"Permission is hereby granted, free of charge, to any person obtaining a copy"
 					"of this software and associated documentation files (the 'Software'), to deal"
@@ -77,15 +78,16 @@ static void usage(const char *progname) {
 	fprintf(stderr,
 			"Usage: %s [OPTION]...\n"
 			"\n"
-			"   -h               Imprime la ayuda y termina.\n"
-			"   -l <SOCKS addr>  Dirección donde servirá el proxy SOCKS.\n"
-			"   -L <conf  addr>  Dirección donde servirá el servicio de management.\n"
-			"   -p <SOCKS port>  Puerto entrante conexiones SOCKS.\n"
-			"   -P <conf port>   Puerto entrante conexiones configuracion\n"
-			"   -u <name>:<pass> Usuario y contraseña de usuario que puede usar el proxy. Hasta 10.\n"
-			"   -a <name>:<pass> Usuario y contraseña de administrador que puede usar el proxy. Hasta 10.\n"
-			"   -v               Imprime información sobre la versión versión y termina.\n"
-
+			"   -h               		Imprime la ayuda y termina.\n"
+			"   -l <SOCKS addr>  		Dirección donde servirá el proxy SOCKS.\n"
+			"   -L <conf  addr>  		Dirección donde servirá el servicio de management.\n"
+			"   -p <SOCKS port>  		Puerto entrante conexiones SOCKS.\n"
+			"   -P <conf port>   		Puerto entrante conexiones configuracion\n"
+			"   -u <name>:<pass> 		Usuario y contraseña de usuario que puede usar el proxy. Hasta 10.\n"
+			"   -a <name>:<pass> 		Usuario y contraseña de administrador que puede usar el proxy. Hasta 10.\n"
+			"   -v               		Imprime información sobre la versión versión y termina.\n"
+			"   -g/--log <LOG LEVEL>  	Establece el nivel de log. Puede ser DEBUG, INFO, ERROR o FATAL.\n"
+			"	-s 			 			Desactiva todo nivel de logging.\n"
 			"\n",
 			progname);
 	exit(1);
@@ -107,9 +109,9 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
 
 	while (true) {
 		int option_index = 0;
-		static struct option long_options[] = {{0, 0, 0, 0}};
+		static struct option long_options[] = {{"log", required_argument, 0, 'g'}, {0, 0, 0, 0}};
 
-		c = getopt_long(argc, argv, "hl:L:Np:P:u:a:v", long_options, &option_index);
+		c = getopt_long(argc, argv, "hl:L:Np:P:u:a:vg:s", long_options, &option_index);
 		if (c == -1)
 			break;
 
@@ -142,7 +144,7 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
 					nusers++;
 				}
 				break;
-			case 'a': 
+			case 'a':
 				if (nusers >= MAX_USERS) {
 					fprintf(stderr, "Maximum number of command line admins reached: %d.\n", MAX_USERS);
 					exit(1);
@@ -154,6 +156,27 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
 			case 'v':
 				version();
 				exit(0);
+			case 'g':
+				if (optarg) {
+					args->log_level = optarg;
+					if (strcmp(args->log_level, "DEBUG") == 0)
+						setLogLevel(DEBUG);
+					else if (strcmp(args->log_level, "INFO") == 0)
+						setLogLevel(INFO);
+					else if (strcmp(args->log_level, "ERROR") == 0)
+						setLogLevel(ERROR);
+					else if (strcmp(args->log_level, "FATAL") == 0)
+						setLogLevel(FATAL);
+					else {
+						fprintf(stderr, "Unknown log level: %s\n", args->log_level);
+						exit(1); // Could also let it default or smth
+					}
+				}
+				break;
+			case 's':
+				// silent option
+				disableLogging();
+				break;
 			default:
 				fprintf(stderr, "Unknown argument %d.\n", c);
 				exit(1);

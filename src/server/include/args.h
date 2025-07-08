@@ -6,34 +6,32 @@
 
 #define MAX_USERS 10
 
-struct user
-{
-    char* name;
-    char* pass;
-    uint8_t type; // 0: client, 1: admin
+struct user {
+	char *name;
+	char *pass;
+	uint8_t type; // 0: client, 1: admin
 };
 
-struct socks5args
-{
-    char* socks_addr;
-    unsigned short socks_port;
+struct socks5args {
+	char *socks_addr;
+	unsigned short socks_port;
 
-    char* mng_addr;
-    unsigned short mng_port;
+	char *mng_addr;
+	unsigned short mng_port;
 
-    bool disectors_enabled;
+	bool disectors_enabled;
 
-    struct user users[MAX_USERS];
+	struct user users[MAX_USERS];
 	unsigned char nusers;
-};
 
+	const char *log_level;
+};
 
 /**
  * Interpreta la linea de comandos (argc, argv) llenando
  * args con defaults o la seleccion humana. Puede cortar
  * la ejecución.
  */
-void
-parse_args(const int argc, char** argv, struct socks5args* args);
+void parse_args(const int argc, char **argv, struct socks5args *args);
 
 #endif

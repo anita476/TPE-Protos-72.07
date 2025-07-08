@@ -465,7 +465,7 @@ static void change_server_setting(const char *setting_name, const char *unit,
 
 	uint8_t result = handle_func(server_socket, new_value);
 
-	if (result == RESPONSE_SUCCESS_ADMIN || result == RESPONSE_SUCCESS_CLIENT) {
+	if (result == RESPONSE_SUCCESS || result == RESPONSE_SUCCESS_ADMIN || result == RESPONSE_SUCCESS_CLIENT) {
 		char success_msg[256];
 		snprintf(success_msg, sizeof(success_msg), "%s successfully changed to %d %s.", setting_name, new_value, unit);
 		ui_show_message("Success", success_msg);
@@ -485,6 +485,10 @@ static void change_timeout() {
 }
 
 /* Menu functions */
+static int is_dialog_installed() {
+	int i = system("which dialog > /dev/null 2>&1");
+	return (i == 0);
+}
 
 static void admin_menu() {
 	while (1) {
@@ -585,6 +589,7 @@ static void configure_settings() {
 
 static int parse_arguments(int argc, char *argv[]) {
 	for (int i = 1; i < argc; i++) {
+		// todo add a --help command
 		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--host") == 0) {
 			if (i + 1 >= argc) {
 				fprintf(stderr, "Error: Option %s requires an argument\n", argv[i]);
@@ -640,6 +645,12 @@ static void print_usage(void) {
 /* Main */
 
 int main(int argc, char *argv[]) {
+	// Check if user has dialog installed
+	if (!is_dialog_installed()) {
+		fprintf(stderr, "Error: Dialog is not installed. Please install it to use the interactive UI.\n");
+		fprintf(stderr, "You can also use --console to enter console ui mode\n");
+		return 2;
+	}
 	int parse_result = parse_arguments(argc, argv);
 	if (parse_result != 0) {
 		return (parse_result == 1) ? 0 : 1;
