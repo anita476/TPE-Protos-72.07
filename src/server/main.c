@@ -33,7 +33,7 @@ void load_users(struct user *u, uint8_t n) { // Change the parameter type
 static void sigterm_handler(const int signal);
 static void exit_error(const char *error_msg, int errnum);
 
-// TODO expand parse args to include log level and eventually log file
+// TODO expand parse args to include  log file
 static struct socks5args args;
 
 // For IPv6 addresses -> setup is dual-stack (accepts both IPv4 and IPv6 connections)
@@ -146,7 +146,6 @@ int main(int argc, char **argv) {
 	parse_args(argc, argv, &args);
 	load_users(args.users, args.nusers); //
 	metrics_init();
-	setLogLevel(INFO); // TODO make this a command line arg
 
 	close(0); // Close stdin we dont need it
 	// flags
@@ -226,8 +225,6 @@ int main(int argc, char **argv) {
 		error_msg = "Error registering management CalSetting server socket with selector";
 		exit_error(error_msg, selectorMngStatus);
 	}
-	// disableLogging();
-
 	// Until sigterm or sigint, run server loop
 	for (; !done;) {
 		error_msg = NULL;
