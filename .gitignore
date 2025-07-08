@@ -64,3 +64,4 @@ client_debug.log
 #Project binary or object folders
 /bin
 /obj
+.DS_Store
