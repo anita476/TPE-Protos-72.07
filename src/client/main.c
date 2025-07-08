@@ -48,8 +48,6 @@ static void show_users(void);
 static void show_config(void);
 
 // User management functions
-static int find_user(const char *username);
-static int select_user(const char *title, const char *text, int exclude_admin);
 static int add_user(void);
 static int remove_user(void);
 
