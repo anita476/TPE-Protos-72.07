@@ -66,6 +66,7 @@
 #define LOGS_RESPONSE_HEADER_FIXED_LEN           4
 #define GET_USERS_RESPONSE_HEADER_FIXED_LEN      4
 #define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
+#define SERVER_CONFIG_RESPONSE_LEN 5
 
 #define DATE_SIZE 21                    // ISO-8601 timestamp
 #define USERNAME_MAX_SIZE 255           // Max username length  

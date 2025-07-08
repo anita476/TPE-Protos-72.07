@@ -34,6 +34,7 @@ static void process_change_buffer_command(management_session *session, uint8_t n
 static void process_change_timeout_command(management_session *session, uint8_t new_timeout);
 static void process_add_user_command(management_session *session, uint8_t arg1, uint8_t arg2, uint8_t type);
 static void process_remove_user_command(management_session *session, uint8_t arg1, uint8_t arg2);
+static void process_get_current_config_command(management_session *session);
 
 // Helper functions
 static void set_error_state(management_session *session, uint8_t error_code);
@@ -438,7 +439,7 @@ static void command_read(struct selector_key *key) {
 		case COMMAND_REMOVE_USER:
 			process_remove_user_command(session, arg1, arg2);
 		case COMMAND_GET_CURRENT_CONFIG:
-			// process_get_current_config_command(session);
+			process_get_current_config_command(session);
 			break;
 		default:
 			// TODO: this should never happen due to earlier validation
@@ -781,7 +782,7 @@ static void process_userlist_command(management_session *session, uint8_t number
 		uint8_t user_type = current_user->type;
 
 		buffer_write(wb, user_type); // user_type
-		buffer_write(wb, 1); // package_id
+		buffer_write(wb, 1);		 // package_id
 	}
 
 	log(DEBUG, "[MANAGEMENT] Prepared user list response for %s (req: %d, offset: %d, sent: %d)", session->username,
@@ -927,6 +928,7 @@ static void process_remove_user_command(management_session *session, uint8_t arg
 
 	// Check permissions
 	if (session->user_type != USER_TYPE_ADMIN) {
+		// i should check if there is enough space to write...
 		buffer_write(wb, CALSETTING_VERSION);
 		buffer_write(wb, RESPONSE_NOT_ALLOWED);
 		buffer_write(wb, COMMAND_REMOVE_USER);
@@ -976,6 +978,55 @@ static void process_remove_user_command(management_session *session, uint8_t arg
 	if (result == RESPONSE_SUCCESS) {
 		log(INFO, "[MANAGEMENT] Admin %s removed user: %s", session->username, username);
 	}
+}
+
+/*
+VER | STATUS | CMD | BUFFER_SIZE_KB | TIMEOUT_SECONDS |
+ 1  |   1    |  1  |       1        |       1         |
+Total: 6 bytes
+*/
+static void process_get_current_config_command(management_session *session) {
+    log(DEBUG, "[MANAGEMENT] Processing get current config command");
+    
+    buffer *wb = &session->write_buffer;
+    buffer_reset(wb);
+
+    if (session->user_type != USER_TYPE_ADMIN) {
+        log(INFO, "[MANAGEMENT] Non-admin user %s attempted to get config", session->username);
+        
+        if (buffer_writeable_bytes(wb) < SERVER_CONFIG_RESPONSE_LEN) {
+            return;
+        }
+        
+        buffer_write(wb, CALSETTING_VERSION);
+        buffer_write(wb, RESPONSE_NOT_ALLOWED);
+        buffer_write(wb, COMMAND_GET_CURRENT_CONFIG);
+        buffer_write(wb, 0); // buffer_size_kb (invalid)
+        buffer_write(wb, 0); // timeout_seconds (invalid)
+        return;
+    }
+
+    if (buffer_writeable_bytes(wb) < SERVER_CONFIG_RESPONSE_LEN) {
+        log(ERROR, "[MANAGEMENT] No space for config response");
+        set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
+        return;
+    }
+
+    uint8_t buffer_size_kb = (uint8_t)(g_socks5_buffer_size / 1024);
+    if (buffer_size_kb == 0 && g_socks5_buffer_size > 0) {
+        buffer_size_kb = 1;
+    }
+    
+    uint8_t timeout_seconds = (g_connection_timeout > 255) ? 255 : (uint8_t)g_connection_timeout;
+
+    buffer_write(wb, CALSETTING_VERSION);
+    buffer_write(wb, RESPONSE_SUCCESS);
+    buffer_write(wb, COMMAND_GET_CURRENT_CONFIG);
+    buffer_write(wb, buffer_size_kb);
+    buffer_write(wb, timeout_seconds);
+
+    log(INFO, "[MANAGEMENT] Config sent to admin %s: buffer_size=%uKB, timeout=%us", 
+        session->username, buffer_size_kb, timeout_seconds);
 }
 
 /**************** Helper functions *****************/
@@ -1116,17 +1167,16 @@ static log_entry_t *get_reusable_log_buffer(size_t required_count) {
 
 // confio que el cliente me mande bien los datos asi que muchos chequeos no hago
 static uint8_t add_user_to_system(const char *username, const char *password, uint8_t user_type) {
-
 	if (!username || !password) {
-        log(ERROR, "[MANAGEMENT] NULL username or password provided");
-        return RESPONSE_BAD_REQUEST;
-    }
+		log(ERROR, "[MANAGEMENT] NULL username or password provided");
+		return RESPONSE_BAD_REQUEST;
+	}
 
 	if (strlen(username) == 0 || strlen(password) == 0) {
-        log(ERROR, "[MANAGEMENT] Empty username or password provided");
-        return RESPONSE_BAD_REQUEST;
-    }
-    
+		log(ERROR, "[MANAGEMENT] Empty username or password provided");
+		return RESPONSE_BAD_REQUEST;
+	}
+
 	// Check if user already exists (maybe should be by id)
 	for (int i = 0; i < nusers; i++) {
 		if (users[i].name && strcmp(username, users[i].name) == 0) {

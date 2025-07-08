@@ -345,7 +345,7 @@ static void show_config() {
 			 "Admin port: %s\n\n"
 			 "Server configuration:\n"
 			 "Connection timeout: %u seconds\n"
-			 "Buffer size: %u bytes\n\n"
+			 "Buffer size: %u KB\n\n"
 			 "Press OK to continue",
 			 server_address, server_port, server_config.timeout_seconds, server_config.buffer_size_kb);
 

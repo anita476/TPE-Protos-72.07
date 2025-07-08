@@ -18,7 +18,6 @@
 #define LOGS_RESPONSE_HEADER_FIXED_LEN 4
 #define GET_USERS_RESPONSE_HEADER_FIXED_LEN 4
 #define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
-#define SERVER_CONFIG_RESPONSE_LEN 4
 #define ADD_USER_FIXED_HEADER_LEN 4
 #define REMOVE_USER_FIXED_HEADER_LEN 4
 
@@ -362,8 +361,26 @@ server_current_config * handle_get_current_config(int sock, server_current_confi
 	if (recv_all(sock, response, SERVER_CONFIG_RESPONSE_LEN) != SERVER_CONFIG_RESPONSE_LEN) {
 		return NULL; // Failed to read current config
 	}
-	config->buffer_size_kb = response[1];
-	config->timeout_seconds = response[2];
+
+
+	uint8_t version = response[0];
+    uint8_t status = response[1];
+    uint8_t cmd = response[2];
+
+	if (version != CALSETTING_VERSION) {
+        return NULL;
+    }
+    
+    if (cmd != COMMAND_GET_CURRENT_CONFIG) {
+        return NULL;
+    }
+
+	if (status != RESPONSE_SUCCESS) {
+		return NULL; // Command failed, status not success
+	}
+
+	config->buffer_size_kb = response[3];
+    config->timeout_seconds = response[4];
 	return config; // Return the filled server_current_config structure
 }
 
