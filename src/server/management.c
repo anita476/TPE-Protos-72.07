@@ -1114,7 +1114,19 @@ static log_entry_t *get_reusable_log_buffer(size_t required_count) {
 	return reusable_log_buffer;
 }
 
+// confio que el cliente me mande bien los datos asi que muchos chequeos no hago
 static uint8_t add_user_to_system(const char *username, const char *password, uint8_t user_type) {
+
+	if (!username || !password) {
+        log(ERROR, "[MANAGEMENT] NULL username or password provided");
+        return RESPONSE_BAD_REQUEST;
+    }
+
+	if (strlen(username) == 0 || strlen(password) == 0) {
+        log(ERROR, "[MANAGEMENT] Empty username or password provided");
+        return RESPONSE_BAD_REQUEST;
+    }
+    
 	// Check if user already exists (maybe should be by id)
 	for (int i = 0; i < nusers; i++) {
 		if (users[i].name && strcmp(username, users[i].name) == 0) {
@@ -1135,6 +1147,7 @@ static uint8_t add_user_to_system(const char *username, const char *password, ui
 	users[nusers].pass = malloc(strlen(password) + 1);
 	if (!users[nusers].pass) {
 		free(users[nusers].name);
+		users[nusers].name = NULL;
 		return RESPONSE_GENERAL_SERVER_FAILURE;
 	}
 	strcpy(users[nusers].pass, password);
