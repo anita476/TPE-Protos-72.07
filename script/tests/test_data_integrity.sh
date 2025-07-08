@@ -29,7 +29,7 @@ trap "kill $HTTP_PID 2>/dev/null || true" EXIT
 
 
 # Download the file through the SOCKS5 proxy
-curl --socks5-hostname $PROXY "http://localhost:$HTTP_PORT/$(basename "$BIGFILE")" -o "$DOWNLOADED_FILE"
+time curl --socks5-hostname $PROXY "http://localhost:$HTTP_PORT/$(basename "$BIGFILE")" -o "$DOWNLOADED_FILE"
 CURL_STATUS=$?
 
 # Stop the HTTP server if still running
