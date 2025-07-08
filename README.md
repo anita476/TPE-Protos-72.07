@@ -36,4 +36,4 @@ Por defecto se intentará ejecutar la UI de Dialog, en caso de utilizar la UI de
 > **Aclaración**
 >
 > Se agregaron las flags -g/ --log <LOG_LEVEL> para manejar el nivel de logging del servidor.
-> Además, se agregos la flag -s (silent) para deshabilitar el logging
+> Además, se agrego la flag -s (silent) para deshabilitar el logging
