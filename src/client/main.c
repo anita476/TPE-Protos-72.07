@@ -88,65 +88,65 @@ static int get_password(char *password, int size) {
 }
 
 static int authenticate() {
-    char username[MAX_INPUT], password[MAX_INPUT];
+	char username[MAX_INPUT], password[MAX_INPUT];
 
-    for (int attempts = 0; attempts < 3; attempts++) {
-        server_socket = setup_tcp_client_Socket(server_address, server_port);
-        if (server_socket < 0) {
-            ui_show_message("Error", "Failed to connect to server");
-            return 0;
-        }
+	for (int attempts = 0; attempts < 3; attempts++) {
+		server_socket = setup_tcp_client_Socket(server_address, server_port);
+		if (server_socket < 0) {
+			ui_show_message("Error", "Failed to connect to server");
+			return 0;
+		}
 
-        if (get_username(username, sizeof(username)) != 0) {
-            close(server_socket);
-            return 0;
-        }
-        if (strlen(username) == 0) {
-            ui_show_message("Error", "Username cannot be empty");
-            close(server_socket);
-            continue;
-        }
+		if (get_username(username, sizeof(username)) != 0) {
+			close(server_socket);
+			return 0;
+		}
+		if (strlen(username) == 0) {
+			ui_show_message("Error", "Username cannot be empty");
+			close(server_socket);
+			continue;
+		}
 
-        if (get_password(password, sizeof(password)) != 0) {
-            close(server_socket);
-            return 0;
-        }
-        if (strlen(password) == 0) {
-            ui_show_message("Error", "Password cannot be empty");
-            close(server_socket);
-            continue;
-        }
+		if (get_password(password, sizeof(password)) != 0) {
+			close(server_socket);
+			return 0;
+		}
+		if (strlen(password) == 0) {
+			ui_show_message("Error", "Password cannot be empty");
+			close(server_socket);
+			continue;
+		}
 
-        if (hello_send(username, password, server_socket) != 0) {
-            ui_show_message("Error", "Failed to send authentication");
-            close(server_socket);
-            return 0;
-        }
+		if (hello_send(username, password, server_socket) != 0) {
+			ui_show_message("Error", "Failed to send authentication");
+			close(server_socket);
+			return 0;
+		}
 
-        int auth_result = hello_read(server_socket);
-        if (auth_result == RESPONSE_SUCCESS_ADMIN) {
-            ui_show_message("Success", "Authentication successful. Welcome to the admin panel.");
-            return 1;
-        } else if (auth_result == RESPONSE_SUCCESS_CLIENT) {
-            ui_show_message("Info", "Authenticated as regular user. Admin privileges required.");
-            close(server_socket);
-            return 0;
-        }
+		int auth_result = hello_read(server_socket);
+		if (auth_result == RESPONSE_SUCCESS_ADMIN) {
+			ui_show_message("Success", "Authentication successful. Welcome to the admin panel.");
+			return 1;
+		} else if (auth_result == RESPONSE_SUCCESS_CLIENT) {
+			ui_show_message("Info", "Authenticated as regular user. Admin privileges required.");
+			close(server_socket);
+			return 0;
+		}
 
-        close(server_socket);
+		close(server_socket);
 
-        if (attempts < 2) {
-            char error_msg[256];
-            snprintf(error_msg, sizeof(error_msg), "Incorrect credentials. Attempts remaining: %d", 2 - attempts);
-            ui_show_message("Error", error_msg);
-        }
+		if (attempts < 2) {
+			char error_msg[256];
+			snprintf(error_msg, sizeof(error_msg), "Incorrect credentials. Attempts remaining: %d", 2 - attempts);
+			ui_show_message("Error", error_msg);
+		}
 
-        memset(username, 0, sizeof(username));
-        memset(password, 0, sizeof(password));
-    }
+		memset(username, 0, sizeof(username));
+		memset(password, 0, sizeof(password));
+	}
 
-    ui_show_message("Error", "Maximum number of attempts reached. Access denied.");
-    return 0;
+	ui_show_message("Error", "Maximum number of attempts reached. Access denied.");
+	return 0;
 }
 
 /* Pagination functions */
@@ -211,41 +211,36 @@ static void display_users(void *data, int count, int page) {
 }
 
 static void display_logs(void *data, int count, int page) {
-    if (count == 0) {
-        ui_show_message("Info", "No logs found");
-        return;
-    }
+	if (count == 0) {
+		ui_show_message("Info", "No logs found");
+		return;
+	}
 
-    char logs_info[2048];
-    char log_list[1536] = "";
-    client_log_entry_t *current = (client_log_entry_t *) data;
-    int display_count = 0;
-    int start_index = page * ITEMS_PER_PAGE;
+	char logs_info[2048];
+	char log_list[1536] = "";
+	client_log_entry_t *current = (client_log_entry_t *) data;
+	int display_count = 0;
+	int start_index = page * ITEMS_PER_PAGE;
 
-    while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
-        char log_line[600];
-        
-        snprintf(log_line, sizeof(log_line), 
-                 "%d. [%s] %.*s -> %s:%d (0x%02x)\n", 
-                 start_index + display_count + 1,
-                 current->date,
-                 current->ulen, current->username,
-                 current->destination_address, 
-                 current->destination_port,
-                 current->status_code);
-        
-        strncat(log_list, log_line, sizeof(log_list) - strlen(log_list) - 1);
-        current = current->next;
-        display_count++;
-    }
+	while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
+		char log_line[600];
 
-    snprintf(logs_info, sizeof(logs_info),
-             "Server logs (Page %d):\n%s\n"
-             "Showing %d of %d logs on this page\n\n"
-             "Press OK to continue",
-             page + 1, log_list, display_count, count);
+		snprintf(log_line, sizeof(log_line), "%d. [%s] %.*s -> %s:%d (0x%02x)\n", start_index + display_count + 1,
+				 current->date, current->ulen, current->username, current->destination_address,
+				 current->destination_port, current->status_code);
 
-    ui_show_message("Server logs", logs_info);
+		strncat(log_list, log_line, sizeof(log_list) - strlen(log_list) - 1);
+		current = current->next;
+		display_count++;
+	}
+
+	snprintf(logs_info, sizeof(logs_info),
+			 "Server logs (Page %d):\n%s\n"
+			 "Showing %d of %d logs on this page\n\n"
+			 "Press OK to continue",
+			 page + 1, log_list, display_count, count);
+
+	ui_show_message("Server logs", logs_info);
 }
 
 static void free_users(void *data) {
@@ -385,16 +380,16 @@ static int add_user() {
 		return 0;
 	}
 
-    int result = handle_add_client(server_socket, username, password);
-    if (result != RESPONSE_SUCCESS) {
-        if (result == RESPONSE_USER_ALREADY_EXISTS) {
-            ui_show_message("Error", "User already exists.");
-            return 0;
-        }
-        ui_show_message("Error", "Failed to add user. Please try again.");
-        return 0;
-    }
-	
+	int result = handle_add_client(server_socket, username, password);
+	if (result != RESPONSE_SUCCESS) {
+		if (result == RESPONSE_USER_ALREADY_EXISTS) {
+			ui_show_message("Error", "User already exists.");
+			return 0;
+		}
+		ui_show_message("Error", "Failed to add user. Please try again.");
+		return 0;
+	}
+
 	char success_msg[512];
 	snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully added to the system.", username);
 	ui_show_message("Success", success_msg);
@@ -403,33 +398,33 @@ static int add_user() {
 }
 
 static int remove_user() {
-    char selected_user[MAX_USERNAME];
-    if (get_user_input("Remove user", "Enter the username to remove:", 0, selected_user, sizeof(selected_user)) != 0) {
-        ui_show_message("Info", "User removal cancelled.");
-        return 0;
-    }
+	char selected_user[MAX_USERNAME];
+	if (get_user_input("Remove user", "Enter the username to remove:", 0, selected_user, sizeof(selected_user)) != 0) {
+		ui_show_message("Info", "User removal cancelled.");
+		return 0;
+	}
 
 	char confirm_msg[256];
 	snprintf(confirm_msg, sizeof(confirm_msg),
 			 "Are you sure you want to remove user '%s'?\n\nThis action cannot be undone.", selected_user);
 
-    if (ui_get_confirmation("Confirm removal", confirm_msg)) {
-        int result = handle_remove_user(server_socket, selected_user);
-        if (result == RESPONSE_SUCCESS) {
-            char success_msg[256];
-            snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully removed from the system.",
-                     selected_user);
-            ui_show_message("Success", success_msg);
-            return 1;
-        } else if (result == RESPONSE_USER_NOT_FOUND) {
-            ui_show_message("Error", "User not found.");
-        } else if (result == RESPONSE_NOT_ALLOWED) {
-            ui_show_message("Error", "You are not allowed to remove this user.");
-        } else {
-            ui_show_message("Error", "Failed to remove user. Please try again.");
-        }
-        return 0;
-    }
+	if (ui_get_confirmation("Confirm removal", confirm_msg)) {
+		int result = handle_remove_user(server_socket, selected_user);
+		if (result == RESPONSE_SUCCESS) {
+			char success_msg[256];
+			snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully removed from the system.",
+					 selected_user);
+			ui_show_message("Success", success_msg);
+			return 1;
+		} else if (result == RESPONSE_USER_NOT_FOUND) {
+			ui_show_message("Error", "User not found.");
+		} else if (result == RESPONSE_NOT_ALLOWED) {
+			ui_show_message("Error", "You are not allowed to remove this user.");
+		} else {
+			ui_show_message("Error", "Failed to remove user. Please try again.");
+		}
+		return 0;
+	}
 
 	ui_show_message("Info", "User removal cancelled.");
 	return 0;
@@ -560,8 +555,10 @@ static void manage_users() {
 
 static void configure_settings() {
 	while (1) {
-		char items[4][2][64] = {
-			{"1", "Show configurations"}, {"2", "Change buffer size"}, {"3", "Change timeout"}, {"4", "Back to main menu"}};
+		char items[4][2][64] = {{"1", "Show configurations"},
+								{"2", "Change buffer size"},
+								{"3", "Change timeout"},
+								{"4", "Back to main menu"}};
 
 		int selected = ui_get_menu_selection("Server settings", "Select an option:", items, 4);
 		if (selected == -1 || selected == 4)
