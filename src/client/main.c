@@ -473,26 +473,33 @@ static int add_user() {
 }
 
 static int remove_user() {
-	int user_index = select_user("Remove user", "Select user to remove:", 1);
-	if (user_index == -1) {
-		return 0;
-	}
-
-	// TODO: Get actual username from selected index
-	char selected_user[MAX_USERNAME] = "selected_user";
+    char selected_user[MAX_USERNAME];
+    if (get_user_input("Remove user", "Enter the username to remove:", 0, selected_user, sizeof(selected_user)) != 0) {
+        ui_show_message("Info", "User removal cancelled.");
+        return 0;
+    }
 
 	char confirm_msg[256];
 	snprintf(confirm_msg, sizeof(confirm_msg),
 			 "Are you sure you want to remove user '%s'?\n\nThis action cannot be undone.", selected_user);
 
-	if (ui_get_confirmation("Confirm removal", confirm_msg)) {
-		// TODO: Implement actual user removal logic here
-		char success_msg[256];
-		snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully removed from the system.",
-				 selected_user);
-		ui_show_message("Success", success_msg);
-		return 1;
-	}
+    if (ui_get_confirmation("Confirm removal", confirm_msg)) {
+        int result = handle_remove_user(server_socket, selected_user);
+        if (result == RESPONSE_SUCCESS) {
+            char success_msg[256];
+            snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully removed from the system.",
+                     selected_user);
+            ui_show_message("Success", success_msg);
+            return 1;
+        } else if (result == RESPONSE_USER_NOT_FOUND) {
+            ui_show_message("Error", "User not found.");
+        } else if (result == RESPONSE_NOT_ALLOWED) {
+            ui_show_message("Error", "You are not allowed to remove this user.");
+        } else {
+            ui_show_message("Error", "Failed to remove user. Please try again.");
+        }
+        return 0;
+    }
 
 	ui_show_message("Info", "User removal cancelled.");
 	return 0;

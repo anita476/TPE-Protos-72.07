@@ -219,13 +219,17 @@ uint8_t add_user_send_req(int sock, char * username, char * password, uint8_t us
 }
 
 uint8_t handle_remove_user(int sock, char * username) {
-	remove_user_send_req(sock, username);
-	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
-	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
-		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
-	}
-	return response[1]; // Return the response code
+    uint8_t req_result = remove_user_send_req(sock, username);
+    if (req_result != 0) {
+        return req_result;
+    }
+    char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
+    if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+        return RESPONSE_GENERAL_SERVER_FAILURE;
+    }
+    return response[1];
 }
+
 uint8_t remove_user_send_req(int sock, char * username) {
 	if (user_type != USER_TYPE_ADMIN) {
 		return RESPONSE_NOT_ALLOWED; // Only admin can add users
