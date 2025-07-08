@@ -88,62 +88,65 @@ static int get_password(char *password, int size) {
 }
 
 static int authenticate() {
-	char username[MAX_INPUT], password[MAX_INPUT];
+    char username[MAX_INPUT], password[MAX_INPUT];
 
-	server_socket = setup_tcp_client_Socket(server_address, server_port);
-	if (server_socket < 0) {
-		ui_show_message("Error", "Failed to connect to server");
-		return 0;
-	}
+    for (int attempts = 0; attempts < 3; attempts++) {
+        server_socket = setup_tcp_client_Socket(server_address, server_port);
+        if (server_socket < 0) {
+            ui_show_message("Error", "Failed to connect to server");
+            return 0;
+        }
 
-	for (int attempts = 0; attempts < 3; attempts++) {
-		if (get_username(username, sizeof(username)) != 0) {
-			close(server_socket);
-			return 0;
-		}
-		if (strlen(username) == 0) {
-			ui_show_message("Error", "Username cannot be empty");
-			continue;
-		}
+        if (get_username(username, sizeof(username)) != 0) {
+            close(server_socket);
+            return 0;
+        }
+        if (strlen(username) == 0) {
+            ui_show_message("Error", "Username cannot be empty");
+            close(server_socket);
+            continue;
+        }
 
-		if (get_password(password, sizeof(password)) != 0) {
-			close(server_socket);
-			return 0;
-		}
-		if (strlen(password) == 0) {
-			ui_show_message("Error", "Password cannot be empty");
-			continue;
-		}
+        if (get_password(password, sizeof(password)) != 0) {
+            close(server_socket);
+            return 0;
+        }
+        if (strlen(password) == 0) {
+            ui_show_message("Error", "Password cannot be empty");
+            close(server_socket);
+            continue;
+        }
 
-		if (hello_send(username, password, server_socket) != 0) {
-			ui_show_message("Error", "Failed to send authentication");
-			close(server_socket);
-			return 0;
-		}
+        if (hello_send(username, password, server_socket) != 0) {
+            ui_show_message("Error", "Failed to send authentication");
+            close(server_socket);
+            return 0;
+        }
 
-		int auth_result = hello_read(server_socket);
-		if (auth_result == RESPONSE_SUCCESS_ADMIN) {
-			ui_show_message("Success", "Authentication successful. Welcome to the admin panel.");
-			return 1;
-		} else if (auth_result == RESPONSE_SUCCESS_CLIENT) {
-			ui_show_message("Info", "Authenticated as regular user. Admin privileges required.");
-			close(server_socket);
-			return 0;
-		}
+        int auth_result = hello_read(server_socket);
+        if (auth_result == RESPONSE_SUCCESS_ADMIN) {
+            ui_show_message("Success", "Authentication successful. Welcome to the admin panel.");
+            return 1;
+        } else if (auth_result == RESPONSE_SUCCESS_CLIENT) {
+            ui_show_message("Info", "Authenticated as regular user. Admin privileges required.");
+            close(server_socket);
+            return 0;
+        }
 
-		if (attempts < 2) {
-			char error_msg[256];
-			snprintf(error_msg, sizeof(error_msg), "Incorrect credentials. Attempts remaining: %d", 2 - attempts);
-			ui_show_message("Error", error_msg);
-		}
+        close(server_socket);
 
-		memset(username, 0, sizeof(username));
-		memset(password, 0, sizeof(password));
-	}
+        if (attempts < 2) {
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), "Incorrect credentials. Attempts remaining: %d", 2 - attempts);
+            ui_show_message("Error", error_msg);
+        }
 
-	ui_show_message("Error", "Maximum number of attempts reached. Access denied.");
-	close(server_socket);
-	return 0;
+        memset(username, 0, sizeof(username));
+        memset(password, 0, sizeof(password));
+    }
+
+    ui_show_message("Error", "Maximum number of attempts reached. Access denied.");
+    return 0;
 }
 
 /* Pagination functions */
@@ -351,7 +354,6 @@ static void show_config() {
 }
 
 /* User management functions */
-
 
 static int add_user() {
 	char username[MAX_INPUT], password[MAX_INPUT];
