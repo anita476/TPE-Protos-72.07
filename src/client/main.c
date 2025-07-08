@@ -128,9 +128,8 @@ static int authenticate() {
             ui_show_message("Success", "Authentication successful. Welcome to the admin panel.");
             return 1;
         } else if (auth_result == RESPONSE_SUCCESS_CLIENT) {
-            ui_show_message("Info", "Authenticated as regular user. Admin privileges required.");
-            close(server_socket);
-            return 0;
+            ui_show_message("Info", "Authenticated as regular user.");
+            return 1;
         }
 
         close(server_socket);
