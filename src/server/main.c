@@ -1,10 +1,10 @@
 #include "include/args.h"
+#include "include/config.h"
 #include "include/logger.h"
+#include "include/management.h"
 #include "include/metrics.h"
 #include "include/selector.h"
 #include "include/socks5.h"
-#include "include/management.h"
-#include "include/config.h"
 #include "util.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -21,13 +21,13 @@
 #include <unistd.h>
 
 static fd_selector selector = NULL;
-static bool done = false; // Flag to indicate when the server should stop
+static bool done = false;  // Flag to indicate when the server should stop
 extern struct user *users; // Global users array
-extern uint8_t nusers;     // Number of users
+extern uint8_t nusers;	   // Number of users
 
-void load_users(struct user *u, uint8_t n) {  // Change the parameter type
-    users = u;
-    nusers = n;
+void load_users(struct user *u, uint8_t n) { // Change the parameter type
+	users = u;
+	nusers = n;
 }
 
 static void sigterm_handler(const int signal);
@@ -144,8 +144,9 @@ int main(int argc, char **argv) {
 	printf("Starting server...\n");
 	// parse args is in charge of initializing the args struct, all info will be there (already should be rfc compliant)
 	parse_args(argc, argv, &args);
-	load_users(args.users, args.nusers); // 
+	load_users(args.users, args.nusers); //
 	metrics_init();
+	setLogLevel(INFO); // TODO make this a command line arg
 
 	close(0); // Close stdin we dont need it
 	// flags
@@ -201,6 +202,7 @@ int main(int argc, char **argv) {
 		error_msg = "Error initializing selector";
 		exit_error(error_msg, errno);
 	}
+	// todo check that its not being lmited
 	selector = selector_new(1024);
 	if (selector == NULL) {
 		error_msg = "Error creating selector";
@@ -212,7 +214,8 @@ int main(int argc, char **argv) {
 		.handle_read = socks5_handle_new_connection, .handle_write = NULL, .handle_close = NULL};
 	selectorStatus = selector_register(selector, socksFd, &socks5Handler, OP_READ, NULL);
 
-	const struct fd_handler mngHandler = {.handle_read = management_handle_new_connection, .handle_write = NULL, .handle_close = NULL};
+	const struct fd_handler mngHandler = {
+		.handle_read = management_handle_new_connection, .handle_write = NULL, .handle_close = NULL};
 	selectorMngStatus = selector_register(selector, mngFd, &mngHandler, OP_READ, NULL);
 
 	if (selectorStatus != SELECTOR_SUCCESS) {

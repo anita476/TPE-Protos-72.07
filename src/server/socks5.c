@@ -250,7 +250,7 @@ static void socks5_handle_write(struct selector_key *key) {
 
 static void socks5_handle_close(struct selector_key *key) {
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] *** CLOSE HANDLER CALLED *** for fd=%d", key->fd);
-	close(key->fd);
+	// close(key->fd);
 	client_session *session = (client_session *) key->data;
 	if (!session) {
 		return;
@@ -477,7 +477,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 			log(INFO, "[WRITE_TO_CLIENT] Client already closed connection (EPIPE), closing socket.");
 			metrics_increment_errors(ERROR_TYPE_NETWORK);
 			log(DEBUG, "[WRITE_TO_CLIENT] Unregistering fd=%d from selector", key->fd);
-			// selector_unregister_fd(key->s, key->fd); <--------------------- HERE!!
+			selector_unregister_fd(key->s, key->fd);
 			close(key->fd);
 			log(DEBUG, "[WRITE_TO_CLIENT] EPIPE cleanup complete for fd=%d", key->fd);
 			return;
@@ -1143,11 +1143,11 @@ static void handle_connect_failure(struct selector_key *key, int error) {
 
 	// if (session->remote_fd == key->fd) {
 	//     log(DEBUG, "[HANDLE_CONNECT_FAILURE] Unregistering failed remote fd=%d", key->fd);
-	//     selector_unregister_fd(key->s, session->remote_fd);
+	// selector_unregister_fd(key->s, session->remote_fd);
 	//     session->remote_fd = -1;
 	// }
 
-	// // selector_unregister_fd_noclose(key->s, key->fd); <----- HERE
+	selector_unregister_fd(key->s, key->fd);
 	close(key->fd);
 	session->remote_fd = -1;
 
@@ -1363,7 +1363,7 @@ static void relay_remote_to_client(struct selector_key *key) {
 	if (bytes_read == 0) {
 		log(DEBUG, "[RELAY] Remote closed connection");
 		selector_unregister_fd(key->s, key->fd);
-		// close(key->fd);
+		close(key->fd);
 		return;
 	}
 
