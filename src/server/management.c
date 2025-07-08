@@ -154,12 +154,14 @@ static void management_handle_close(struct selector_key *key) {
 	}
 }
 
+
 /**************** Individual state handlers *****************/
 /*
 Reads:
 VER | ULEN | PWDLEN | USERNAME (ULEN bytes) | PASSWORD (PWDLEN bytes)
 */
 
+// TODO: Distinguish between FATAL errors (close immediately) vs. PROTOCOL errors (send response)
 static void hello_read(struct selector_key *key) {
 	management_session *session = (management_session *) key->data;
 	if (!session) {
@@ -311,10 +313,10 @@ static void command_read(struct selector_key *key) {
 	size_t wbytes;
 	uint8_t *ptr = buffer_write_ptr(rb, &wbytes);
 	if (wbytes <= 0) {
-		buffer_compact(rb);
+		buffer_compact(rb); // TODO: when do we compact vs we just wait (return)?
 		ptr = buffer_write_ptr(rb, &wbytes);
 		if (wbytes <= 0) {
-			log(ERROR, "[MANAGEMENT] No buffer space for command read");
+			log(ERROR, "[MANAGEMENT] No buffer space for command read"); 
 			set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
 			handle_error(key);
 			return;
@@ -357,8 +359,9 @@ static void command_read(struct selector_key *key) {
 		log(ERROR, "[MANAGEMENT] Wrong version in command: %d", version);
 		set_error_state(session, RESPONSE_WRONG_VERSION);
 		handle_error(key);
-		return;
+        return;
 	}
+
 	buffer_read_adv(rb, REQUEST_SIZE);
 
 	if (session->user_type != USER_TYPE_ADMIN) {
@@ -372,7 +375,7 @@ static void command_read(struct selector_key *key) {
 				log(ERROR, "[MANAGEMENT] User %s attempted admin command %d", session->username, cmd);
 				set_error_state(session, RESPONSE_NOT_ALLOWED);
 				handle_error(key);
-				return;
+                return;
 		}
 	}
 

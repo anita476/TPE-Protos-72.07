@@ -1,5 +1,4 @@
 #include "management_commands.h"
-#include "management_utils.h"
 #include "../../shared/include/calsetting_protocol.h"
 #include "args.h"
 #include "config.h"
@@ -14,7 +13,6 @@
 
 #define CLAMP_UINT16(value) ((value) > UINT16_MAX ? UINT16_MAX : (uint16_t) (value))
 
-
 extern size_t g_socks5_buffer_size;
 extern int g_connection_timeout;
 extern size_t g_management_buffer_size;
@@ -24,6 +22,11 @@ extern uint8_t nusers;
 // Static variables for this module
 static log_entry_t *reusable_log_buffer = NULL;
 static size_t reusable_buffer_capacity = 0;
+
+/*********** HELPER FUNCTIONS **************/
+// Standard 4-byte response header: VER | STATUS | CMD | ARG
+static void write_response_header(buffer *wb, uint8_t status, uint8_t command, uint8_t arg);
+static void write_simple_response_header(buffer *wb, uint8_t status, uint8_t command);
 
 // TODO: check error state bc idk if its even necessary
 
@@ -40,7 +43,6 @@ AUTH_ERRORS | SYSTEM_ERRORS | TIMEOUT_ERRORS | MEMORY_ERRORS | OTHER_ERRORS
 
 Total size: 1 + 1 + 4 + 8 + 4 + 8 + 8 + 8 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 = 78 bytes
 */
-// TODO: review the metrics structure and usage
 void process_metrics_command(management_session *session) {
 	server_metrics *real_metrics = metrics_get();
 	if (!real_metrics) {
@@ -521,13 +523,12 @@ void process_get_current_config_command(management_session *session) {
         session->username, buffer_size_kb, timeout_seconds);
 }
 
-
+/********************** HELPER FUNCTIONS *****************************/
 
 uint8_t authenticate_user(const char *username, const char *password) {
 	if (users != NULL && nusers > 0) {
 		for (int i = 0; i < nusers; i++) {
 			if (strcmp(username, users[i].name) == 0 && strcmp(password, users[i].pass) == 0) {
-				// Determine user type based on username
 				if (users[i].type == USER_TYPE_ADMIN) {
 					return USER_TYPE_ADMIN;
 				} else if (users[i].type == USER_TYPE_CLIENT) {
@@ -539,16 +540,6 @@ uint8_t authenticate_user(const char *username, const char *password) {
 			}
 		}
 	}
-
-	// // fallback hardcoded users (for now matching socks5)
-	// if (strcmp(username, "nep") == 0 && strcmp(password, "nep") == 0) {
-	// 	return USER_TYPE_ADMIN;
-	// } else if (strcmp(username, "admin") == 0 && strcmp(password, "admin") == 0) {
-	// 	return USER_TYPE_ADMIN;
-	// } else if (strcmp(username, "user") == 0 && strcmp(password, "user") == 0) {
-	// 	return USER_TYPE_CLIENT;
-	// }
-
 	return RESPONSE_AUTH_FAILURE;
 }
 
@@ -643,7 +634,6 @@ uint8_t remove_user_from_system(const char *username) {
 	return RESPONSE_SUCCESS;
 }
 
-
 void cleanup_session(management_session *session) {
 	if (!session || session->cleaned_up) {
 		return;
@@ -668,7 +658,6 @@ void cleanup_session(management_session *session) {
 	session->cleaned_up = true;
 	log(DEBUG, "[MANAGEMENT] Session cleanup complete");
 }
-
 
 bool write_to_client(struct selector_key *key, bool should_close) {
 	management_session *session = (management_session *) key->data;
