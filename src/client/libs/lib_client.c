@@ -2,21 +2,22 @@
 // Created by nep on 7/4/25.
 //
 
-#include <sys/socket.h>
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
+#include "buffer.h"
 #include "lib_client.h"
 #include "buffer.h"
 
 metrics_t *handle_metrics_response(int sock, metrics_t *m);
 void fill_log_struct(char *data, client_log_entry_t *log);
-void fill_user_list_entry(char *data, user_list_entry *user, uint8_t pack_id);
+void fill_user_list_entry(char *data, user_list_entry *user);
 uint8_t add_user_send_req(int sock, char *username, char *password, uint8_t user_type_command_code);
 uint8_t remove_user_send_req(int sock, char *username);
 static uint8_t user_type;
@@ -551,7 +552,7 @@ void fill_log_struct(char *data, client_log_entry_t *log) {
 	log->status_code = *ptr++;
 }
 
-void fill_user_list_entry(char *data, user_list_entry *user, uint8_t pack_id) {
+void fill_user_list_entry(char *data, user_list_entry *user) {
 	user->ulen = *data++;
 	memcpy(user->username, data, user->ulen);
 	user->username[user->ulen] = '\0';
