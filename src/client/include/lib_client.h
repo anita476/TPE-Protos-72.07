@@ -35,9 +35,9 @@ int hello_read(int sock);
 
 // Server interaction functions
 metrics_t *handle_metrics(int sock, metrics_t *m);
-client_log_entry_t * handle_log(int sock, uint8_t n, uint8_t offset,uint8_t * exit_code);
-user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock,uint8_t * exit_code);
-server_current_config * handle_get_current_config(int sock, server_current_config * config,uint8_t * exit_code);
+client_log_entry_t * handle_log(int sock, uint8_t n, uint8_t offset);
+user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock);
+server_current_config * handle_get_current_config(int sock, server_current_config * config);
 
 // Server configuration functions
 uint8_t handle_change_buffer_size(int sock, uint8_t new_size);
