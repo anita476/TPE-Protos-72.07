@@ -372,10 +372,10 @@ selector_status selector_unregister_fd(fd_selector s, const int fd) {
 		};
 		item->handler->handle_close(&key);
 	}
-	item->interest = OP_NOOP;
-	epoll_ctl(s->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
-	memset(item, 0x00, sizeof(*item));
-	item_init(item);
+    item->interest = OP_NOOP;
+    epoll_ctl(s->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+    memset(item, 0x00, sizeof(*item));
+    item_init(item);
 finally:
 	return ret;
 }
@@ -480,7 +480,7 @@ selector_status selector_select(fd_selector s) {
 	}
 	for (int i = 0; i < n; i++) {
 		struct item *item = (struct item *) s->events[i].data.ptr;
-		if (!ITEM_USED(item))
+		if (!item || !ITEM_USED(item) || !item->handler)
 			continue;
 		struct selector_key key = {
 			.s = s,
@@ -514,28 +514,5 @@ int selector_fd_set_nio(const int fd) {
 			ret = -1;
 		}
 	}
-	return ret;
-}
-
-selector_status selector_unregister_fd_noclose(fd_selector s, const int fd) {
-	selector_status ret = SELECTOR_SUCCESS;
-
-	if (NULL == s || INVALID_FD(fd)) {
-		ret = SELECTOR_IARGS;
-		goto finally;
-	}
-
-	struct item *item = s->fds + fd;
-	if (!ITEM_USED(item)) {
-		ret = SELECTOR_IARGS;
-		goto finally;
-	}
-
-	item->interest = OP_NOOP;
-	epoll_ctl(s->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
-	memset(item, 0x00, sizeof(*item));
-	item_init(item);
-
-finally:
 	return ret;
 }

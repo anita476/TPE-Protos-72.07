@@ -4,4 +4,4 @@
 apt install check --yes     # Unit testing framework
 apt install ncat --yes      # Network utility for client connections  
 apt install iproute2 --yes  # Network monitoring tools
-apt install whiptail --yes  # Text-based dialog interface for admin GUI
+apt install dialog --yes    # Text-based dialog interface for admin GUI

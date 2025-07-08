@@ -2,13 +2,15 @@
 #define ARGS_H_kFlmYm1tW9p5npzDr2opQJ9jM8
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #define MAX_USERS 10
 
-struct users
+struct user
 {
     char* name;
     char* pass;
+    uint8_t type; // 0: client, 1: admin
 };
 
 struct socks5args
@@ -21,9 +23,10 @@ struct socks5args
 
     bool disectors_enabled;
 
-    struct users users[MAX_USERS];
+    struct user users[MAX_USERS];
 	unsigned char nusers;
 };
+
 
 /**
  * Interpreta la linea de comandos (argc, argv) llenando

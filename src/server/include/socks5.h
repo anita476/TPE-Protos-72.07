@@ -5,6 +5,7 @@
 #ifndef _SOCKS5_H_
 #define _SOCKS5_H_
 
+#include "../../shared/include/calsetting_protocol.h"
 #include "args.h"
 #include "buffer.h"
 #include "logger.h"
@@ -32,7 +33,6 @@ typedef enum {
 	STATE_AUTH_WRITE,
 	STATE_REQUEST_READ,
 	STATE_REQUEST_WRITE,
-
 	STATE_REQUEST_RESOLVE, // ATYP == DOMAIN
 	STATE_REQUEST_CONNECT,
 	STATE_RELAY,
@@ -43,76 +43,89 @@ typedef enum {
 } socks5_state;
 
 // REQUEST AND RESPONSE STRUCTURES
-typedef struct socks5_request {
-	uint8_t cmd;  // command <- not needed
-	uint8_t atyp; // not needed
-	// char *dstAddress; // destination address
-	// struct sockaddr_storage addr; // resolved address (always IPv4 or IPv6)
-	// socklen_t addr_len;            // address length for connect()
+// typedef struct socks5_request {
+// 	uint8_t cmd;  // command <- not needed
+// 	uint8_t atyp; // not needed
+// 	uint16_t dst_port;		 // destination port
+// 	char *domain_to_resolve; // temporary domain to resolve if atyp == SOCKS5_ATYP_DOMAIN, freed after resolution
+// 	struct addrinfo *dst_address;
+// } socks5_request;
 
-	// temporary variables to hold the address and port
-	uint16_t dst_port;		 // destination port
-	char *domain_to_resolve; // temporary domain to resolve if atyp == SOCKS5_ATYP_DOMAIN
+typedef struct {
+	uint8_t atyp;
+    char *domain_to_resolve;        // Domain name for DNS resolution
+    struct addrinfo *dst_addresses; // Chain of addresses to try
+    uint16_t dst_port;             // Port for DNS resolution
+} connection_data;
 
-	struct addrinfo *dst_address;
-} socks5_request;
+typedef struct {
+    char client_ip[46];            // INET6_ADDRSTRLEN = 46
+    uint16_t client_port;
+    char dest_addr[256];           // Max domain name length
+    uint16_t dest_port;
+    uint8_t dest_atyp;
+} log_info;
 
-typedef struct socks5_response {
-	uint8_t rep;				   // replyCode
-	uint8_t atyp;				   // address type
-	struct sockaddr *boundAddress; // bound address
-	socklen_t boundLength;
-	uint16_t boundPort;		// bound port
-	uint8_t remoteSocketFd; // active socket between server and destination
-} socks5_response;
 
 // Then we define a struct that holds *all* information for a SINGLE client connection
 typedef struct {
+	// Core state
 	socks5_state current_state;
-
-	socks5_request current_request;
-	socks5_response current_response;
-
-	uint8_t *raw_read_buffer; // make into pointer to allocate at runtime
-	uint8_t *raw_write_buffer;
-
-	// Buffers to handle reading and writing
-	buffer read_buffer;
-	buffer write_buffer;
-
-	size_t buffer_size;
-
 	int remote_fd;
 	int client_fd; // socket for CLIENT CONNECTION
 
-	// bool should_close; // TODO: maybe do this instead of STATE_CLIENT_CLOSE (mizrahi does this)
-	int clientSocket; // socket for CLIENT CONNECTION
+    // Protocol data
+	connection_data connection;    // Temporary connection info
+    log_info logging;             // Persistent logging info
 
-	bool dns_failed; // Add this field
-	uint8_t dns_error_code;
+	// socks5_request current_request;
+	// socks5_response current_response;
 
+	// Buffers (client side)
+	uint8_t *raw_read_buffer; // make into pointer to allocate at runtime
+	uint8_t *raw_write_buffer;
+	buffer read_buffer;
+	buffer write_buffer;
+
+	// Buffers (remote side)
 	// Ful duplex communication, buffer for REMOTE connection
 	uint8_t *raw_remote_read_buffer; // make into pointer to allocate at runtime
 	uint8_t *raw_remote_write_buffer;
-
-	// Buffers to handle reading and writing for REMOTE connection
 	buffer remote_read_buffer;
 	buffer remote_write_buffer;
-	// buffer size is the same for all
 
+	size_t buffer_size; // Size for all buffers
+
+	// DNS handling -> is it necessary to separate it? 
+	bool dns_failed; // Add this field
+	uint8_t dns_error_code;
+
+	// Error handling
 	bool has_error;
 	uint8_t error_code;
 	bool error_response_sent;
 
+	// Authentication
 	bool authenticated;
+	char* username; // TODO: later should point to a struct with more user info 
+	uint8_t user_type; 
 
-	bool cleaned_up; // to avoid double cleanup
+	// Lifecycle
+    bool cleaned_up;
 
+	// bool should_close; // TODO: maybe do this instead of STATE_CLIENT_CLOSE (mizrahi does this)
 } client_session;
 
 void socks5_handle_new_connection(struct selector_key *key);
 
-// Todo this should be in its own library
-void load_users(struct users *u, uint8_t n);
+#endif
 
-#endif // SOCKS5_H
+
+// typedef struct socks5_response {
+// 	uint8_t rep;				   // replyCode
+// 	uint8_t atyp;				   // address type
+// 	struct sockaddr *boundAddress; // bound address
+// 	socklen_t boundLength;
+// 	uint16_t boundPort;		// bound port
+// 	uint8_t remoteSocketFd; // active socket between server and destination
+// } socks5_response;

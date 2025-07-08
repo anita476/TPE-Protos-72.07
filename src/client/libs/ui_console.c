@@ -1,212 +1,144 @@
+#include "../include/ui_console.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
-#include <termios.h>
 #include <unistd.h>
-#include "../include/ui_console.h"
 
 #define CONSOLE_WIDTH 80
 #define BOX_WIDTH 60
 
-static struct termios orig_termios;
-static int termios_saved = 0;
-
-/* Helper functions */
-
-static void save_terminal_settings(void) {
-    if (!termios_saved) {
-        tcgetattr(STDIN_FILENO, &orig_termios);
-        termios_saved = 1;
-    }
-}
-
-static void restore_terminal_settings(void) {
-    if (termios_saved) {
-        tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
-    }
-}
-
-static void disable_echo(void) {
-    struct termios new_termios;
-    save_terminal_settings();
-    new_termios = orig_termios;
-    new_termios.c_lflag &= ~(ECHO | ICANON);
-    tcsetattr(STDIN_FILENO, TCSANOW, &new_termios);
-}
-
-static void enable_echo(void) {
-    restore_terminal_settings();
-}
-
-static char getch(void) {
-    char ch;
-    disable_echo();
-    ch = getchar();
-    enable_echo();
-    return ch;
-}
-
 /* Draw functions */
 
 void ui_clear_screen(void) {
-    system("clear");
+	system("clear");
 }
 
 static void print_border_line(char left, char middle, char right, int width) {
-    printf("%c", left);
-    for (int i = 0; i < width - 2; i++) {
-        printf("%c", middle);
-    }
-    printf("%c\n", right);
+	printf("%c", left);
+	for (int i = 0; i < width - 2; i++) {
+		printf("%c", middle);
+	}
+	printf("%c\n", right);
 }
 
 static void print_text_line(const char *text, int width) {
-    int text_len = strlen(text);
-    int padding = (width - 2 - text_len) / 2;
-    
-    printf("|");
-    for (int i = 0; i < padding; i++) {
-        printf(" ");
-    }
-    printf("%s", text);
-    for (int i = 0; i < width - 2 - padding - text_len; i++) {
-        printf(" ");
-    }
-    printf("|\n");
-}
+	int text_len = strlen(text);
+	int padding = (width - 2 - text_len) / 2;
 
-static void print_empty_line(int width) {
-    printf("|");
-    for (int i = 0; i < width - 2; i++) {
-        printf(" ");
-    }
-    printf("|\n");
+	printf("|");
+	for (int i = 0; i < padding; i++) {
+		printf(" ");
+	}
+	printf("%s", text);
+	for (int i = 0; i < width - 2 - padding - text_len; i++) {
+		printf(" ");
+	}
+	printf("|\n");
 }
 
 void ui_print_header(const char *title) {
-    int title_len = strlen(title);
-    int box_width = (title_len > BOX_WIDTH - 4) ? title_len + 4 : BOX_WIDTH;
-    
-    print_border_line('+', '-', '+', box_width);
-    print_text_line(title, box_width);
-    print_border_line('+', '-', '+', box_width);
+	int title_len = strlen(title);
+	int box_width = (title_len > BOX_WIDTH - 4) ? title_len + 4 : BOX_WIDTH;
+
+	print_border_line('+', '-', '+', box_width);
+	print_text_line(title, box_width);
+	print_border_line('+', '-', '+', box_width);
 }
 
 void ui_print_separator(void) {
-    for (int i = 0; i < BOX_WIDTH; i++) {
-        printf("-");
-    }
-    printf("\n");
+	for (int i = 0; i < BOX_WIDTH; i++) {
+		printf("-");
+	}
+	printf("\n");
 }
 
 void ui_wait_for_key(const char *prompt) {
-    printf("\n%s", prompt);
-    fflush(stdout);
-    getch();
+	printf("\n%s", prompt);
+	fflush(stdout);
+	getchar();
 }
 
 /* UI functions */
 
 void ui_console_show_message(const char *title, const char *message) {
-    ui_clear_screen();
-    ui_print_header(title);
-    printf("\n");
-    
-    char *msg_copy = strdup(message);
-    char *line = strtok(msg_copy, "\n");
-    
-    while (line != NULL) {
-        printf("  %s\n", line);
-        line = strtok(NULL, "\n");
-    }
-    
-    free(msg_copy);
-    printf("\n");
-    ui_wait_for_key("Press any key to continue...");
+	ui_clear_screen();
+	ui_print_header(title);
+	printf("\n");
+
+	char *msg_copy = strdup(message);
+	char *line = strtok(msg_copy, "\n");
+
+	while (line != NULL) {
+		printf("  %s\n", line);
+		line = strtok(NULL, "\n");
+	}
+
+	free(msg_copy);
+	printf("\n");
+	ui_wait_for_key("Press any key to continue...");
 }
 
 char *ui_console_get_input(const char *title, const char *text, int hidden) {
-    static char result[MAX_INPUT];
-    char ch;
-    int pos = 0;
-    
-    ui_clear_screen();
-    ui_print_header(title);
-    printf("\n%s\n", text);
-    printf("> ");
-    fflush(stdout);
-    
-    if (hidden) {
-        disable_echo();
-        while ((ch = getchar()) != '\n' && ch != EOF && pos < MAX_INPUT - 1) {
-            if (ch == '\b' || ch == 127) {
-                if (pos > 0) {
-                    pos--;
-                    printf("\b \b");
-                    fflush(stdout);
-                }
-            } else if (ch >= 32 && ch <= 126) {
-                result[pos++] = ch;
-                printf("*");
-                fflush(stdout);
-            }
-        }
-        enable_echo();
-        printf("\n");
-        result[pos] = '\0';
-    } else {
-        if (fgets(result, MAX_INPUT, stdin) != NULL) {
-            char *newline = strchr(result, '\n');
-            if (newline) {
-                *newline = '\0';
-            }
-        } else {
-            return NULL;
-        }
-    }
-    
-    return result;
+	(void) hidden;
+	static char result[MAX_INPUT];
+
+	ui_clear_screen();
+	ui_print_header(title);
+	printf("\n%s\n", text);
+	printf("> ");
+	fflush(stdout);
+
+	if (fgets(result, MAX_INPUT, stdin) != NULL) {
+		char *newline = strchr(result, '\n');
+		if (newline) {
+			*newline = '\0';
+		}
+	} else {
+		return NULL;
+	}
+
+	return result;
 }
 
 int ui_console_get_menu_selection(const char *title, const char *text, char items[][2][64], int count) {
-    int selected = 0;
-    char input[16];
-    
-    ui_clear_screen();
-    ui_print_header(title);
-    printf("\n%s\n\n", text);
-    
-    for (int i = 0; i < count; i++) {
-        printf("  %s. %s\n", items[i][0], items[i][1]);
-    }
-    
-    printf("\nEnter your choice (1-%d): ", count);
-    fflush(stdout);
-    
-    if (fgets(input, sizeof(input), stdin) != NULL) {
-        selected = atoi(input);
-        if (selected >= 1 && selected <= count) {
-            return selected;
-        }
-    }
-    
-    return -1;
+	int selected = 0;
+	char input[16];
+
+	ui_clear_screen();
+	ui_print_header(title);
+	printf("\n%s\n\n", text);
+
+	for (int i = 0; i < count; i++) {
+		printf("  %s. %s\n", items[i][0], items[i][1]);
+	}
+
+	printf("\nEnter your choice (1-%d): ", count);
+	fflush(stdout);
+
+	if (fgets(input, sizeof(input), stdin) != NULL) {
+		selected = atoi(input);
+		if (selected >= 1 && selected <= count) {
+			return selected;
+		}
+	}
+
+	return -1;
 }
 
 int ui_console_get_confirmation(const char *title, const char *text) {
-    char input[16];
-    
-    ui_clear_screen();
-    ui_print_header(title);
-    printf("\n%s\n\n", text);
-    printf("Do you want to continue? (y/N): ");
-    fflush(stdout);
-    
-    if (fgets(input, sizeof(input), stdin) != NULL) {
-        char ch = tolower(input[0]);
-        return (ch == 'y' || ch == 'Y');
-    }
-    
-    return 0; // Default: No
+	char input[16];
+
+	ui_clear_screen();
+	ui_print_header(title);
+	printf("\n%s\n\n", text);
+	printf("Do you want to continue? (y/N): ");
+	fflush(stdout);
+
+	if (fgets(input, sizeof(input), stdin) != NULL) {
+		char ch = tolower(input[0]);
+		return (ch == 'y' || ch == 'Y');
+	}
+
+	return 0; // Default: No
 }

@@ -3,6 +3,7 @@
 #include "include/metrics.h"
 #include "include/selector.h"
 #include "include/socks5.h"
+#include "include/management.h"
 #include "util.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -17,8 +18,17 @@
 #include <sys/types.h>
 
 #include <unistd.h>
+
 static fd_selector selector = NULL;
 static bool done = false; // Flag to indicate when the server should stop
+
+struct user *users = NULL; // global users
+uint8_t nusers = 0;
+
+void load_users(struct user *u, uint8_t n) {  // Change the parameter type
+    users = u;
+    nusers = n;
+}
 
 static void sigterm_handler(const int signal);
 static void exit_error(const char *error_msg, int errnum);
@@ -134,7 +144,7 @@ int main(int argc, char **argv) {
 	printf("Starting server...\n");
 	// parse args is in charge of initializing the args struct, all info will be there (already should be rfc compliant)
 	parse_args(argc, argv, &args);
-	load_users(args.users, args.nusers);
+	load_users(args.users, args.nusers); // 
 	metrics_init();
 
 	close(0); // Close stdin we dont need it
@@ -201,8 +211,10 @@ int main(int argc, char **argv) {
 	const struct fd_handler socks5Handler = {
 		.handle_read = socks5_handle_new_connection, .handle_write = NULL, .handle_close = NULL};
 	selectorStatus = selector_register(selector, socksFd, &socks5Handler, OP_READ, NULL);
-	const struct fd_handler mngHandler = {.handle_read = NULL, .handle_write = NULL, .handle_close = NULL};
+
+	const struct fd_handler mngHandler = {.handle_read = management_handle_new_connection, .handle_write = NULL, .handle_close = NULL};
 	selectorMngStatus = selector_register(selector, mngFd, &mngHandler, OP_READ, NULL);
+
 	if (selectorStatus != SELECTOR_SUCCESS) {
 		error_msg = "Error registering SOCKS5 server socket with selector";
 		exit_error(error_msg, selectorStatus);
