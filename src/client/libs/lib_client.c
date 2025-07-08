@@ -2,17 +2,17 @@
 // Created by nep on 7/4/25.
 //
 
-#include <sys/socket.h>
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
-#include "lib_client.h"
 #include "buffer.h"
+#include "lib_client.h"
 
 #define HELLO_HEADER_FIXED_LEN 3
 #define LOGS_RESPONSE_HEADER_FIXED_LEN 4
@@ -23,7 +23,7 @@
 
 metrics_t *handle_metrics_response(int sock, metrics_t *m);
 void fill_log_struct(char *data, client_log_entry_t *log);
-void fill_user_list_entry(char *data, user_list_entry *user, uint8_t pack_id);
+void fill_user_list_entry(char *data, user_list_entry *user);
 uint8_t add_user_send_req(int sock, char *username, char *password, uint8_t user_type_command_code);
 uint8_t remove_user_send_req(int sock, char *username);
 static uint8_t user_type;
@@ -199,7 +199,7 @@ uint8_t add_user_send_req(int sock, char *username, char *password, uint8_t user
 	uint8_t username_len = raw_len_usrname;
 	uint8_t password_len = raw_len_pwd;
 	char data[username_len + password_len + ADD_USER_FIXED_HEADER_LEN];
-	uint8_t *data_ptr = data;
+	char *data_ptr = data;
 	data_ptr[0] = CALSETTING_VERSION;
 	data_ptr[1] = user_type_command_code;
 	data_ptr[2] = username_len;
@@ -244,7 +244,7 @@ uint8_t remove_user_send_req(int sock, char *username) {
 	uint8_t username_len = raw_len_usrname;
 
 	char data[username_len + REMOVE_USER_FIXED_HEADER_LEN];
-	uint8_t *data_ptr = data;
+	char *data_ptr = data;
 	data_ptr[0] = CALSETTING_VERSION;
 	data_ptr[1] = COMMAND_REMOVE_USER;
 	data_ptr[2] = username_len;
@@ -582,7 +582,7 @@ void fill_log_struct(char *data, client_log_entry_t *log) {
 	log->status_code = *ptr++;
 }
 
-void fill_user_list_entry(char *data, user_list_entry *user, uint8_t pack_id) {
+void fill_user_list_entry(char *data, user_list_entry *user) {
 	user->ulen = *data++;
 	memcpy(user->username, data, user->ulen);
 	user->username[user->ulen] = '\0';

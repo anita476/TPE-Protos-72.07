@@ -892,7 +892,8 @@ static void process_add_user_command(management_session *session, uint8_t arg1, 
 
 	buffer *rb = &session->read_buffer;
 	size_t available;
-	uint8_t *data = buffer_read_ptr(rb, &available);
+	// not gonna use the result
+	(void) buffer_read_ptr(rb, &available);
 
 	if (available < (size_t) (username_len + password_len)) {
 		return; // wait...
@@ -948,7 +949,8 @@ static void process_remove_user_command(management_session *session, uint8_t arg
 
 	buffer *rb = &session->read_buffer;
 	size_t available;
-	uint8_t *data = buffer_read_ptr(rb, &available);
+	// not going to use its result // todo check
+	(void) buffer_read_ptr(rb, &available);
 
 	if (available < username_len) {
 		return; // wait..
@@ -987,47 +989,47 @@ VER | STATUS | CMD | BUFFER_SIZE_KB | TIMEOUT_SECONDS |
 Total: 6 bytes
 */
 static void process_get_current_config_command(management_session *session) {
-    log(DEBUG, "[MANAGEMENT] Processing get current config command");
-    
-    buffer *wb = &session->write_buffer;
-    buffer_reset(wb);
+	log(DEBUG, "[MANAGEMENT] Processing get current config command");
 
-    if (session->user_type != USER_TYPE_ADMIN) {
-        log(INFO, "[MANAGEMENT] Non-admin user %s attempted to get config", session->username);
-        
-        if (buffer_writeable_bytes(wb) < SERVER_CONFIG_RESPONSE_LEN) {
-            return;
-        }
-        
-        buffer_write(wb, CALSETTING_VERSION);
-        buffer_write(wb, RESPONSE_NOT_ALLOWED);
-        buffer_write(wb, COMMAND_GET_CURRENT_CONFIG);
-        buffer_write(wb, 0); // buffer_size_kb (invalid)
-        buffer_write(wb, 0); // timeout_seconds (invalid)
-        return;
-    }
+	buffer *wb = &session->write_buffer;
+	buffer_reset(wb);
 
-    if (buffer_writeable_bytes(wb) < SERVER_CONFIG_RESPONSE_LEN) {
-        log(ERROR, "[MANAGEMENT] No space for config response");
-        set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
-        return;
-    }
+	if (session->user_type != USER_TYPE_ADMIN) {
+		log(INFO, "[MANAGEMENT] Non-admin user %s attempted to get config", session->username);
 
-    uint8_t buffer_size_kb = (uint8_t)(g_socks5_buffer_size / 1024);
-    if (buffer_size_kb == 0 && g_socks5_buffer_size > 0) {
-        buffer_size_kb = 1;
-    }
-    
-    uint8_t timeout_seconds = (g_connection_timeout > 255) ? 255 : (uint8_t)g_connection_timeout;
+		if (buffer_writeable_bytes(wb) < SERVER_CONFIG_RESPONSE_LEN) {
+			return;
+		}
 
-    buffer_write(wb, CALSETTING_VERSION);
-    buffer_write(wb, RESPONSE_SUCCESS);
-    buffer_write(wb, COMMAND_GET_CURRENT_CONFIG);
-    buffer_write(wb, buffer_size_kb);
-    buffer_write(wb, timeout_seconds);
+		buffer_write(wb, CALSETTING_VERSION);
+		buffer_write(wb, RESPONSE_NOT_ALLOWED);
+		buffer_write(wb, COMMAND_GET_CURRENT_CONFIG);
+		buffer_write(wb, 0); // buffer_size_kb (invalid)
+		buffer_write(wb, 0); // timeout_seconds (invalid)
+		return;
+	}
 
-    log(INFO, "[MANAGEMENT] Config sent to admin %s: buffer_size=%uKB, timeout=%us", 
-        session->username, buffer_size_kb, timeout_seconds);
+	if (buffer_writeable_bytes(wb) < SERVER_CONFIG_RESPONSE_LEN) {
+		log(ERROR, "[MANAGEMENT] No space for config response");
+		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
+		return;
+	}
+
+	uint8_t buffer_size_kb = (uint8_t) (g_socks5_buffer_size / 1024);
+	if (buffer_size_kb == 0 && g_socks5_buffer_size > 0) {
+		buffer_size_kb = 1;
+	}
+
+	uint8_t timeout_seconds = (g_connection_timeout > 255) ? 255 : (uint8_t) g_connection_timeout;
+
+	buffer_write(wb, CALSETTING_VERSION);
+	buffer_write(wb, RESPONSE_SUCCESS);
+	buffer_write(wb, COMMAND_GET_CURRENT_CONFIG);
+	buffer_write(wb, buffer_size_kb);
+	buffer_write(wb, timeout_seconds);
+
+	log(INFO, "[MANAGEMENT] Config sent to admin %s: buffer_size=%uKB, timeout=%us", session->username, buffer_size_kb,
+		timeout_seconds);
 }
 
 /**************** Helper functions *****************/

@@ -1,2 +1,2 @@
 #!/bin/bash
-cppcheck --quiet --enable=all --force --inconclusive .
+cppcheck --quiet --enable=all --force --inconclusive --check-config .

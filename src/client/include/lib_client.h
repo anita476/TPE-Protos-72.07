@@ -5,8 +5,6 @@
 #include <netinet/in.h>
 #include <stdint.h>
 
-static uint8_t get_user_type();
-
 typedef struct client_log_entry {
 	char date[DATE_SIZE];
 	uint8_t ulen;
