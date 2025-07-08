@@ -4,6 +4,7 @@
 #include "include/selector.h"
 #include "include/socks5.h"
 #include "include/management.h"
+#include "include/config.h"
 #include "util.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -21,9 +22,8 @@
 
 static fd_selector selector = NULL;
 static bool done = false; // Flag to indicate when the server should stop
-
-struct user *users = NULL; // global users
-uint8_t nusers = 0;
+extern struct user *users; // Global users array
+extern uint8_t nusers;     // Number of users
 
 void load_users(struct user *u, uint8_t n) {  // Change the parameter type
     users = u;

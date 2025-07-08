@@ -14,18 +14,15 @@
 #define RESPONSE_SUCCESS_CLIENT         0x01    // Usuario autenticado <- this is the default response code...
 #define RESPONSE_SUCCESS_ADMIN          0x02    // Admin autenticado  
 #define RESPONSE_AUTH_FAILURE           0x03    // Error de autenticación
-#define RESPONSE_GENERAL_SERVER_FAILURE 0x04 // General server error
-#define RESPONSE_WRONG_VERSION          0x05   // Versión incorrecta
+#define RESPONSE_GENERAL_SERVER_FAILURE 0x04    // General server error
+#define RESPONSE_WRONG_VERSION          0x05    // Versión incorrecta
 #define RESPONSE_NOT_ALLOWED            0x06    // Not allowed
 #define RESPONSE_USER_NOT_FOUND         0x07
-#define RESPONSE_INVALID_CREDENTIALS    0x08 // Invalid credentials
-#define RESPONSE_USER_ALREADY_EXISTS    0x09 // User already exists
-#define RESPONSE_MAX_USERS_REACHED      0x0A   // Max users reached
-
-
-// Client-side error code (not sent over network)
-#define RESPONSE_BAD_REQUEST        0x06    // Client validation error
-                                            //not for server but used by lib to let the frontend know
+#define RESPONSE_INVALID_CREDENTIALS    0x08    // Invalid credentials
+#define RESPONSE_USER_ALREADY_EXISTS    0x09    // User already exists
+#define RESPONSE_MAX_USERS_REACHED      0x0A    // Max users reached
+#define RESPONSE_BAD_REQUEST            0x0B    // Client validation error
+                                            
 // CLIENT RESPONSE CODES
 #define HELLO_CLIENT_RESPONSE_CODE  0x00
 #define HELLO_ADMIN_RESPONSE_CODE   0x01
@@ -48,10 +45,17 @@
 
 // Protocol constants
 #define RESERVED_BYTE              0x00
-#define REQUEST_SIZE               4
-#define DATE_SIZE                  21
+#define DATE_SIZE                  21   // ISO-8601 timestamp
 #define USERNAME_MAX_SIZE          255
+#define PASSWORD_MAX_SIZE          255
 #define DOMAIN_MAX_SIZE            255
+
+#define REQUEST_SIZE               4
+#define RESPONSE_HEADER_LEN        4
+#define USER_ENTRY_SIZE (1 + 1 + USERNAME_MAX_SIZE)
+#define HELLO_HEADER_FIXED_LEN     3
+#define LOG_ENTRY_WIRE_SIZE 586 // 21 + 1 + 255 + 1 + 46 + 2 + 1 + 256 + 2 + 1 = 586 bytes
+
 
 // Address types
 #define IPV4_ATYP                  0x01
@@ -60,21 +64,8 @@
 
 #define IPV4_LEN_BYTES             4
 #define IPV6_LEN_BYTES             16
+#define INET6_ADDRSTRLEN           46  // IPv6 address string length
 
-// Fixed header lengths
-#define HELLO_HEADER_FIXED_LEN                    3
-#define LOGS_RESPONSE_HEADER_FIXED_LEN           4
-#define GET_USERS_RESPONSE_HEADER_FIXED_LEN      4
-#define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
-#define SERVER_CONFIG_RESPONSE_LEN 5
-
-#define DATE_SIZE 21                    // ISO-8601 timestamp
-#define USERNAME_MAX_SIZE 255           // Max username length  
-#define PASSWORD_MAX_SIZE 255
-#define DOMAIN_MAX_SIZE 255             // Max domain length
-#define INET6_ADDRSTRLEN 46              // IPv6 address string length
-
-#define LOG_ENTRY_WIRE_SIZE 586 // 21 + 1 + 255 + 1 + 46 + 2 + 1 + 256 + 2 + 1 = 586 bytes
 
 // LIMITS
 // Buffer size limits (in KB for admin interface)
@@ -135,7 +126,6 @@ typedef struct log_entry_t {
 	char destination_address[DOMAIN_MAX_SIZE + 1]; //destination address, if IPv4 or IPv6. in socks5 protocol domains need the first byte for domainLen so max len will be 255 + 1
 	uint16_t destination_port; //origin port
 	uint8_t status_code;
-	// struct log_entry_t * next; //pointer to the next log in the linked list
 } log_entry_t;
 
 typedef struct user_list_entry {

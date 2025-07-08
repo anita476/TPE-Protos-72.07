@@ -14,13 +14,6 @@
 #include "lib_client.h"
 #include "buffer.h"
 
-#define HELLO_HEADER_FIXED_LEN 3
-#define LOGS_RESPONSE_HEADER_FIXED_LEN 4
-#define GET_USERS_RESPONSE_HEADER_FIXED_LEN 4
-#define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
-#define ADD_USER_FIXED_HEADER_LEN 4
-#define REMOVE_USER_FIXED_HEADER_LEN 4
-
 metrics_t *handle_metrics_response(int sock, metrics_t *m);
 void fill_log_struct(char *data, client_log_entry_t *log);
 void fill_user_list_entry(char *data, user_list_entry *user, uint8_t pack_id);
@@ -162,9 +155,9 @@ uint8_t handle_add_client(int sock, char *username, char *password) {
 	if (r != 0) {
 		return r; // Failed to send request
 	}
-	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
-	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) !=
-		CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+	char response[RESPONSE_HEADER_LEN];
+	if (recv_all(sock, response, RESPONSE_HEADER_LEN) !=
+		RESPONSE_HEADER_LEN) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
 	}
 	return response[1]; // Return the response code
@@ -178,9 +171,9 @@ uint8_t handle_add_admin(int sock, char *username, char *password) {
 	if (r != 0) {
 		return r;
 	}
-	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
-	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) !=
-		CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+	char response[RESPONSE_HEADER_LEN];
+	if (recv_all(sock, response, RESPONSE_HEADER_LEN) !=
+		RESPONSE_HEADER_LEN) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
 	}
 	return response[1]; // Return the response code
@@ -198,18 +191,18 @@ uint8_t add_user_send_req(int sock, char *username, char *password, uint8_t user
 	}
 	uint8_t username_len = raw_len_usrname;
 	uint8_t password_len = raw_len_pwd;
-	char data[username_len + password_len + ADD_USER_FIXED_HEADER_LEN];
+	char data[username_len + password_len + REQUEST_SIZE];
 	uint8_t *data_ptr = data;
 	data_ptr[0] = CALSETTING_VERSION;
 	data_ptr[1] = user_type_command_code;
 	data_ptr[2] = username_len;
 	data_ptr[3] = password_len;
-	data_ptr += ADD_USER_FIXED_HEADER_LEN;
+	data_ptr += REQUEST_SIZE;
 	memcpy(data_ptr, username, username_len);
 	data_ptr += username_len;
 	memcpy(data_ptr, password, password_len);
-	if (send_all(sock, data, username_len + password_len + ADD_USER_FIXED_HEADER_LEN) !=
-		username_len + password_len + ADD_USER_FIXED_HEADER_LEN) {
+	if (send_all(sock, data, username_len + password_len + REQUEST_SIZE) !=
+		username_len + password_len + REQUEST_SIZE) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to send request
 	}
 	printf("[CLIENT DEBUG] Sent add user request: cmd=%d, username_len=%d, password_len=%d\n", user_type_command_code,
@@ -222,9 +215,9 @@ uint8_t handle_remove_user(int sock, char *username) {
 	if (req_result != 0) {
 		return req_result;
 	}
-	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
-	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) !=
-		CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+	char response[RESPONSE_HEADER_LEN];
+	if (recv_all(sock, response, RESPONSE_HEADER_LEN) !=
+		RESPONSE_HEADER_LEN) {
 		return RESPONSE_GENERAL_SERVER_FAILURE;
 	}
 	return response[1];
@@ -243,16 +236,16 @@ uint8_t remove_user_send_req(int sock, char *username) {
 	}
 	uint8_t username_len = raw_len_usrname;
 
-	char data[username_len + REMOVE_USER_FIXED_HEADER_LEN];
+	char data[username_len + REQUEST_SIZE];
 	uint8_t *data_ptr = data;
 	data_ptr[0] = CALSETTING_VERSION;
 	data_ptr[1] = COMMAND_REMOVE_USER;
 	data_ptr[2] = username_len;
 	data_ptr[3] = RESERVED_BYTE;
-	data_ptr += REMOVE_USER_FIXED_HEADER_LEN;
+	data_ptr += REQUEST_SIZE;
 	memcpy(data_ptr, username, username_len);
-	if (send_all(sock, data, username_len + REMOVE_USER_FIXED_HEADER_LEN) !=
-		username_len + REMOVE_USER_FIXED_HEADER_LEN) {
+	if (send_all(sock, data, username_len + REQUEST_SIZE) !=
+		username_len + REQUEST_SIZE) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to send request
 	}
 	return 0;
@@ -290,13 +283,13 @@ uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
 
 	printf("[CLIENT DEBUG] Request sent successfully, waiting for response...\n");
 
-	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
-	int recv_result = recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN);
+	char response[RESPONSE_HEADER_LEN];
+	int recv_result = recv_all(sock, response, RESPONSE_HEADER_LEN);
 
 	printf("[CLIENT DEBUG] recv_all returned: %d (expected: %d)\n", recv_result,
-		   CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN);
+		   RESPONSE_HEADER_LEN);
 
-	if (recv_result != CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+	if (recv_result != RESPONSE_HEADER_LEN) {
 		printf("[CLIENT DEBUG] Failed to receive complete response\n");
 		return RESPONSE_GENERAL_SERVER_FAILURE;
 	}
@@ -324,9 +317,9 @@ uint8_t handle_change_timeout(int sock, uint8_t new_timeout) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // TODO check error codes for send error
 	}
 
-	char response[CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN];
-	if (recv_all(sock, response, CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) !=
-		CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN) {
+	char response[RESPONSE_HEADER_LEN];
+	if (recv_all(sock, response, RESPONSE_HEADER_LEN) !=
+		RESPONSE_HEADER_LEN) {
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
 	}
 	return response[1]; // Return the response code
@@ -344,29 +337,17 @@ server_current_config *handle_get_current_config(int sock, server_current_config
 		return NULL; // Failed to send request
 	}
 
-	char response[SERVER_CONFIG_RESPONSE_LEN];
-	if (recv_all(sock, response, SERVER_CONFIG_RESPONSE_LEN) != SERVER_CONFIG_RESPONSE_LEN) {
+	char response[RESPONSE_HEADER_LEN+2];
+	if (recv_all(sock, response, RESPONSE_HEADER_LEN+2) != RESPONSE_HEADER_LEN+2) {
 		return NULL; // Failed to read current config
 	}
 
-	uint8_t version = response[0];
-	uint8_t status = response[1];
-	uint8_t cmd = response[2];
-
-	if (version != CALSETTING_VERSION) {
-		return NULL;
-	}
-
-	if (cmd != COMMAND_GET_CURRENT_CONFIG) {
-		return NULL;
-	}
-
-	if (status != RESPONSE_SUCCESS) {
+	if (response[1] != RESPONSE_SUCCESS) {
 		return NULL; // Command failed, status not success
 	}
 
-	config->buffer_size_kb = response[3];
-	config->timeout_seconds = response[4];
+	config->buffer_size_kb = response[4];
+	config->timeout_seconds = response[5];
 	return config; // Return the filled server_current_config structure
 }
 
@@ -419,12 +400,17 @@ client_log_entry_t *handle_log(int sock, uint8_t n, uint8_t offset) {
 		return NULL;
 	}
 
-	char header[LOGS_RESPONSE_HEADER_FIXED_LEN];
-	if (recv_all(sock, header, LOGS_RESPONSE_HEADER_FIXED_LEN) != LOGS_RESPONSE_HEADER_FIXED_LEN) {
+	char header[RESPONSE_HEADER_LEN] = {0};
+	if (recv_all(sock, header, RESPONSE_HEADER_LEN) != RESPONSE_HEADER_LEN) {
 		return NULL;
 	}
 
-	uint8_t nlogs = header[2];
+	if (header[1] != RESPONSE_SUCCESS) {
+		// should show on console the exact response code that was received
+		return NULL;
+	}
+
+	uint8_t nlogs = header[3];
 	if (nlogs == 0) {
 		return NULL;
 	}
@@ -467,12 +453,12 @@ user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock) {
 		return NULL; // Failed to send request
 	}
 
-	char header[GET_USERS_RESPONSE_HEADER_FIXED_LEN] = {0};
-	if (recv_all(sock, header, GET_USERS_RESPONSE_HEADER_FIXED_LEN) != GET_USERS_RESPONSE_HEADER_FIXED_LEN) {
+	char header[RESPONSE_HEADER_LEN] = {0};
+	if (recv_all(sock, header, RESPONSE_HEADER_LEN) != RESPONSE_HEADER_LEN) {
 		return NULL;
 	}
 
-	uint8_t nusers = header[2];
+	uint8_t nusers = header[3];
 	if (nusers == 0) {
 		return NULL;
 	}
@@ -481,33 +467,16 @@ user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock) {
 	user_list_entry *current = NULL;
 
 	for (uint8_t i = 0; i < nusers; i++) {
-		// Read ulen
-		uint8_t ulen;
-		if (recv_all(sock, (char *) &ulen, 1) != 1) {
-			free_user_list(head);
-			return NULL;
-		}
 
-		// Read username
-		char username[256]; // Temporary buffer
-		if (recv_all(sock, username, ulen) != ulen) {
-			free_user_list(head);
-			return NULL;
-		}
+		char user_entry[USER_ENTRY_SIZE];
+        if (recv_all(sock, user_entry, USER_ENTRY_SIZE) != USER_ENTRY_SIZE) {
+            free_user_list(head);
+            return NULL;
+        }
 
-		// Read user_type
-		uint8_t user_type;
-		if (recv_all(sock, (char *) &user_type, 1) != 1) {
-			free_user_list(head);
-			return NULL;
-		}
-
-		// Read package_id
-		uint8_t package_id;
-		if (recv_all(sock, (char *) &package_id, 1) != 1) {
-			free_user_list(head);
-			return NULL;
-		}
+		uint8_t ulen = user_entry[0];
+        uint8_t user_type = user_entry[1];
+        char *username_data = &user_entry[2];
 
 		// Create new user entry
 		user_list_entry *new_user = malloc(sizeof(user_list_entry));
@@ -517,22 +486,22 @@ user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock) {
 		}
 
 		new_user->ulen = ulen;
-		memcpy(new_user->username, username, ulen);
-		new_user->username[ulen] = '\0';
-		new_user->user_type = user_type;
-		new_user->package_id = package_id;
-		new_user->next = NULL;
+        memcpy(new_user->username, username_data, ulen);
+        new_user->username[ulen] = '\0'; // Null terminate
+        new_user->user_type = user_type;
+        new_user->package_id = 0; // TODO: not being used atm
+        new_user->next = NULL;
 
-		if (head == NULL) {
-			head = new_user;
-			current = head;
-		} else {
-			current->next = new_user;
-			current = new_user;
-		}
-	}
+        if (head == NULL) {
+            head = new_user;
+            current = head;
+        } else {
+            current->next = new_user;
+            current = new_user;
+        }
+    }
 
-	return head;
+    return head;
 }
 
 void fill_log_struct(char *data, client_log_entry_t *log) {

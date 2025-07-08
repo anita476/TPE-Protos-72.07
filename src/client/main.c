@@ -465,7 +465,7 @@ static void change_server_setting(const char *setting_name, const char *unit,
 
 	uint8_t result = handle_func(server_socket, new_value);
 
-	if (result == RESPONSE_SUCCESS_ADMIN || result == RESPONSE_SUCCESS_CLIENT) {
+	if (result == RESPONSE_SUCCESS || result == RESPONSE_SUCCESS_ADMIN || result == RESPONSE_SUCCESS_CLIENT) {
 		char success_msg[256];
 		snprintf(success_msg, sizeof(success_msg), "%s successfully changed to %d %s.", setting_name, new_value, unit);
 		ui_show_message("Success", success_msg);
