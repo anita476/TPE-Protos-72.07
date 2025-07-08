@@ -436,11 +436,6 @@ static int add_user() {
 		return 0;
 	}
 
-	// if (find_user(username) != -1) {
-	// 	ui_show_message("Error", "Username already exists. Please choose a different username.");
-	// 	return 0;
-	// }
-
 	if (get_user_input("Password", "Enter password:", 1, password, sizeof(password)) != 0) {
 		return 0;
 	}
@@ -460,11 +455,16 @@ static int add_user() {
 		return 0;
 	}
 
-	if (handle_add_client(server_socket, username, password) != RESPONSE_SUCCESS) {
-		ui_show_message("Error", "Failed to add user. Please try again.");
-		return 0;
-	}
-	// TODO: Implement actual user addition logic here
+    int result = handle_add_client(server_socket, username, password);
+    if (result != RESPONSE_SUCCESS) {
+        if (result == RESPONSE_USER_ALREADY_EXISTS) {
+            ui_show_message("Error", "User already exists.");
+            return 0;
+        }
+        ui_show_message("Error", "Failed to add user. Please try again.");
+        return 0;
+    }
+	
 	char success_msg[512];
 	snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully added to the system.", username);
 	ui_show_message("Success", success_msg);
