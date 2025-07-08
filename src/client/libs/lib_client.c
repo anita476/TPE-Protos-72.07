@@ -248,8 +248,8 @@ uint8_t remove_user_send_req(int sock, char * username) {
 	uint8_t * data_ptr = data;
 	data_ptr[0] = CALSETTING_VERSION;
 	data_ptr[1] = COMMAND_REMOVE_USER;
-	data_ptr[2] = RESERVED_BYTE;
-	data_ptr[3] = username_len;
+	data_ptr[2] = username_len;
+	data_ptr[3] = RESERVED_BYTE;
 	data_ptr += REMOVE_USER_FIXED_HEADER_LEN;
 	memcpy(data_ptr, username, username_len);
 	if (send_all(sock, data, username_len + REMOVE_USER_FIXED_HEADER_LEN) != username_len + REMOVE_USER_FIXED_HEADER_LEN) {
