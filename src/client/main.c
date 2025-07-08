@@ -589,6 +589,7 @@ static void configure_settings() {
 
 static int parse_arguments(int argc, char *argv[]) {
 	for (int i = 1; i < argc; i++) {
+		// todo add a --help command
 		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--host") == 0) {
 			if (i + 1 >= argc) {
 				fprintf(stderr, "Error: Option %s requires an argument\n", argv[i]);
