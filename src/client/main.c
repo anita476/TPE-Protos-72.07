@@ -647,8 +647,7 @@ int main(int argc, char *argv[]) {
 	// Check if user has dialog installed
 	if (!is_dialog_installed()) {
 		fprintf(stderr, "Error: Dialog is not installed. Please install it to use the interactive UI.\n");
-		fprintf(stderr, "You can also use the command-line arguments.\n");
-
+		fprintf(stderr, "You can also use --console to enter console ui mode\n");
 		return 2;
 	}
 	int parse_result = parse_arguments(argc, argv);
