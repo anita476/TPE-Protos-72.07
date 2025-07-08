@@ -426,8 +426,7 @@ static void hello_read(struct selector_key *key) {
 		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS); // FF means error
 		log(ERROR, "[HELLO_READ] No acceptable methods. Moving to STATE_ERROR.");
 		set_error_state(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED); // Maps to AUTH
-		// session->current_state = STATE_HELLO_NO_ACCEPTABLE_METHODS; // close
-		session->current_state = STATE_ERROR_WRITE; // close
+		// session->current_state = STATE_ERROR_WRITE; // close
 	}
 
 	selector_set_interest_key(key, OP_WRITE); // change interest to write
@@ -475,7 +474,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 			log(INFO, "[WRITE_TO_CLIENT] Client already closed connection (EPIPE), closing socket.");
 			metrics_increment_errors(ERROR_TYPE_NETWORK);
 			log(DEBUG, "[WRITE_TO_CLIENT] Unregistering fd=%d from selector", key->fd);
-			// selector_unregister_fd(key->s, key->fd);
+			// selector_unregister_fd(key->s, key->fd); <--------------------- HERE!!
 			close(key->fd);
 			log(DEBUG, "[WRITE_TO_CLIENT] EPIPE cleanup complete for fd=%d", key->fd);
 			return;
@@ -505,8 +504,8 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	// for a clean connection teardown.
 	if (should_shutdown) {
 		log(DEBUG, "[WRITE_TO_CLIENT] All data sent. Shutting down socket.");
-		selector_unregister_fd(key->s, key->fd);
 		shutdown(key->fd, SHUT_RDWR);
+		selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
 		return;
 	}
@@ -1104,7 +1103,7 @@ static void request_connect(struct selector_key *key) {
 		// unlink and free the failed address
 		failed_addr->ai_next = NULL;
 		freeaddrinfo(failed_addr);
-		// if (session->connection.atyp == SOCKS5_ATYP_DOMAIN) { // hmmm just suddenly checking from logging is sus... 
+		// if (session->connection.atyp == SOCKS5_ATYP_DOMAIN) {
 		// 	freeaddrinfo(failed_addr); // DNS result
 		// } else {
 		// 	// Manually created addrinfo for IPv4/IPv6
@@ -1145,7 +1144,7 @@ static void handle_connect_failure(struct selector_key *key, int error) {
     //     session->remote_fd = -1;
     // }
 
-	// // selector_unregister_fd_noclose(key->s, key->fd);
+	// // selector_unregister_fd_noclose(key->s, key->fd); <----- HERE
 	close(key->fd);
 	session->remote_fd = -1;
 
@@ -1309,7 +1308,7 @@ static void relay_client_to_remote(struct selector_key *key) {
 		log(DEBUG, "[RELAY] Client closed connection");
 
 		selector_unregister_fd(key->s, key->fd);
-		// close(key->fd);
+		close(key->fd);
 		return;
 	}
 
@@ -1361,7 +1360,7 @@ static void relay_remote_to_client(struct selector_key *key) {
 	if (bytes_read == 0) {
 		log(DEBUG, "[RELAY] Remote closed connection");
 		selector_unregister_fd(key->s, key->fd);
-		// close(key->fd);
+		close(key->fd);
 		return;
 	}
 
@@ -1492,7 +1491,7 @@ static void handle_error(struct selector_key *key) {
 	}
 	// selector_unregister_fd(key->s, key->fd); REMOVED line bc the selector will handle cleanup via EPOLLHUP
 	log(DEBUG, "[HANDLE_ERROR] Closing fd=%d to trigger cleanup", key->fd);
-	// selector_unregister_fd(key->s, key->fd);
+	selector_unregister_fd(key->s, key->fd);
 	close(key->fd); // always close the fd, selector does NOT handle it
 }
 
@@ -1542,7 +1541,6 @@ static void cleanup_session(client_session *session) {
     // Clean up connection data
     if (session->connection.dst_addresses) {
         log(DEBUG, "[CLEANUP] Freeing dst_addresses (atyp=%d)", session->connection.atyp);
-        // ALWAYS use freeaddrinfo - it handles both cases properly
         freeaddrinfo(session->connection.dst_addresses);
         session->connection.dst_addresses = NULL;
     }
@@ -1552,7 +1550,6 @@ static void cleanup_session(client_session *session) {
         session->connection.domain_to_resolve = NULL;
     }
 
-	// DON'T close fds here - they should already be closed by the selector
     if (session->remote_fd != -1) {
 		log(ERROR, "[CLEANUP] remote_fd=%d still open during cleanup", session->remote_fd);
         close(session->remote_fd);

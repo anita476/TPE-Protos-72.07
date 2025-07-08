@@ -33,7 +33,7 @@ static void process_userlist_command(management_session *session, uint8_t number
 static void process_change_buffer_command(management_session *session, uint8_t new_size);
 static void process_change_timeout_command(management_session *session, uint8_t new_timeout);
 static void process_add_user_command(management_session *session, uint8_t arg1, uint8_t arg2, uint8_t type);
-static void process_remove_user_command(management_session *session, uint8_t arg1, uint8_t arg2);
+static void process_remove_user_command(management_session *session, uint8_t arg1);
 static void process_get_current_config_command(management_session *session);
 
 // Helper functions
@@ -437,7 +437,8 @@ static void command_read(struct selector_key *key) {
 			process_add_user_command(session, arg1, arg2, USER_TYPE_CLIENT);
 			break;
 		case COMMAND_REMOVE_USER:
-			process_remove_user_command(session, arg1, arg2);
+			process_remove_user_command(session, arg1);
+			break;
 		case COMMAND_GET_CURRENT_CONFIG:
 			process_get_current_config_command(session);
 			break;
@@ -922,7 +923,7 @@ static void process_add_user_command(management_session *session, uint8_t arg1, 
 }
 
 // TODO: this function is wrong
-static void process_remove_user_command(management_session *session, uint8_t arg1, uint8_t arg2) {
+static void process_remove_user_command(management_session *session, uint8_t arg1) {
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);
 
