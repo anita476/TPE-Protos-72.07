@@ -21,7 +21,7 @@ La compilación dará por resultado los binarios correspondientes al servidor (`
 #### Servidor (Socks5v y CalSetting)
 Para inicializar el servidor puede utilizar el comando:
 
-` ./bin/socks5v [ARGS] `
+` ./bin/server [ARGS] `
 
 Para obtener el detalle de los argumentos aceptados puede utilizar la flag `-h`
 
