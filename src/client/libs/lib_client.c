@@ -162,6 +162,9 @@ int request_send(uint8_t command_code, uint8_t arg_1, uint8_t arg_2, int sock) {
 }
 
 uint8_t handle_add_client(int sock, char * username, char * password) {
+	if (get_user_type() != USER_TYPE_ADMIN) {
+		return RESPONSE_NOT_ALLOWED;
+	}
 	uint8_t r = add_user_send_req(sock, username, password, COMMAND_ADD_CLIENT);
 	if (r != 0) {
 		return r; // Failed to send request
@@ -174,6 +177,9 @@ uint8_t handle_add_client(int sock, char * username, char * password) {
 }
 
 uint8_t handle_add_admin(int sock, char * username, char * password) {
+	if (get_user_type() != USER_TYPE_ADMIN) {
+		return RESPONSE_NOT_ALLOWED;
+	}
 	uint8_t r = add_user_send_req(sock, username, password, COMMAND_ADD_ADMIN);
 	if (r != 0) {
         return r;
@@ -343,8 +349,9 @@ uint8_t handle_change_timeout(int sock, uint8_t new_timeout) {
 	return response[1]; // Return the response code
 }
 
-server_current_config * handle_get_current_config(int sock, server_current_config * config) {
+server_current_config * handle_get_current_config(int sock, server_current_config * config, uint8_t * exit_code) {
 	if (user_type != USER_TYPE_ADMIN) {
+		*exit_code = RESPONSE_NOT_ALLOWED;
 		return NULL; // Only admin can get current config
 	}
 	if (config == NULL) {
@@ -411,7 +418,11 @@ metrics_t * handle_metrics_response(int sock, metrics_t * m) {
 	return m; // Return the filled metrics structure
 }
 
-client_log_entry_t * handle_log(int sock, uint8_t n, uint8_t offset) {
+client_log_entry_t * handle_log(int sock, uint8_t n, uint8_t offset, uint8_t * exit_code) {
+	if (get_user_type() != USER_TYPE_ADMIN) {
+		*exit_code = RESPONSE_NOT_ALLOWED;
+		return NULL;
+	}
     if (request_send(COMMAND_LOGS, n, offset, sock) != 0) {
         return NULL;
     }
@@ -460,7 +471,12 @@ client_log_entry_t * handle_log(int sock, uint8_t n, uint8_t offset) {
 }
 
 
-user_list_entry * handle_get_users(uint8_t n, uint8_t offset,int sock) {
+user_list_entry * handle_get_users(uint8_t n, uint8_t offset,int sock,uint8_t * exit_code) {
+	if (get_user_type() != USER_TYPE_ADMIN) {
+		*exit_code = RESPONSE_NOT_ALLOWED;
+		return NULL;
+	}
+
 	if (request_send(COMMAND_USER_LIST, n, offset, sock) != 0) {
 		return NULL; // Failed to send request
 	}
