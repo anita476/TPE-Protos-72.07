@@ -20,7 +20,7 @@
 #define CHANGE_SERVER_SETTINGS_RESPONSE_HEADER_FIXED_LEN 3
 #define SERVER_CONFIG_RESPONSE_LEN 4
 #define ADD_USER_FIXED_HEADER_LEN 4
-#define REMOVE_USER_FIXED_HEADER_LEN 3
+#define REMOVE_USER_FIXED_HEADER_LEN 4
 
 metrics_t * handle_metrics_response(int sock, metrics_t * m);
 void fill_log_struct(char * data, client_log_entry_t * log);
@@ -129,7 +129,7 @@ int hello_read(int sock) {
 	if (recv_all(sock, buff, 2) < 0) {
 		return -1; // Failed to read
 	}
-	user_type = buff[1] == RESPONSE_SUCCESS_CLIENT ? USER_TYPE_ADMIN : USER_TYPE_CLIENT; // 1 for admin, 0 for client
+	user_type = buff[1] == RESPONSE_SUCCESS_ADMIN ? USER_TYPE_ADMIN : USER_TYPE_CLIENT; // 1 for admin, 0 for client
 	return buff[1]; //returns hello_response code
 }
 
@@ -248,7 +248,8 @@ uint8_t remove_user_send_req(int sock, char * username) {
 	uint8_t * data_ptr = data;
 	data_ptr[0] = CALSETTING_VERSION;
 	data_ptr[1] = COMMAND_REMOVE_USER;
-	data_ptr[2] = username_len;
+	data_ptr[2] = RESERVED_BYTE;
+	data_ptr[3] = username_len;
 	data_ptr += REMOVE_USER_FIXED_HEADER_LEN;
 	memcpy(data_ptr, username, username_len);
 	if (send_all(sock, data, username_len + REMOVE_USER_FIXED_HEADER_LEN) != username_len + REMOVE_USER_FIXED_HEADER_LEN) {
