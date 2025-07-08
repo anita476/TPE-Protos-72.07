@@ -1,13 +1,13 @@
-#include "management_commands.h"
+#include "../include/management_commands.h"
 #include "../../shared/include/calsetting_protocol.h"
-#include "args.h"
-#include "config.h"
-#include "logger.h"
-#include "metrics.h"
+#include "../include/args.h"
+#include "../include/config.h"
+#include "../include/logger.h"
+#include "../include/metrics.h"
 #include <arpa/inet.h>
+#include <errno.h>
 #include <string.h>
 #include <time.h>
-#include <errno.h>
 
 // TODO: when should the server close the client vs. when should it just send an error to the client?
 
@@ -55,83 +55,97 @@ void process_metrics_command(management_session *session) {
 	buffer_reset(wb);
 
 	if (buffer_writeable_bytes(wb) < METRICS_RESPONSE_SIZE) {
-        log(ERROR, "[MANAGEMENT] Insufficient buffer space for metrics response");
-        set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
-        return;
-    }
+		log(ERROR, "[MANAGEMENT] Insufficient buffer space for metrics response");
+		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
+		return;
+	}
 
-    // Build response in temporary buffer with proper byte order
-    uint8_t response[METRICS_RESPONSE_SIZE];
-    uint8_t *ptr = response;
+	// Build response in temporary buffer with proper byte order
+	uint8_t response[METRICS_RESPONSE_SIZE];
+	uint8_t *ptr = response;
 
-    uint32_t uptime = (uint32_t)(time(NULL) - real_metrics->start_time);
+	uint32_t uptime = (uint32_t) (time(NULL) - real_metrics->start_time);
 
-    // Pack data efficiently
-    *ptr++ = CALSETTING_VERSION;
-    *ptr++ = 1; // TODO: get server state properly, currently hardcoded to 1
+	// Pack data efficiently
+	*ptr++ = CALSETTING_VERSION;
+	*ptr++ = 1; // TODO: get server state properly, currently hardcoded to 1
 
-    uint32_t concurrent = htonl(real_metrics->concurrent_connections);
-    memcpy(ptr, &concurrent, 4); ptr += 4;
+	uint32_t concurrent = htonl(real_metrics->concurrent_connections);
+	memcpy(ptr, &concurrent, 4);
+	ptr += 4;
 
-    uint64_t total_conn = htobe64(real_metrics->total_connections);
-    memcpy(ptr, &total_conn, 8); ptr += 8;
+	uint64_t total_conn = htobe64(real_metrics->total_connections);
+	memcpy(ptr, &total_conn, 8);
+	ptr += 8;
 
-    uint32_t max_concurrent = htonl(real_metrics->max_concurrent_connections);
-    memcpy(ptr, &max_concurrent, 4); ptr += 4;
+	uint32_t max_concurrent = htonl(real_metrics->max_concurrent_connections);
+	memcpy(ptr, &max_concurrent, 4);
+	ptr += 4;
 
-    uint64_t bytes_in = htobe64(real_metrics->bytes_transferred_in);
-    memcpy(ptr, &bytes_in, 8); ptr += 8;
+	uint64_t bytes_in = htobe64(real_metrics->bytes_transferred_in);
+	memcpy(ptr, &bytes_in, 8);
+	ptr += 8;
 
-    uint64_t bytes_out = htobe64(real_metrics->bytes_transferred_out);
-    memcpy(ptr, &bytes_out, 8); ptr += 8;
+	uint64_t bytes_out = htobe64(real_metrics->bytes_transferred_out);
+	memcpy(ptr, &bytes_out, 8);
+	ptr += 8;
 
-    uint64_t total_bytes = htobe64(real_metrics->total_bytes_transferred);
-    memcpy(ptr, &total_bytes, 8); ptr += 8;
+	uint64_t total_bytes = htobe64(real_metrics->total_bytes_transferred);
+	memcpy(ptr, &total_bytes, 8);
+	ptr += 8;
 
-    uint32_t total_errors = htonl(real_metrics->total_errors);
-    memcpy(ptr, &total_errors, 4); ptr += 4;
+	uint32_t total_errors = htonl(real_metrics->total_errors);
+	memcpy(ptr, &total_errors, 4);
+	ptr += 4;
 
-    uint32_t uptime_net = htonl(uptime);
-    memcpy(ptr, &uptime_net, 4); ptr += 4;
+	uint32_t uptime_net = htonl(uptime);
+	memcpy(ptr, &uptime_net, 4);
+	ptr += 4;
 
-    // Error counts
-    uint32_t network_errors = htonl(real_metrics->error_counts[ERROR_TYPE_NETWORK]);
-    memcpy(ptr, &network_errors, 4); ptr += 4;
+	// Error counts
+	uint32_t network_errors = htonl(real_metrics->error_counts[ERROR_TYPE_NETWORK]);
+	memcpy(ptr, &network_errors, 4);
+	ptr += 4;
 
-    uint32_t protocol_errors = htonl(real_metrics->error_counts[ERROR_TYPE_PROTOCOL]);
-    memcpy(ptr, &protocol_errors, 4); ptr += 4;
+	uint32_t protocol_errors = htonl(real_metrics->error_counts[ERROR_TYPE_PROTOCOL]);
+	memcpy(ptr, &protocol_errors, 4);
+	ptr += 4;
 
-    uint32_t auth_errors = htonl(real_metrics->error_counts[ERROR_TYPE_AUTH]);
-    memcpy(ptr, &auth_errors, 4); ptr += 4;
+	uint32_t auth_errors = htonl(real_metrics->error_counts[ERROR_TYPE_AUTH]);
+	memcpy(ptr, &auth_errors, 4);
+	ptr += 4;
 
-    uint32_t system_errors = htonl(real_metrics->error_counts[ERROR_TYPE_SYSTEM]);
-    memcpy(ptr, &system_errors, 4); ptr += 4;
+	uint32_t system_errors = htonl(real_metrics->error_counts[ERROR_TYPE_SYSTEM]);
+	memcpy(ptr, &system_errors, 4);
+	ptr += 4;
 
-    uint32_t timeout_errors = htonl(real_metrics->error_counts[ERROR_TYPE_TIMEOUT]);
-    memcpy(ptr, &timeout_errors, 4); ptr += 4;
+	uint32_t timeout_errors = htonl(real_metrics->error_counts[ERROR_TYPE_TIMEOUT]);
+	memcpy(ptr, &timeout_errors, 4);
+	ptr += 4;
 
-    uint32_t memory_errors = htonl(real_metrics->error_counts[ERROR_TYPE_MEMORY]);
-    memcpy(ptr, &memory_errors, 4); ptr += 4;
+	uint32_t memory_errors = htonl(real_metrics->error_counts[ERROR_TYPE_MEMORY]);
+	memcpy(ptr, &memory_errors, 4);
+	ptr += 4;
 
-    uint32_t other_errors = htonl(real_metrics->error_counts[ERROR_TYPE_OTHER]);
-    memcpy(ptr, &other_errors, 4); ptr += 4;
+	uint32_t other_errors = htonl(real_metrics->error_counts[ERROR_TYPE_OTHER]);
+	memcpy(ptr, &other_errors, 4);
+	ptr += 4;
 
-    // Single write to buffer
-    size_t writable;
-    uint8_t *write_ptr = buffer_write_ptr(wb, &writable);
-    
-    if (writable >= METRICS_RESPONSE_SIZE) {
-        memcpy(write_ptr, response, METRICS_RESPONSE_SIZE);
-        buffer_write_adv(wb, METRICS_RESPONSE_SIZE);
-    } else {
-        // Fallback to individual writes
-        for (int i = 0; i < METRICS_RESPONSE_SIZE; i++) {
-            buffer_write(wb, response[i]);
-        }
-    }
+	// Single write to buffer
+	size_t writable;
+	uint8_t *write_ptr = buffer_write_ptr(wb, &writable);
 
-    log(DEBUG, "[MANAGEMENT] Bulk metrics response written successfully (%d bytes)", METRICS_RESPONSE_SIZE);
-	
+	if (writable >= METRICS_RESPONSE_SIZE) {
+		memcpy(write_ptr, response, METRICS_RESPONSE_SIZE);
+		buffer_write_adv(wb, METRICS_RESPONSE_SIZE);
+	} else {
+		// Fallback to individual writes
+		for (int i = 0; i < METRICS_RESPONSE_SIZE; i++) {
+			buffer_write(wb, response[i]);
+		}
+	}
+
+	log(DEBUG, "[MANAGEMENT] Bulk metrics response written successfully (%d bytes)", METRICS_RESPONSE_SIZE);
 }
 
 /*
@@ -149,7 +163,7 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 
 	if (max_logs_per_response <= 0) {
 		log(ERROR, "[MANAGEMENT] Buffer too small for even one log entry");
-        write_simple_response_header(wb, RESPONSE_GENERAL_SERVER_FAILURE, COMMAND_LOGS);
+		write_simple_response_header(wb, RESPONSE_GENERAL_SERVER_FAILURE, COMMAND_LOGS);
 		return;
 	}
 
@@ -170,7 +184,6 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 
 	log(DEBUG, "[MANAGEMENT] Retrieved %d logs from offset %d", actual_count, offset);
 	size_t total_size = RESPONSE_HEADER_LEN + (actual_count * LOG_ENTRY_WIRE_SIZE);
-
 
 	if (buffer_writeable_bytes(wb) < total_size) {
 		return;
@@ -265,7 +278,7 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 
 /*
 Response format:
-VER | STATUS | CMD | NUSERS | USER_1_LEN | USER_1_TYPE | USER_1_NAME | ... | USER_N_LEN | USER_N_TYPE | USER_N_NAME |  
+VER | STATUS | CMD | NUSERS | USER_1_LEN | USER_1_TYPE | USER_1_NAME | ... | USER_N_LEN | USER_N_TYPE | USER_N_NAME |
  1  |   1    |  1  |   1    |     1       |      1      |    255      | ... |     1      |      1      |    255      |
 
 Fixed size per user: 1 + 1 + 255 = 257 bytes
@@ -292,20 +305,22 @@ void process_userlist_command(management_session *session, uint8_t number, uint8
 	users_to_send = (number > remaining_users) ? remaining_users : number;
 	const size_t bytes_per_user = 1 + 1 + USERNAME_MAX_SIZE;
 
-	// TODO: if users_to_send == 0 -> send answer right away? 
+	// TODO: if users_to_send == 0 -> send answer right away?
 
 	// Calculate required space for variable-length entries
-	size_t required_space = RESPONSE_HEADER_LEN + users_to_send * (1 + 1 + 255); // 1 byte for username length, 1 byte for user type, 255 bytes for username
+	size_t required_space =
+		RESPONSE_HEADER_LEN +
+		users_to_send * (1 + 1 + 255); // 1 byte for username length, 1 byte for user type, 255 bytes for username
 
 	if (required_space > g_management_buffer_size) {
-        // Calculate max users that fit in buffer
-        size_t max_users_in_buffer = (g_management_buffer_size - RESPONSE_HEADER_LEN / (255 + 1 + 1));
-        if (users_to_send > max_users_in_buffer) {
-            users_to_send = (uint8_t)max_users_in_buffer;
-            log(DEBUG, "[MANAGEMENT] Capping users from %d to %d (buffer limit)", number, users_to_send);
-        }
+		// Calculate max users that fit in buffer
+		size_t max_users_in_buffer = (g_management_buffer_size - RESPONSE_HEADER_LEN / (255 + 1 + 1));
+		if (users_to_send > max_users_in_buffer) {
+			users_to_send = (uint8_t) max_users_in_buffer;
+			log(DEBUG, "[MANAGEMENT] Capping users from %d to %d (buffer limit)", number, users_to_send);
+		}
 		required_space = RESPONSE_HEADER_LEN + (users_to_send * bytes_per_user);
-    }
+	}
 
 	if (buffer_writeable_bytes(wb) < required_space) {
 		log(ERROR, "[MANAGEMENT] No space for user list response (need %zu bytes)", required_space);
@@ -316,36 +331,37 @@ void process_userlist_command(management_session *session, uint8_t number, uint8
 
 	for (uint8_t i = 0; i < users_to_send; i++) {
 		uint8_t user_index = offset + i;
-		if (user_index >= nusers) break;
+		if (user_index >= nusers)
+			break;
 
 		struct user *current_user = &users[user_index];
 		// Skip invalid users (same logic as first pass)
-        if (!current_user->name || strlen(current_user->name) == 0) {
-            continue;
-        }
+		if (!current_user->name || strlen(current_user->name) == 0) {
+			continue;
+		}
 		uint8_t username_len = strlen(current_user->name); // will truncate to 255 if longer than that
 
 		buffer_write(wb, username_len);
 		buffer_write(wb, current_user->type);
 
-        size_t available;
-        uint8_t *write_ptr = buffer_write_ptr(wb, &available);
-        
-        if (available < USERNAME_MAX_SIZE) {
-            log(ERROR, "[MANAGEMENT] Buffer space lost during user entry write");
-            break;
-        }
+		size_t available;
+		uint8_t *write_ptr = buffer_write_ptr(wb, &available);
 
-        if (username_len > 0) {
-            memcpy(write_ptr, current_user->name, username_len);
-        }
-        
-        // Pad remaining bytes with zeros
-        if (username_len < USERNAME_MAX_SIZE) {
-            memset(write_ptr + username_len, 0, USERNAME_MAX_SIZE - username_len);
-        }
-        
-        buffer_write_adv(wb, USERNAME_MAX_SIZE);
+		if (available < USERNAME_MAX_SIZE) {
+			log(ERROR, "[MANAGEMENT] Buffer space lost during user entry write");
+			break;
+		}
+
+		if (username_len > 0) {
+			memcpy(write_ptr, current_user->name, username_len);
+		}
+
+		// Pad remaining bytes with zeros
+		if (username_len < USERNAME_MAX_SIZE) {
+			memset(write_ptr + username_len, 0, USERNAME_MAX_SIZE - username_len);
+		}
+
+		buffer_write_adv(wb, USERNAME_MAX_SIZE);
 	}
 
 	log(DEBUG, "[MANAGEMENT] Prepared user list response for %s (req: %d, offset: %d, sent: %d)", session->username,
@@ -362,18 +378,18 @@ void process_change_buffer_command(management_session *session, uint8_t new_size
 
 	uint8_t response_code = RESPONSE_GENERAL_SERVER_FAILURE;
 
-    if (new_size < MIN_BUFF_SIZE_KB || new_size > MAX_BUFF_SIZE_KB) {
+	if (new_size < MIN_BUFF_SIZE_KB || new_size > MAX_BUFF_SIZE_KB) {
 		// This shouldnt even happen because client side alr verifies this
-        log(ERROR, "[MANAGEMENT] Invalid buffer size: %d KB", new_size);
-        response_code = RESPONSE_BAD_REQUEST;
-    } else {
-        size_t old_buffer_size = g_socks5_buffer_size;
-        g_socks5_buffer_size = new_size * 1024;
-        response_code = RESPONSE_SUCCESS;
-        log(INFO, "[MANAGEMENT] Buffer size changed from %zu to %zu bytes by %s", 
-            old_buffer_size, g_socks5_buffer_size, session->username);
-    }
-    write_simple_response_header(wb, response_code, COMMAND_CHANGE_BUFFER_SIZE);
+		log(ERROR, "[MANAGEMENT] Invalid buffer size: %d KB", new_size);
+		response_code = RESPONSE_BAD_REQUEST;
+	} else {
+		size_t old_buffer_size = g_socks5_buffer_size;
+		g_socks5_buffer_size = new_size * 1024;
+		response_code = RESPONSE_SUCCESS;
+		log(INFO, "[MANAGEMENT] Buffer size changed from %zu to %zu bytes by %s", old_buffer_size, g_socks5_buffer_size,
+			session->username);
+	}
+	write_simple_response_header(wb, response_code, COMMAND_CHANGE_BUFFER_SIZE);
 }
 
 /*
@@ -388,14 +404,14 @@ void process_change_timeout_command(management_session *session, uint8_t new_tim
 
 	if (new_timeout < MIN_TIMEOUT_SECONDS || new_timeout > MAX_TIMEOUT_SECONDS) {
 		// This shouldnt even happen because client side alr verifies this
-        log(ERROR, "[MANAGEMENT] Invalid timeout: %d seconds", new_timeout);
-        response_code = RESPONSE_BAD_REQUEST;
-    } else {
-        g_select_timeout = (struct timespec){new_timeout, 0}; // Set seconds, nanoseconds = 0
-        response_code = RESPONSE_SUCCESS;
-       	log(INFO, "[MANAGEMENT] Timeout changed to %d seconds", new_timeout);
-    }
-    write_simple_response_header(wb, response_code, COMMAND_CHANGE_TIMEOUT);
+		log(ERROR, "[MANAGEMENT] Invalid timeout: %d seconds", new_timeout);
+		response_code = RESPONSE_BAD_REQUEST;
+	} else {
+		g_select_timeout = (struct timespec) {new_timeout, 0}; // Set seconds, nanoseconds = 0
+		response_code = RESPONSE_SUCCESS;
+		log(INFO, "[MANAGEMENT] Timeout changed to %d seconds", new_timeout);
+	}
+	write_simple_response_header(wb, response_code, COMMAND_CHANGE_TIMEOUT);
 }
 
 /*
@@ -497,30 +513,30 @@ VER | STATUS | CMD | RSV | BUFFER_SIZE_KB | TIMEOUT_SECONDS | ... (for future us
  1  |   1    |  1  |  1  |     1          |       1         | ...
 */
 void process_get_current_config_command(management_session *session) {
-    log(DEBUG, "[MANAGEMENT] Processing get current config command");
-    
-    buffer *wb = &session->write_buffer;
-    buffer_reset(wb);
+	log(DEBUG, "[MANAGEMENT] Processing get current config command");
 
-    if (buffer_writeable_bytes(wb) < RESPONSE_HEADER_LEN + 2) {
-        log(ERROR, "[MANAGEMENT] No space for config response");
-        set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
-        return;
-    }
+	buffer *wb = &session->write_buffer;
+	buffer_reset(wb);
 
-    uint8_t buffer_size_kb = (uint8_t)(g_socks5_buffer_size / 1024);
-    if (buffer_size_kb == 0 && g_socks5_buffer_size > 0) {
-        buffer_size_kb = 1;
-    }
-    
-    uint8_t timeout_seconds = (uint8_t)g_select_timeout.tv_sec;
+	if (buffer_writeable_bytes(wb) < RESPONSE_HEADER_LEN + 2) {
+		log(ERROR, "[MANAGEMENT] No space for config response");
+		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
+		return;
+	}
+
+	uint8_t buffer_size_kb = (uint8_t) (g_socks5_buffer_size / 1024);
+	if (buffer_size_kb == 0 && g_socks5_buffer_size > 0) {
+		buffer_size_kb = 1;
+	}
+
+	uint8_t timeout_seconds = (uint8_t) g_select_timeout.tv_sec;
 
 	write_simple_response_header(wb, RESPONSE_SUCCESS, COMMAND_GET_CURRENT_CONFIG);
-    buffer_write(wb, buffer_size_kb);
-    buffer_write(wb, timeout_seconds);
+	buffer_write(wb, buffer_size_kb);
+	buffer_write(wb, timeout_seconds);
 
-    log(INFO, "[MANAGEMENT] Config sent to admin %s: buffer_size=%uKB, timeout=%us", 
-        session->username, buffer_size_kb, timeout_seconds);
+	log(INFO, "[MANAGEMENT] Config sent to admin %s: buffer_size=%uKB, timeout=%us", session->username, buffer_size_kb,
+		timeout_seconds);
 }
 
 /********************** HELPER FUNCTIONS *****************************/
