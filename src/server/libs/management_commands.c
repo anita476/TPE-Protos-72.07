@@ -432,7 +432,7 @@ void process_add_user_command(management_session *session, uint8_t arg1, uint8_t
 
 	buffer *rb = &session->read_buffer;
 	size_t available;
-	uint8_t *data = buffer_read_ptr(rb, &available);
+	(void) buffer_read_ptr(rb, &available);
 
 	if (available < (size_t) (username_len + password_len)) {
 		return; // wait...
@@ -479,7 +479,7 @@ void process_remove_user_command(management_session *session, uint8_t arg1) {
 
 	buffer *rb = &session->read_buffer;
 	size_t available;
-	uint8_t *data = buffer_read_ptr(rb, &available);
+	(void) buffer_read_ptr(rb, &available);
 
 	if (available < username_len) {
 		return; // wait..
@@ -729,16 +729,16 @@ void set_error_state(management_session *session, uint8_t error_code) {
 }
 
 static void write_response_header(buffer *wb, uint8_t status, uint8_t command, uint8_t arg) {
-    if (buffer_writeable_bytes(wb) < 4) {
-        return;
-    }
-    
-    buffer_write(wb, CALSETTING_VERSION);  // VER
-    buffer_write(wb, status);              // STATUS
-    buffer_write(wb, command);             // CMD
-    buffer_write(wb, arg);                 // ARG/COUNT/RESERVED
+	if (buffer_writeable_bytes(wb) < 4) {
+		return;
+	}
+
+	buffer_write(wb, CALSETTING_VERSION); // VER
+	buffer_write(wb, status);			  // STATUS
+	buffer_write(wb, command);			  // CMD
+	buffer_write(wb, arg);				  // ARG/COUNT/RESERVED
 }
 
 static void write_simple_response_header(buffer *wb, uint8_t status, uint8_t command) {
-    return write_response_header(wb, status, command, 0);
+	return write_response_header(wb, status, command, 0);
 }
