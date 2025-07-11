@@ -25,6 +25,9 @@ static char server_address[256] = DEFAULT_SERVER_ADDRESS;
 static char server_port[16] = DEFAULT_SERVER_PORT;
 static int use_console_ui = 0;
 
+// Connection functions
+static int handle_connection_lost();
+
 // Authentication functions
 static int get_user_input(const char *title, const char *prompt, int is_password, char *output, int size);
 static int get_username(char *username, int size);
@@ -66,6 +69,21 @@ static void configure_settings(void);
 // Argument functions
 static int parse_arguments(int argc, char *argv[]);
 static void print_usage(void);
+
+/* Connection functions */
+
+static int handle_connection_lost() {
+    if (ui_get_confirmation("Reconnect", "Connection with the server was lost. ¿Do you wish to reconnect?")) {
+        if (server_socket >= 0) {
+            close(server_socket);
+            server_socket = -1;
+        }
+        if (authenticate()) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 /* Authentication functions */
 
@@ -254,16 +272,13 @@ static void free_logs(void *data) {
 /* Server interaction functions */
 
 static void show_metrics() {
-	if (server_socket < 0) {
-		ui_show_message("Error", "No server connection");
-		return;
-	}
-
-	metrics_t server_metrics;
-	if (handle_metrics(server_socket, &server_metrics) == NULL) {
-		ui_show_message("Error", "Failed to retrieve server metrics");
-		return;
-	}
+    metrics_t server_metrics;
+    if (handle_metrics(server_socket, &server_metrics) == NULL) {
+        if (handle_connection_lost()) {
+            show_metrics();
+        }
+        return;
+    }
 
 	char status_info[2048];
 	snprintf(status_info, sizeof(status_info),
@@ -322,16 +337,15 @@ static void show_logs() {
 }
 
 static void show_config() {
-	if (server_socket < 0) {
-		ui_show_message("Error", "No server connection");
-		return;
-	}
-
-	server_current_config server_config;
-	if (handle_get_current_config(server_socket, &server_config) == NULL) {
-		ui_show_message("Error", "Failed to retrieve server configuration");
-		return;
-	}
+    server_current_config server_config;
+    if (handle_get_current_config(server_socket, &server_config) == NULL) {
+        if (handle_connection_lost()) {
+            show_config();
+        } else {
+            ui_show_message("Error", "Failed to retrieve server configuration");
+        }
+        return;
+    }
 
 	char config_info[1024];
 
@@ -381,6 +395,12 @@ static int add_user() {
 	}
 
 	int result = handle_add_client(server_socket, username, password);
+	if (result == RESPONSE_GENERAL_SERVER_FAILURE) {
+        if (handle_connection_lost()) {
+            return add_user();
+        }
+        return 0;
+    }
 	if (result != RESPONSE_SUCCESS) {
 		if (result == RESPONSE_USER_ALREADY_EXISTS) {
 			ui_show_message("Error", "User already exists.");
