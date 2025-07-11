@@ -430,6 +430,12 @@ static int remove_user() {
 
 	if (ui_get_confirmation("Confirm removal", confirm_msg)) {
 		int result = handle_remove_user(server_socket, selected_user);
+		if (result == RESPONSE_GENERAL_SERVER_FAILURE) {
+			if (handle_connection_lost()) {
+				return add_user();
+			}
+			return 0;
+		}
 		if (result == RESPONSE_SUCCESS) {
 			char success_msg[256];
 			snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully removed from the system.",

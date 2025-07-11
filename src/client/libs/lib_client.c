@@ -221,11 +221,8 @@ uint8_t handle_remove_user(int sock, char *username) {
 }
 
 uint8_t remove_user_send_req(int sock, char *username) {
-	if (user_type != USER_TYPE_ADMIN) {
-		return RESPONSE_NOT_ALLOWED; // Only admin can add users
-	}
 	if (sock < 0) {
-		return RESPONSE_BAD_REQUEST; // Invalid socket
+		return RESPONSE_GENERAL_SERVER_FAILURE; // Invalid socket
 	}
 	const unsigned int raw_len_usrname = strlen(username);
 	if (raw_len_usrname > USERNAME_MAX_SIZE || raw_len_usrname == 0) {
@@ -253,10 +250,7 @@ uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
 	printf("[CLIENT DEBUG] Socket: %d\n", sock);
 	printf("[CLIENT DEBUG] Min size: %d, Max size: %d\n", MIN_BUFF_SIZE_KB, MAX_BUFF_SIZE_KB);
 
-	if (user_type != USER_TYPE_ADMIN) {
-		printf("[CLIENT DEBUG] User type check FAILED\n");
-		return RESPONSE_NOT_ALLOWED; // Only admin can change timeout
-	}
+
 	if (sock < 0) {
 		printf("[CLIENT DEBUG] Socket validation FAILED\n");
 		return RESPONSE_BAD_REQUEST; // Invalid socket
@@ -296,9 +290,7 @@ uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
 }
 
 uint8_t handle_change_timeout(int sock, uint8_t new_timeout) {
-	if (user_type != USER_TYPE_ADMIN) {
-		return RESPONSE_NOT_ALLOWED; // Only admin can change timeout
-	}
+
 
 	if (sock < 0) {
 		return RESPONSE_BAD_REQUEST; // Invalid socket
