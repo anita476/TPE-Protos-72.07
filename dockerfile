@@ -2,12 +2,41 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required packages
+# install more tools and utilities for testing 
 RUN apt-get update && \
-    apt-get install -y gcc make check ncat curl iproute2 dialog build-essential && \
+    apt-get install -y \
+        gcc \
+        make \
+        build-essential \
+        curl \
+        iproute2 \
+        iputils-ping \
+        net-tools \            
+        psmisc \             
+        procps \               
+        lsof \
+        strace \
+        tcpdump \
+        less \
+        vim \
+        nano \
+        dialog \
+        python3 \
+        python3-pip \
+        man-db \
+        manpages \
+        ncat \
+        check \
+        nginx \
+        locales && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-RUN apt-get update && apt-get install -y python3
-# python3 to test with http server (probs should also install nginx haha)
+
+# Set up UTF-8 locale , safeguard against issues with unicode in man and vim, etc
+RUN locale-gen en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
+
 WORKDIR /root
 
 # Expose the SOCKS5 port && admin port
