@@ -1,10 +1,13 @@
 #include "../include/pagination.h"
 #include "../include/ui_adapter.h"
+
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 void handle_pagination(const pagination_config_t *config, int socket, int items_per_page) {
+	printf("SOCKET: %d\n", socket);
 	if (socket < 0) {
 		ui_show_message("Error", "No server connection");
 		return;
@@ -14,7 +17,12 @@ void handle_pagination(const pagination_config_t *config, int socket, int items_
 	int continue_browsing = 1;
 
 	while (continue_browsing) {
+		errno = 0; // Reset errno before fetching data
 		void *data = config->fetch_func(items_per_page, current_page * items_per_page, socket);
+		if (errno == ENOTCONN) {
+			ui_show_message("Error", "No server connection");
+			return;
+		}
 
 		if (data == NULL) {
 			const char *message = (current_page == 0) ? config->no_data_message : config->no_more_data_message;

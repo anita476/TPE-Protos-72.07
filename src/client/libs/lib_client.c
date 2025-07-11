@@ -435,16 +435,19 @@ metrics_t *handle_metrics_response(int sock, metrics_t *m) {
 
 client_log_entry_t *handle_log(int sock, uint8_t n, uint8_t offset) {
 	if (request_send(COMMAND_LOGS, n, offset, sock) != 0) {
+		errno = ENOTCONN;
 		return NULL;
 	}
 
 	char header[RESPONSE_HEADER_LEN] = {0};
 	if (recv_all(sock, header, RESPONSE_HEADER_LEN) != RESPONSE_HEADER_LEN) {
+		errno = ENOTCONN;
 		return NULL;
 	}
 
 	if (header[1] != RESPONSE_SUCCESS) {
 		// should show on console the exact response code that was received
+		errno = ENOTCONN;
 		return NULL;
 	}
 
