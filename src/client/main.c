@@ -461,7 +461,8 @@ static int remove_user() {
 static void change_server_setting(const char *setting_name, const char *unit,
 								  int (*validate_func)(const char *, uint8_t *), uint8_t (*handle_func)(int, uint8_t)) {
 	if (server_socket < 0) {
-		ui_show_message("Error", "No server connection");
+		handle_connection_lost();
+		// ui_show_message("Error", "No server connection");
 		return;
 	}
 
@@ -490,6 +491,12 @@ static void change_server_setting(const char *setting_name, const char *unit,
 	}
 
 	uint8_t result = handle_func(server_socket, new_value);
+	if (result == RESPONSE_GENERAL_SERVER_FAILURE) {
+		if (handle_connection_lost()) {
+			show_metrics();
+		}
+		return;
+	}
 
 	if (result == RESPONSE_SUCCESS || result == RESPONSE_SUCCESS_ADMIN || result == RESPONSE_SUCCESS_CLIENT) {
 		char success_msg[256];

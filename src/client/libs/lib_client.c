@@ -253,7 +253,7 @@ uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
 
 	if (sock < 0) {
 		printf("[CLIENT DEBUG] Socket validation FAILED\n");
-		return RESPONSE_BAD_REQUEST; // Invalid socket
+		return RESPONSE_GENERAL_SERVER_FAILURE; // Invalid socket
 	}
 
 	if (new_size < MIN_BUFF_SIZE_KB || new_size > MAX_BUFF_SIZE_KB) {
