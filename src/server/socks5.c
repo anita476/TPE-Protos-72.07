@@ -233,10 +233,7 @@ static void socks5_handle_read(struct selector_key *key) {
 static void socks5_handle_write(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 	switch (session->current_state) {
-		case STATE_HELLO_WRITE:
-			write_to_client(key, false);
-			break;
-		case STATE_AUTH_WRITE: // TODO: de hecho puede ni existir ese state porque hace lo mismo que STATE_HELLO_WRITE
+		case STATE_HELLO_WRITE || STATE_AUTH_WRITE: // todo take out redundant state
 			write_to_client(key, false);
 			break;
 		case STATE_REQUEST_WRITE:
