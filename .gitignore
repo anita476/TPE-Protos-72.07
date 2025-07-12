@@ -66,3 +66,4 @@ client_debug.log
 /obj
 .DS_Store
 doc/problems.txt
+*.log
