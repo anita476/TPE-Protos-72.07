@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "../include/management_commands.h"
 #include "../../shared/include/calsetting_protocol.h"
 #include "../include/args.h"
