@@ -107,7 +107,7 @@ static int get_username(char *username, int size) {
 }
 
 static int get_password(char *password, int size) {
-	return get_user_input("Login", "Enter password (hidden):", 1, password, size);
+	return get_user_input("Login", "Enter password (hidden only in Dialog GUI):", 1, password, size);
 }
 
 static int authenticate() {
