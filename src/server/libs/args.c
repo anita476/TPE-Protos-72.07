@@ -54,34 +54,34 @@ static void admin(char *s, struct user *user) {
 }
 
 static int username_exists(const char *name, struct user *users, int nusers) {
-    for (int i = 0; i < nusers; i++) {
-        if (strcmp(users[i].name, name) == 0) {
-            return 1;
-        }
-    }
-    return 0;
+	for (int i = 0; i < nusers; i++) {
+		if (strcmp(users[i].name, name) == 0) {
+			return 1;
+		}
+	}
+	return 0;
 }
 
 static int validate_and_check_username(const char *optarg, struct user *users, int nusers) {
-    char tmp[USERNAME_MAX_SIZE + 1];
-    strncpy(tmp, optarg, USERNAME_MAX_SIZE);
-    tmp[USERNAME_MAX_SIZE] = '\0';
-    char *p = strchr(tmp, ':');
-    if (p == NULL) {
-        fprintf(stderr, "Password not found\n");
-        return 0;
-    }
-    *p = '\0';
-    const char *password = p + 1;
-    if (strlen(password) == 0) {
-        fprintf(stderr, "Password cannot be empty for user: %s\n", tmp);
-        return 0;
-    }
-    if (username_exists(tmp, users, nusers)) {
-        fprintf(stderr, "Duplicate username not allowed: %s\n", tmp);
-        return 0;
-    }
-    return 1;
+	char tmp[USERNAME_MAX_SIZE + 1];
+	strncpy(tmp, optarg, USERNAME_MAX_SIZE);
+	tmp[USERNAME_MAX_SIZE] = '\0';
+	char *p = strchr(tmp, ':');
+	if (p == NULL) {
+		fprintf(stderr, "Password not found\n");
+		return 0;
+	}
+	*p = '\0';
+	const char *password = p + 1;
+	if (strlen(password) == 0) {
+		fprintf(stderr, "Password cannot be empty for user: %s\n", tmp);
+		return 0;
+	}
+	if (username_exists(tmp, users, nusers)) {
+		fprintf(stderr, "Duplicate username not allowed: %s\n", tmp);
+		return 0;
+	}
+	return 1;
 }
 
 static void version(void) {
@@ -167,28 +167,28 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
 			case 'P':
 				args->mng_port = port(optarg);
 				break;
-            case 'u':
-                if (nusers >= MAX_USERS) {
-                    fprintf(stderr, "Maximum number of command line users reached: %d.\n", MAX_USERS);
-                    exit(1);
-                } else if (!validate_and_check_username(optarg, args->users, nusers)) {
-                    exit(1);
-                } else {
-                    user(optarg, args->users + nusers);
-                    nusers++;
-                }
-                break;
-            case 'a':
-                if (nusers >= MAX_USERS) {
-                    fprintf(stderr, "Maximum number of command line admins reached: %d.\n", MAX_USERS);
-                    exit(1);
-                } else if (!validate_and_check_username(optarg, args->users, nusers)) {
-                    exit(1);
-                } else {
-                    admin(optarg, args->users + nusers);
-                    nusers++;
-                }
-                break;
+			case 'u':
+				if (nusers >= MAX_USERS) {
+					fprintf(stderr, "Maximum number of command line users reached: %d.\n", MAX_USERS);
+					exit(1);
+				} else if (!validate_and_check_username(optarg, args->users, nusers)) {
+					exit(1);
+				} else {
+					user(optarg, args->users + nusers);
+					nusers++;
+				}
+				break;
+			case 'a':
+				if (nusers >= MAX_USERS) {
+					fprintf(stderr, "Maximum number of command line admins reached: %d.\n", MAX_USERS);
+					exit(1);
+				} else if (!validate_and_check_username(optarg, args->users, nusers)) {
+					exit(1);
+				} else {
+					admin(optarg, args->users + nusers);
+					nusers++;
+				}
+				break;
 			case 'v':
 				version();
 				exit(0);
