@@ -65,3 +65,4 @@ client_debug.log
 /bin
 /obj
 .DS_Store
+doc/problems.txt

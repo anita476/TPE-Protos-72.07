@@ -12,6 +12,7 @@
 #include <time.h>
 
 extern struct timespec g_select_timeout;
+extern int g_connection_timeout;
 extern size_t g_socks5_buffer_size;
 extern struct user *users;
 extern uint8_t nusers; // Number of users loaded from args
@@ -107,6 +108,11 @@ void socks5_handle_new_connection(struct selector_key *key) {
 		close(client_fd);
 		return;
 	}
+	// initialize timeout
+	session->connection_start = time(NULL);
+	session->idle_timeout = g_connection_timeout;
+	session->next_timeout = session->connection_start + session->idle_timeout;
+	selector_update_session_timeout(key->s, session, session->next_timeout);
 
 	// Initialize core state
 	session->client_fd = client_fd;
@@ -161,6 +167,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 		return;
 	}
 
+	// We  will initialize them when remote connection is established, to avoid allocating extra resources
 	session->raw_remote_read_buffer = NULL;
 	session->raw_remote_write_buffer = NULL;
 
@@ -184,9 +191,14 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	metrics_increment_connections();
 }
 
-// TODO: should use stm to handle the states for more efficiency
 static void socks5_handle_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
+
+	// Reset timeout on any data received
+	time_t now = time(NULL);
+	session->next_timeout = now + session->idle_timeout;
+	selector_update_session_timeout(key->s, session, session->next_timeout);
+
 	switch (session->current_state) {
 		case STATE_HELLO_READ:
 			hello_read(key);
@@ -206,9 +218,6 @@ static void socks5_handle_read(struct selector_key *key) {
 		case STATE_RELAY:
 			relay_data(key);
 			break;
-		// case STATE_CLIENT_CLOSE:
-		// 	close_client(key);
-		// 	break;
 		case STATE_ERROR:
 			handle_error(key);
 			break;
@@ -236,7 +245,6 @@ static void socks5_handle_write(struct selector_key *key) {
 			break;
 		case STATE_ERROR_WRITE:
 			write_to_client(key, true); // This will send the error response and close the connection
-			// podemos llamar directo a write_to_client(key, true)
 			break;
 		case STATE_ERROR:
 			handle_error(key);
@@ -254,6 +262,8 @@ static void socks5_handle_close(struct selector_key *key) {
 	if (!session) {
 		return;
 	}
+	// Remove from timeout tracking
+	selector_remove_session_timeout(key->s, session);
 
 	// Check if we're already cleaning up this session
 	if (session->cleaned_up) {
@@ -369,6 +379,11 @@ static void hello_read(struct selector_key *key) {
 		handle_error(key);
 		return;
 	}
+	// read some bytes
+	time_t now = time(NULL);
+	session->connection_start = now;
+	session->next_timeout = now + session->idle_timeout;
+	selector_update_session_timeout(key->s, session, session->next_timeout);
 
 	metrics_add_bytes_in(bytes_read);
 

@@ -1,4 +1,5 @@
-FROM ubuntu:22.04
+FROM ubuntu:22.04 
+#minimized image, if man is needed run unminimize :p
 
 ENV DEBIAN_FRONTEND=noninteractive
 

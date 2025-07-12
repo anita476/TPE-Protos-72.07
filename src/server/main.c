@@ -190,10 +190,10 @@ int main(int argc, char **argv) {
 		exit_error(error_msg, errno);
 	}
 	const struct selector_init configuration = {
-		.signal = SIGALRM, // TODO: ask what is sigALRM for?
+		.signal = SIGALRM,
 		.select_timeout =
 			{
-				.tv_sec = 10,
+				.tv_sec = 10, // default falback timeout
 				.tv_nsec = 0,
 			},
 	};

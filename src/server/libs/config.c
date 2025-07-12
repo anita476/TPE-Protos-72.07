@@ -1,9 +1,9 @@
-#include "config.h"
+#include "../include/config.h"
 
 size_t g_socks5_buffer_size = 4096;
 struct timespec g_select_timeout = {10, 0};
 
-int g_connection_timeout = 30;
+int g_connection_timeout = 10;
 size_t g_management_buffer_size = 8192;
 
 struct user *users = NULL; // global users
