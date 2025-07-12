@@ -3,6 +3,7 @@
 
 #define MAX_INPUT 256
 #define TEMP_FILE "/tmp/dialog_input"
+#define TEMP_DIR "/tmp"
 
 void ui_dialog_show_message(const char *title, const char *message);
 

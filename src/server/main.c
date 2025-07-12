@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "include/args.h"
 #include "include/config.h"
 #include "include/logger.h"
@@ -87,7 +89,7 @@ int setupServerSocket(const char *service, const char *addr) {
 		int opt = 1;
 		if (setsockopt(servSock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
 			saved_errno = errno;
-			log(DEBUG, "setsockopt(SO_REUSEADDR) failed: %s", strerror(errno));
+			log(ERROR, "setsockopt(SO_REUSEADDR) failed: %s", strerror(errno));
 			close(servSock);
 			servSock = -1;
 			continue;
@@ -98,7 +100,7 @@ int setupServerSocket(const char *service, const char *addr) {
 			int v6only = 0;
 			if (setsockopt(servSock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) < 0) {
 				// Not fatal - continue with IPv6-only
-				log(DEBUG, "Cannot enable dual-stack mode: %s", strerror(errno));
+				log(ERROR, "Cannot enable dual-stack mode: %s", strerror(errno));
 			}
 		}
 
@@ -121,11 +123,11 @@ int setupServerSocket(const char *service, const char *addr) {
 				return servSock;
 			}
 			saved_errno = errno;
-			log(DEBUG, "listen() failed on %s: %s", sockaddr_to_human(addrBuffer, sizeof(addrBuffer), ai->ai_addr),
+			log(FATAL, "listen() failed on %s: %s", sockaddr_to_human(addrBuffer, sizeof(addrBuffer), ai->ai_addr),
 				strerror(errno));
 		} else {
 			saved_errno = errno;
-			log(DEBUG, "bind() failed on %s: %s", sockaddr_to_human(addrBuffer, sizeof(addrBuffer), ai->ai_addr),
+			log(FATAL, "bind() failed on %s: %s", sockaddr_to_human(addrBuffer, sizeof(addrBuffer), ai->ai_addr),
 				strerror(errno));
 		}
 

@@ -67,3 +67,6 @@ client_debug.log
 .DS_Store
 doc/problems.txt
 *.log
+/.config
+*.tasks
+strace_out

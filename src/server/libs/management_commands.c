@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "../include/management_commands.h"
 #include "../../shared/include/calsetting_protocol.h"
 #include "../include/args.h"
@@ -46,7 +48,7 @@ Total size: 1 + 1 + 4 + 8 + 4 + 8 + 8 + 8 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 = 
 void process_metrics_command(management_session *session) {
 	server_metrics *real_metrics = metrics_get();
 	if (!real_metrics) {
-		log(ERROR, "[MANAGEMENT] Failed to get server metrics");
+		log(ERROR, "[MANAGEMENT] Failed to get server metrics, setting error %d", RESPONSE_GENERAL_SERVER_FAILURE);
 		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
 		return;
 	}
@@ -55,7 +57,8 @@ void process_metrics_command(management_session *session) {
 	buffer_reset(wb);
 
 	if (buffer_writeable_bytes(wb) < METRICS_RESPONSE_SIZE) {
-		log(ERROR, "[MANAGEMENT] Insufficient buffer space for metrics response");
+		log(ERROR, "[MANAGEMENT] Insufficient buffer space for metrics response, setting error %d",
+			RESPONSE_GENERAL_SERVER_FAILURE);
 		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
 		return;
 	}
@@ -162,7 +165,7 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 	log(DEBUG, "[MANAGEMENT] Buffer can handle max %d logs per response", max_logs_per_response);
 
 	if (max_logs_per_response <= 0) {
-		log(ERROR, "[MANAGEMENT] Buffer too small for even one log entry");
+		log(ERROR, "[MANAGEMENT] Buffer too small for even one log entry: %d", max_logs_per_response);
 		write_simple_response_header(wb, RESPONSE_GENERAL_SERVER_FAILURE, COMMAND_LOGS);
 		return;
 	}
@@ -175,7 +178,7 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 
 	log_entry_t *log_buffer = get_reusable_log_buffer(logs_to_fetch);
 	if (!log_buffer) {
-		log(ERROR, "[MANAGEMENT] Failed to allocate temp log buffer");
+		log(ERROR, "[MANAGEMENT] Failed to allocate temp log buffer for session client %d", session->client_fd);
 		write_simple_response_header(wb, RESPONSE_GENERAL_SERVER_FAILURE, COMMAND_LOGS);
 		return;
 	}
@@ -230,10 +233,11 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 		// Origin IP (46 bytes)
 		size_t origin_ip_len = strlen(entry->origin_ip);
 		if (origin_ip_len > 0) {
-			size_t copy_len = (origin_ip_len > 46) ? 46 : origin_ip_len;
-			memcpy(write_ptr + entry_offset, entry->origin_ip, copy_len);
-			if (copy_len < 46) {
-				memset(write_ptr + entry_offset + copy_len, 0, 46 - copy_len);
+			// Since origin_ip is INET6_ADDRSTRLEN (46) chars max,
+			// we can just copy the actual length
+			memcpy(write_ptr + entry_offset, entry->origin_ip, origin_ip_len);
+			if (origin_ip_len < 46) {
+				memset(write_ptr + entry_offset + origin_ip_len, 0, 46 - origin_ip_len);
 			}
 		} else {
 			memset(write_ptr + entry_offset, 0, 46);
@@ -252,10 +256,9 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 		// Destination address (256 bytes)
 		size_t dest_addr_len = strlen(entry->destination_address);
 		if (dest_addr_len > 0) {
-			size_t copy_len = (dest_addr_len > 256) ? 256 : dest_addr_len;
-			memcpy(write_ptr + entry_offset, entry->destination_address, copy_len);
-			if (copy_len < 256) {
-				memset(write_ptr + entry_offset + copy_len, 0, 256 - copy_len);
+			memcpy(write_ptr + entry_offset, entry->destination_address, dest_addr_len);
+			if (dest_addr_len < 256) {
+				memset(write_ptr + entry_offset + dest_addr_len, 0, 256 - dest_addr_len);
 			}
 		} else {
 			memset(write_ptr + entry_offset, 0, 256);
@@ -348,7 +351,8 @@ void process_userlist_command(management_session *session, uint8_t number, uint8
 		uint8_t *write_ptr = buffer_write_ptr(wb, &available);
 
 		if (available < USERNAME_MAX_SIZE) {
-			log(ERROR, "[MANAGEMENT] Buffer space lost during user entry write");
+			log(ERROR, "[MANAGEMENT] Buffer space lost during user entry write, available is %zu and max is %d",
+				available, USERNAME_MAX_SIZE);
 			break;
 		}
 
@@ -513,13 +517,14 @@ VER | STATUS | CMD | RSV | BUFFER_SIZE_KB | TIMEOUT_SECONDS | ... (for future us
  1  |   1    |  1  |  1  |     1          |       1         | ...
 */
 void process_get_current_config_command(management_session *session) {
-	log(DEBUG, "[MANAGEMENT] Processing get current config command");
+	log(DEBUG, "[MANAGEMENT] Processing get current config command for client %d", session->client_fd);
 
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);
 
 	if (buffer_writeable_bytes(wb) < RESPONSE_HEADER_LEN + 2) {
-		log(ERROR, "[MANAGEMENT] No space for config response");
+		log(ERROR, "[MANAGEMENT] No space for config response, setting error state %d",
+			RESPONSE_GENERAL_SERVER_FAILURE);
 		set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
 		return;
 	}
@@ -578,7 +583,7 @@ log_entry_t *get_reusable_log_buffer(size_t required_count) {
 // confio que el cliente me mande bien los datos asi que muchos chequeos no hago
 uint8_t add_user_to_system(const char *username, const char *password, uint8_t user_type) {
 	if (!username || !password) {
-		log(ERROR, "[MANAGEMENT] NULL username or password provided");
+		log(ERROR, "[MANAGEMENT] NULL username or password provided, returning %d", RESPONSE_BAD_REQUEST);
 		return RESPONSE_BAD_REQUEST;
 	}
 
@@ -740,5 +745,5 @@ static void write_response_header(buffer *wb, uint8_t status, uint8_t command, u
 }
 
 static void write_simple_response_header(buffer *wb, uint8_t status, uint8_t command) {
-	return write_response_header(wb, status, command, 0);
+	write_response_header(wb, status, command, 0);
 }

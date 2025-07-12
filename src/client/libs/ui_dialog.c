@@ -1,8 +1,13 @@
-#include "ui_dialog.h"
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+#include "../include/ui_dialog.h"
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 static int count_lines(const char *text) {
 	int lines = 1;
 	for (const char *p = text; *p; p++) {
@@ -14,6 +19,11 @@ static int count_lines(const char *text) {
 }
 
 static int read_temp_file_line(char *buffer, size_t buffer_size) {
+	// check if tmp folder is accesible
+	if (access("/tmp", W_OK) != 0) {
+		perror("Cannot write to /tmp");
+		return 0;
+	}
 	FILE *file = fopen(TEMP_FILE, "r");
 	int ok = 0;
 	if (file) {

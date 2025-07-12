@@ -1,4 +1,7 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "../include/socks5_utils.h"
+#include "../include/metrics.h"
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
@@ -6,7 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <metrics.h>
 
 uint8_t map_getaddrinfo_error_to_socks5(int gai_error) {
 	switch (gai_error) {

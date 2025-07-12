@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "include/management.h"
 #include "include/args.h"
 #include "include/config.h"
@@ -333,7 +335,7 @@ static void command_read(struct selector_key *key) {
 		handle_error(key);
 		return;
 	} else if (bytes_read == 0) {
-		log(INFO, "[MANAGEMENT] Connection closed by client during command");
+		log(INFO, "[MANAGEMENT] Connection closed by client during command, unregistering %d ", key->fd);
 		selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
 		return;
@@ -433,7 +435,7 @@ static void command_write(struct selector_key *key) {
 void handle_error(struct selector_key *key) {
 	// management_session *session = (management_session *) key->data;
 
-	log(DEBUG, "[MANAGEMENT] Handling error state");
+	log(DEBUG, "[MANAGEMENT] Handling error state for fd %d", key->fd);
 
 	// for management protocol, we usually just close the connection on error
 	selector_unregister_fd(key->s, key->fd);

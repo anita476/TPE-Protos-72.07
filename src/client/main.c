@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -75,17 +77,17 @@ static void print_usage(void);
 /* Connection functions */
 
 static int handle_connection_lost() {
-    if (ui_get_confirmation("Reconnect", "Connection with the server was lost. ¿Do you wish to reconnect?")) {
-        if (server_socket >= 0) {
-            close(server_socket);
-            server_socket = -1;
-        }
-        if (authenticate()) {
-            return 1;
-        }
-    }
+	if (ui_get_confirmation("Reconnect", "Connection with the server was lost. ¿Do you wish to reconnect?")) {
+		if (server_socket >= 0) {
+			close(server_socket);
+			server_socket = -1;
+		}
+		if (authenticate()) {
+			return 1;
+		}
+	}
 	server_socket = -1;
-    return 0;
+	return 0;
 }
 
 /* Authentication functions */
@@ -275,7 +277,7 @@ static void free_logs(void *data) {
 /* Server interaction functions */
 
 static void show_metrics() {
-    metrics_t server_metrics;
+	metrics_t server_metrics;
 	printf("SOCKET: %d\n", server_socket);
 	if (server_socket < 0) {
 		if (handle_connection_lost()) {
@@ -283,12 +285,12 @@ static void show_metrics() {
 		}
 		return;
 	}
-    if (handle_metrics(server_socket, &server_metrics) == NULL) {
-        if (handle_connection_lost()) {
-            show_metrics();
-        }
-        return;
-    }
+	if (handle_metrics(server_socket, &server_metrics) == NULL) {
+		if (handle_connection_lost()) {
+			show_metrics();
+		}
+		return;
+	}
 
 	char status_info[2048];
 	snprintf(status_info, sizeof(status_info),
@@ -362,15 +364,13 @@ static void show_config() {
 		}
 		return;
 	}
-    server_current_config server_config;
-    if (handle_get_current_config(server_socket, &server_config) == NULL) {
-        if (handle_connection_lost()) {
-            show_config();
-        } else {
-            // ui_show_message("Error", "Failed to retrieve server configuration");
-        }
-        return;
-    }
+	server_current_config server_config;
+	if (handle_get_current_config(server_socket, &server_config) == NULL) {
+		if (handle_connection_lost()) {
+			show_config();
+		}
+		return;
+	}
 
 	char config_info[1024];
 
@@ -398,7 +398,6 @@ static int add_user() {
 			return 0;
 		}
 	}
-
 
 	if (get_user_input("Username", "Enter username:", 0, username, sizeof(username)) != 0) {
 		return 0;
@@ -429,11 +428,11 @@ static int add_user() {
 
 	int result = handle_add_client(server_socket, username, password);
 	if (result == RESPONSE_GENERAL_SERVER_FAILURE) {
-        if (handle_connection_lost()) {
-            return add_user();
-        }
-        return 0;
-    }
+		if (handle_connection_lost()) {
+			return add_user();
+		}
+		return 0;
+	}
 	if (result != RESPONSE_SUCCESS) {
 		if (result == RESPONSE_USER_ALREADY_EXISTS) {
 			ui_show_message("Error", "User already exists.");
@@ -502,8 +501,7 @@ static int remove_user() {
 static void change_server_setting(const char *setting_name, const char *unit,
 								  int (*validate_func)(const char *, uint8_t *), uint8_t (*handle_func)(int, uint8_t)) {
 	if (server_socket < 0) {
-		handle_connection_lost();
-		// ui_show_message("Error", "No server connection");
+		(void) handle_connection_lost();
 		return;
 	}
 
@@ -534,7 +532,7 @@ static void change_server_setting(const char *setting_name, const char *unit,
 	uint8_t result = handle_func(server_socket, new_value);
 	if (result == RESPONSE_GENERAL_SERVER_FAILURE) {
 		if (handle_connection_lost()) {
-			change_server_setting(setting_name, unit,validate_func, handle_func);
+			change_server_setting(setting_name, unit, validate_func, handle_func);
 		}
 		return;
 	}
