@@ -537,7 +537,7 @@ selector_status selector_select(fd_selector s) {
 			if (session->type == SESSION_SOCKS5) {
 				// Check if this looks like a valid client session by checking for timeout fields
 				if (session->idle_timeout > 0 && session->next_timeout > 0 && now >= session->next_timeout) {
-					log(INFO, "Idle connection timeout for fd=%d", item->fd);
+					log(INFO, "[SELECTOR_SELECT] Idle connection timeout for fd=%d", item->fd);
 					// Set error state
 					session->has_error = true;
 					session->error_code = SOCKS5_REPLY_TTL_EXPIRED;

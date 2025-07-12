@@ -16,7 +16,7 @@ for i in $(seq 1 $NUM_CONNECTIONS); do
         echo -en "\x05\x01\x00\x03"
         echo -en "\x0bhttpbin.org"
         echo -en "\x00\x50"
-        sleep 30
+        #sleep 5
     ) | nc $PROXY_HOST $PROXY_PORT > /dev/null 2>&1 &
     
     if [ $((i % 50)) -eq 0 ]; then

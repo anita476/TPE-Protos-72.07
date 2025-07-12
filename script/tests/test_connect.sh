@@ -7,7 +7,7 @@ set -x  # Debug mode
 SOCKS_HOST="127.0.0.1"
 SOCKS_PORT="1080"
 MANAGEMENT_PORT="8080"
-SERVER_BINARY="./bin/server"
+SERVER_BINARY="./bin/socks5d"
 
 # Función para verificar si puerto está en uso
 check_port() {
