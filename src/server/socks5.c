@@ -250,28 +250,50 @@ static void socks5_handle_write(struct selector_key *key) {
 
 static void socks5_handle_close(struct selector_key *key) {
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] *** CLOSE HANDLER CALLED *** for fd=%d", key->fd);
-	// close(key->fd);
 	client_session *session = (client_session *) key->data;
 	if (!session) {
 		return;
 	}
-	if (session->client_fd == key->fd) {
-		session->client_fd = -1;
+
+	// Check if we're already cleaning up this session
+	if (session->cleaned_up) {
+		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Session already being cleaned up, skipping");
+		return;
 	}
-	if (session->remote_fd == key->fd) {
+
+	// Mark which fd was closed
+	if (session->client_fd == key->fd) {
+		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Client fd=%d closed", key->fd);
+		session->client_fd = -1;
+	} else if (session->remote_fd == key->fd) {
+		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Remote fd=%d closed", key->fd);
 		session->remote_fd = -1;
 	}
 
-	// Only free session when BOTH are closed
-	if (session->client_fd == -1 && session->remote_fd == -1) {
-		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Both fds closed, cleaning up session");
-		cleanup_session(session);
-		free(session);
-		metrics_decrement_connections();
+	// prevent recursive calls
+	session->cleaned_up = true;
+
+	// Clean up the other fd if it's still open
+	if (session->client_fd != -1 && session->client_fd != key->fd) {
+		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Closing remaining client fd=%d", session->client_fd);
+		selector_unregister_fd(key->s, session->client_fd);
+		close(session->client_fd);
+		session->client_fd = -1;
 	}
+	if (session->remote_fd != -1 && session->remote_fd != key->fd) {
+		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Closing remaining remote fd=%d", session->remote_fd);
+		selector_unregister_fd(key->s, session->remote_fd);
+		close(session->remote_fd);
+		session->remote_fd = -1;
+	}
+
+	// If both remote and client are closed, only then clean up resources
+	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Both fds closed, cleaning up session");
+	cleanup_session(session);
+	free(session);
+	metrics_decrement_connections();
+
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Close handler complete for fd=%d", key->fd);
-	// IMPORTANT: Do NOT call selector_unregister_fd here!
-	// The selector is already in the process of unregistering when it calls this function
 }
 
 static void socks5_handle_block(struct selector_key *key) {
@@ -1603,7 +1625,7 @@ bool valid_user(const char *username, const char *password, uint8_t *out_type) {
 }
 
 static void cleanup_session(client_session *session) {
-	if (!session || session->cleaned_up)
+	if (!session) // no longer need the flag setting here
 		return;
 
 	log(DEBUG, "[CLEANUP] Starting session cleanup for client_fd=%d, remote_fd=%d", session->client_fd,
@@ -1655,8 +1677,6 @@ static void cleanup_session(client_session *session) {
 		free(session->username);
 		session->username = NULL;
 	}
-
-	session->cleaned_up = true;
 }
 
 static void log_socks5_attempt(client_session *session, uint8_t status_code) {

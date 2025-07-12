@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Number of concurrent connections to test
-NUM_CONNECTIONS=1000
+NUM_CONNECTIONS=2000
 
 # Array of URLs to test (add more if you want)
 URLS=(
