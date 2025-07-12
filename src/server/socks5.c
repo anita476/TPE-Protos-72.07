@@ -307,7 +307,6 @@ static void socks5_handle_close(struct selector_key *key) {
 
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Close handler complete for fd=%d", key->fd);
 }
-
 static void socks5_handle_block(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
@@ -328,11 +327,14 @@ static void socks5_handle_block(struct selector_key *key) {
 		}
 		log(DEBUG, "[HANDLE_BLOCK] DNS resolution completed for fd=%d", key->fd);
 		request_connect(key);
+	} else if (session->current_state == STATE_REQUEST_CONNECT) {
+		// DNS resolution completed but we're already in connect state, continue
+		// timing issue
+		log(DEBUG, "[HANDLE_BLOCK] DNS resolution completed while already in connect state for fd=%d", key->fd);
+		// DONT call request_connect again, it's already running
 	} else {
 		log(ERROR, "[HANDLE_BLOCK] Unexpected block event in state %d", session->current_state);
-		set_error_state(session,
-						SOCKS5_REPLY_GENERAL_FAILURE); // TODO: maybe assign one of the unassigned errors for this
-													   // isntead of the general failure: X'09' to X'FF' unassigned
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
 	}
 }
@@ -1009,7 +1011,7 @@ static void request_resolve(struct selector_key *key) {
 }
 
 // NOTE: During abrupt server shutdown (SIGTERM), there may be a small memory leak
-// from active DNS resolution threads. This is expected behavior and does not 
+// from active DNS resolution threads. This is expected behavior and does not
 // affect normal server operation.
 static void *dns_resolution_thread(void *arg) {
 	struct selector_key *key = (struct selector_key *) arg;

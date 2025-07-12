@@ -232,10 +232,11 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 		// Origin IP (46 bytes)
 		size_t origin_ip_len = strlen(entry->origin_ip);
 		if (origin_ip_len > 0) {
-			size_t copy_len = (origin_ip_len > 46) ? 46 : origin_ip_len;
-			memcpy(write_ptr + entry_offset, entry->origin_ip, copy_len);
-			if (copy_len < 46) {
-				memset(write_ptr + entry_offset + copy_len, 0, 46 - copy_len);
+			// Since origin_ip is INET6_ADDRSTRLEN (46) chars max,
+			// we can just copy the actual length
+			memcpy(write_ptr + entry_offset, entry->origin_ip, origin_ip_len);
+			if (origin_ip_len < 46) {
+				memset(write_ptr + entry_offset + origin_ip_len, 0, 46 - origin_ip_len);
 			}
 		} else {
 			memset(write_ptr + entry_offset, 0, 46);
@@ -254,10 +255,9 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 		// Destination address (256 bytes)
 		size_t dest_addr_len = strlen(entry->destination_address);
 		if (dest_addr_len > 0) {
-			size_t copy_len = (dest_addr_len > 256) ? 256 : dest_addr_len;
-			memcpy(write_ptr + entry_offset, entry->destination_address, copy_len);
-			if (copy_len < 256) {
-				memset(write_ptr + entry_offset + copy_len, 0, 256 - copy_len);
+			memcpy(write_ptr + entry_offset, entry->destination_address, dest_addr_len);
+			if (dest_addr_len < 256) {
+				memset(write_ptr + entry_offset + dest_addr_len, 0, 256 - dest_addr_len);
 			}
 		} else {
 			memset(write_ptr + entry_offset, 0, 256);

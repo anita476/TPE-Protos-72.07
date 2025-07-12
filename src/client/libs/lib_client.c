@@ -91,15 +91,15 @@ int recv_all(int fd, char *buf, size_t len) {
 
 	return total_received; // Return total bytes received
 }
-
+// Because we manage the username and pass, strlen will always be okey for uint_8
 int hello_send(char *username, char *password, int sock) {
 	if (username == NULL || password == NULL || sock < 0) {
 		return -1; // Invalid parameters
 	}
 
 	// Prepare the hello message
-	uint8_t username_len = strlen(username);
-	uint8_t password_len = strlen(password);
+	uint8_t username_len = (uint8_t) strlen(username);
+	uint8_t password_len = (uint8_t) strlen(password);
 	uint16_t total_len = HELLO_HEADER_FIXED_LEN + username_len + password_len;
 	char msg[HELLO_HEADER_FIXED_LEN + username_len + password_len];
 	char *msg_ptr = msg;
@@ -252,7 +252,6 @@ uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
 	printf("[CLIENT DEBUG] Socket: %d\n", sock);
 	printf("[CLIENT DEBUG] Min size: %d, Max size: %d\n", MIN_BUFF_SIZE_KB, MAX_BUFF_SIZE_KB);
 
-
 	if (sock < 0) {
 		printf("[CLIENT DEBUG] Socket validation FAILED\n");
 		return RESPONSE_GENERAL_SERVER_FAILURE; // Invalid socket
@@ -292,8 +291,6 @@ uint8_t handle_change_buffer_size(int sock, uint8_t new_size) {
 }
 
 uint8_t handle_change_timeout(int sock, uint8_t new_timeout) {
-
-
 	if (sock < 0) {
 		return RESPONSE_BAD_REQUEST; // Invalid socket
 	}
