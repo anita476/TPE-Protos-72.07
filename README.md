@@ -16,12 +16,12 @@ Puede compilarse el trabajo en un entorno Linux con make y gcc utilizando el com
 > La misma puede utilizarse mediante los scripts provistos (`build.sh`, `run.sh` e `install.sh`)
 
 ### Ejecución
-La compilación dará por resultado los binarios correspondientes al servidor (`server`) y al programa de management que utiliza el protocolo de monitoreo implementado.
+La compilación dará por resultado los binarios correspondientes al servidor (`socks5d`) y al programa de management (`client`) que utiliza el protocolo de monitoreo implementado.
 
 #### Servidor (Socks5v y CalSetting)
 Para inicializar el servidor puede utilizar el comando:
 
-` ./bin/server [ARGS] `
+` ./bin/socks5d [ARGS] `
 
 Para obtener el detalle de los argumentos aceptados puede utilizar la flag `-h`
 
