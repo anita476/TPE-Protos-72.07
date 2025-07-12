@@ -23,8 +23,8 @@ extern bool disabled;
  *  Minimo nivel de log a registrar. Cualquier llamada a log con un nivel mayor a newLevel sera ignorada
  **/
 void setLogLevel(LOG_LEVEL newLevel);
-void disableLogging();
-void enableLogging();
+void disableLogging(void);
+void enableLogging(void);
 char *levelDescription(LOG_LEVEL level);
 
 int get_recent_logs(log_entry_t *buffer, int max_logs, int offset);

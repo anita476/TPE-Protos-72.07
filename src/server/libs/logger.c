@@ -14,10 +14,10 @@ void setLogLevel(LOG_LEVEL newLevel) {
 	if (newLevel >= DEBUG && newLevel <= FATAL)
 		current_level = newLevel;
 }
-void disableLogging() {
+void disableLogging(void) {
 	disabled = true;
 }
-void enableLogging() {
+void enableLogging(void) {
 	disabled = false;
 }
 
