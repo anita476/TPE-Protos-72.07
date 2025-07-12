@@ -1,65 +1,57 @@
 // This is a personal academic project. Dear PVS-Studio, please check it.
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+#include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
-#include <string.h>
-#include <arpa/inet.h>
 #include <stdlib.h>
+#include <string.h>
 
-const char *
-printFamily(struct addrinfo *aip)
-{
+const char *printFamily(struct addrinfo *aip) {
 	switch (aip->ai_family) {
-	case AF_INET:
-		return "inet";
-	case AF_INET6:
-		return "inet6";
-	case AF_UNIX:
-		return "unix";
-	case AF_UNSPEC:
-		return "unspecified";
-	default:
-		return "unknown";
+		case AF_INET:
+			return "inet";
+		case AF_INET6:
+			return "inet6";
+		case AF_UNIX:
+			return "unix";
+		case AF_UNSPEC:
+			return "unspecified";
+		default:
+			return "unknown";
 	}
 }
 
-const char *
-printType(struct addrinfo *aip)
-{
+const char *printType(struct addrinfo *aip) {
 	switch (aip->ai_socktype) {
-	case SOCK_STREAM:
-		return "stream";
-	case SOCK_DGRAM:
-		return "datagram";
-	case SOCK_SEQPACKET:
-		return "seqpacket";
-	case SOCK_RAW:
-		return "raw";
-	default:
-		return "unknown ";
+		case SOCK_STREAM:
+			return "stream";
+		case SOCK_DGRAM:
+			return "datagram";
+		case SOCK_SEQPACKET:
+			return "seqpacket";
+		case SOCK_RAW:
+			return "raw";
+		default:
+			return "unknown ";
 	}
 }
 
-const char *
-printProtocol(struct addrinfo *aip)
-{
+const char *printProtocol(struct addrinfo *aip) {
 	switch (aip->ai_protocol) {
-	case 0:
-		return "default";
-	case IPPROTO_TCP:
-		return "TCP";
-	case IPPROTO_UDP:
-		return "UDP";
-	case IPPROTO_RAW:
-		return "raw";
-	default:
-		return "unknown ";
+		case 0:
+			return "default";
+		case IPPROTO_TCP:
+			return "TCP";
+		case IPPROTO_UDP:
+			return "UDP";
+		case IPPROTO_RAW:
+			return "raw";
+		default:
+			return "unknown ";
 	}
 }
 
-void
-printFlags(struct addrinfo *aip)
-{
+void printFlags(struct addrinfo *aip) {
 	printf("flags");
 	if (aip->ai_flags == 0) {
 		printf(" 0");
@@ -79,40 +71,35 @@ printFlags(struct addrinfo *aip)
 	}
 }
 
-char *
-printAddressPort( const struct addrinfo *aip, char addr[]) 
-{
+char *printAddressPort(const struct addrinfo *aip, char addr[]) {
 	char abuf[INET6_ADDRSTRLEN];
-	const char *addrAux ;
+	const char *addrAux;
 	if (aip->ai_family == AF_INET) {
-		struct sockaddr_in	*sinp;
-		sinp = (struct sockaddr_in *)aip->ai_addr;
+		struct sockaddr_in *sinp;
+		sinp = (struct sockaddr_in *) aip->ai_addr;
 		addrAux = inet_ntop(AF_INET, &sinp->sin_addr, abuf, INET_ADDRSTRLEN);
-		if ( addrAux == NULL )
+		if (addrAux == NULL)
 			addrAux = "unknown";
 		strcpy(addr, addrAux);
-		if ( sinp->sin_port != 0) {
+		if (sinp->sin_port != 0) {
 			sprintf(addr + strlen(addr), ": %d", ntohs(sinp->sin_port));
 		}
-	} else if ( aip->ai_family ==AF_INET6) {
-		struct sockaddr_in6	*sinp;
-		sinp = (struct sockaddr_in6 *)aip->ai_addr;
+	} else if (aip->ai_family == AF_INET6) {
+		struct sockaddr_in6 *sinp;
+		sinp = (struct sockaddr_in6 *) aip->ai_addr;
 		addrAux = inet_ntop(AF_INET6, &sinp->sin6_addr, abuf, INET6_ADDRSTRLEN);
-		if ( addrAux == NULL )
+		if (addrAux == NULL)
 			addrAux = "unknown";
-		strcpy(addr, addrAux);			
-		if ( sinp->sin6_port != 0)
+		strcpy(addr, addrAux);
+		if (sinp->sin6_port != 0)
 			sprintf(addr + strlen(addr), ": %d", ntohs(sinp->sin6_port));
 	} else
 		strcpy(addr, "unknown");
 	return addr;
 }
 
-
-int 
-printSocketAddress(const struct sockaddr *address, char *addrBuffer) {
-
-	void *numericAddress; 
+int printSocketAddress(const struct sockaddr *address, char *addrBuffer) {
+	void *numericAddress;
 
 	in_port_t port;
 
@@ -126,12 +113,12 @@ printSocketAddress(const struct sockaddr *address, char *addrBuffer) {
 			port = ntohs(((struct sockaddr_in6 *) address)->sin6_port);
 			break;
 		default:
-			strcpy(addrBuffer, "[unknown type]");    // Unhandled type
+			strcpy(addrBuffer, "[unknown type]"); // Unhandled type
 			return 0;
 	}
 	// Convert binary to printable address
 	if (inet_ntop(address->sa_family, numericAddress, addrBuffer, INET6_ADDRSTRLEN) == NULL)
-		strcpy(addrBuffer, "[invalid address]"); 
+		strcpy(addrBuffer, "[invalid address]");
 	else {
 		if (port != 0)
 			sprintf(addrBuffer + strlen(addrBuffer), ":%u", port);
@@ -151,8 +138,8 @@ int sockAddrsEqual(const struct sockaddr *addr1, const struct sockaddr *addr2) {
 	} else if (addr1->sa_family == AF_INET6) {
 		struct sockaddr_in6 *ipv6Addr1 = (struct sockaddr_in6 *) addr1;
 		struct sockaddr_in6 *ipv6Addr2 = (struct sockaddr_in6 *) addr2;
-		return memcmp(&ipv6Addr1->sin6_addr, &ipv6Addr2->sin6_addr, sizeof(struct in6_addr)) == 0 
-			&& ipv6Addr1->sin6_port == ipv6Addr2->sin6_port;
+		return memcmp(&ipv6Addr1->sin6_addr, &ipv6Addr2->sin6_addr, sizeof(struct in6_addr)) == 0 &&
+			   ipv6Addr1->sin6_port == ipv6Addr2->sin6_port;
 	} else
 		return 0;
 }
