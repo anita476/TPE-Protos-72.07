@@ -489,7 +489,7 @@ static void recalculate_earliest_timeout(fd_selector s, time_t removed_session_t
 			struct item *item = s->fds + i;
 			if (ITEM_USED(item)) {
 				client_session *session = (client_session *) item->data;
-				if (session && session->next_timeout > 0) {
+				if (session && session->type == SESSION_SOCKS5 && session->next_timeout > 0) {
 					s->active_sessions++;
 					if (s->earliest_timeout == 0 || session->next_timeout < s->earliest_timeout) {
 						s->earliest_timeout = session->next_timeout;
@@ -531,19 +531,21 @@ selector_status selector_select(fd_selector s) {
 	time_t now = time(NULL);
 	for (size_t i = 0; i < s->fd_size; i++) {
 		struct item *item = s->fds + i;
-		// more expensive than not checking, but its necessary to avoid potentially malignant zombie sessions
-		if (ITEM_USED(item)) {
-			// Check if this is a client session that has timed out
+		if (ITEM_USED(item) && item->data != NULL) {
+			// Only process if data exists and looks like a client session
 			client_session *session = (client_session *) item->data;
-			if (session && session->next_timeout > 0 && now >= session->next_timeout) {
-				log(ERROR, "[SELECTOR_SELECT] Idle connection timeout for fd=%d", item->fd);
-				// Set error state
-				session->has_error = true;
-				session->error_code = SOCKS5_REPLY_TTL_EXPIRED;
-				session->error_response_sent = false;
-				session->current_state = STATE_ERROR;
-				selector_remove_session_timeout(s, session);
-				selector_set_interest(s, item->fd, OP_WRITE);
+			if (session->type == SESSION_SOCKS5) {
+				// Check if this looks like a valid client session by checking for timeout fields
+				if (session->idle_timeout > 0 && session->next_timeout > 0 && now >= session->next_timeout) {
+					log(INFO, "Idle connection timeout for fd=%d", item->fd);
+					// Set error state
+					session->has_error = true;
+					session->error_code = SOCKS5_REPLY_TTL_EXPIRED;
+					session->error_response_sent = false;
+					session->current_state = STATE_ERROR;
+					selector_remove_session_timeout(s, session);
+					selector_set_interest(s, item->fd, OP_WRITE);
+				}
 			}
 		}
 	}

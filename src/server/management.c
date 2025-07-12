@@ -2,9 +2,9 @@
 #include "include/args.h"
 #include "include/config.h"
 #include "include/logger.h"
+#include "include/management_commands.h"
 #include "include/metrics.h"
 #include "include/selector.h"
-#include "include/management_commands.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -59,6 +59,7 @@ void management_handle_new_connection(struct selector_key *key) {
 		close(client_fd);
 		return;
 	}
+	session->type = SESSION_MANAGEMENT; // Set session type
 
 	session->client_fd = client_fd;
 	session->current_state = MNG_STATE_HELLO_READ;
@@ -153,7 +154,6 @@ static void management_handle_close(struct selector_key *key) {
 		free(session);
 	}
 }
-
 
 /**************** Individual state handlers *****************/
 /*
@@ -316,7 +316,7 @@ static void command_read(struct selector_key *key) {
 		buffer_compact(rb); // TODO: when do we compact vs we just wait (return)?
 		ptr = buffer_write_ptr(rb, &wbytes);
 		if (wbytes <= 0) {
-			log(ERROR, "[MANAGEMENT] No buffer space for command read"); 
+			log(ERROR, "[MANAGEMENT] No buffer space for command read");
 			set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
 			handle_error(key);
 			return;
@@ -359,7 +359,7 @@ static void command_read(struct selector_key *key) {
 		log(ERROR, "[MANAGEMENT] Wrong version in command: %d", version);
 		set_error_state(session, RESPONSE_WRONG_VERSION);
 		handle_error(key);
-        return;
+		return;
 	}
 
 	buffer_read_adv(rb, REQUEST_SIZE);
@@ -375,7 +375,7 @@ static void command_read(struct selector_key *key) {
 				log(ERROR, "[MANAGEMENT] User %s attempted admin command %d", session->username, cmd);
 				set_error_state(session, RESPONSE_NOT_ALLOWED);
 				handle_error(key);
-                return;
+				return;
 		}
 	}
 

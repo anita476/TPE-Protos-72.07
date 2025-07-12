@@ -4,6 +4,7 @@
 
 #ifndef _SOCKS5_H_
 #define _SOCKS5_H_
+#include "constants.h"
 
 #include "../../shared/include/calsetting_protocol.h"
 #include "args.h"
@@ -68,6 +69,7 @@ typedef struct {
 
 // Then we define a struct that holds *all* information for a SINGLE client connection
 typedef struct {
+	SessionType type;
 	// Core state
 	socks5_state current_state;
 	int remote_fd;

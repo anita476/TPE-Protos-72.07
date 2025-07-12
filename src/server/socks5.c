@@ -8,7 +8,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-
 #include <time.h>
 
 extern struct timespec g_select_timeout;
@@ -108,6 +107,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 		close(client_fd);
 		return;
 	}
+	session->type = SESSION_SOCKS5; // Set session type
 	// initialize timeout
 	session->connection_start = time(NULL);
 	session->idle_timeout = g_connection_timeout;
