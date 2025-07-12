@@ -10,6 +10,8 @@
 #include "include/ui_adapter.h"
 #include "include/validation.h"
 
+#include <errno.h>
+
 #define MAX_USERS 10
 #define MAX_USERNAME 24
 #define MAX_INPUT 256
@@ -82,6 +84,7 @@ static int handle_connection_lost() {
             return 1;
         }
     }
+	server_socket = -1;
     return 0;
 }
 
@@ -273,6 +276,13 @@ static void free_logs(void *data) {
 
 static void show_metrics() {
     metrics_t server_metrics;
+	printf("SOCKET: %d\n", server_socket);
+	if (server_socket < 0) {
+		if (handle_connection_lost()) {
+			show_metrics();
+		}
+		return;
+	}
     if (handle_metrics(server_socket, &server_metrics) == NULL) {
         if (handle_connection_lost()) {
             show_metrics();
@@ -321,6 +331,10 @@ static void show_users() {
 								  .count_func = count_users};
 
 	handle_pagination(&config, server_socket, ITEMS_PER_PAGE);
+	if (errno == ENOTCONN) {
+		server_socket = -1;
+		return;
+	}
 }
 
 static void show_logs() {
@@ -334,15 +348,26 @@ static void show_logs() {
 								  .count_func = count_logs};
 
 	handle_pagination(&config, server_socket, ITEMS_PER_PAGE);
+	if (errno == ENOTCONN) {
+		server_socket = -1;
+		return;
+	}
 }
 
 static void show_config() {
+	printf("SOCKET: %d\n", server_socket);
+	if (server_socket < 0) {
+		if (handle_connection_lost()) {
+			show_config();
+		}
+		return;
+	}
     server_current_config server_config;
     if (handle_get_current_config(server_socket, &server_config) == NULL) {
         if (handle_connection_lost()) {
             show_config();
         } else {
-            ui_show_message("Error", "Failed to retrieve server configuration");
+            // ui_show_message("Error", "Failed to retrieve server configuration");
         }
         return;
     }
@@ -366,6 +391,14 @@ static void show_config() {
 
 static int add_user() {
 	char username[MAX_INPUT], password[MAX_INPUT];
+	if (server_socket < 0) {
+		if (handle_connection_lost()) {
+			return add_user();
+		} else {
+			return 0;
+		}
+	}
+
 
 	if (get_user_input("Username", "Enter username:", 0, username, sizeof(username)) != 0) {
 		return 0;
@@ -419,6 +452,14 @@ static int add_user() {
 
 static int remove_user() {
 	char selected_user[MAX_USERNAME];
+	if (server_socket < 0) {
+		if (handle_connection_lost()) {
+			return remove_user();
+		} else {
+			return 0;
+		}
+	}
+
 	if (get_user_input("Remove user", "Enter the username to remove:", 0, selected_user, sizeof(selected_user)) != 0) {
 		ui_show_message("Info", "User removal cancelled.");
 		return 0;
@@ -432,7 +473,7 @@ static int remove_user() {
 		int result = handle_remove_user(server_socket, selected_user);
 		if (result == RESPONSE_GENERAL_SERVER_FAILURE) {
 			if (handle_connection_lost()) {
-				return add_user();
+				return remove_user();
 			}
 			return 0;
 		}
@@ -493,7 +534,7 @@ static void change_server_setting(const char *setting_name, const char *unit,
 	uint8_t result = handle_func(server_socket, new_value);
 	if (result == RESPONSE_GENERAL_SERVER_FAILURE) {
 		if (handle_connection_lost()) {
-			show_metrics();
+			change_server_setting(setting_name, unit,validate_func, handle_func);
 		}
 		return;
 	}
