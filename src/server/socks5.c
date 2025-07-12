@@ -1006,6 +1006,9 @@ static void request_resolve(struct selector_key *key) {
 	selector_set_interest_key(key, OP_READ);
 }
 
+// NOTE: During abrupt server shutdown (SIGTERM), there may be a small memory leak
+// from active DNS resolution threads. This is expected behavior and does not 
+// affect normal server operation.
 static void *dns_resolution_thread(void *arg) {
 	struct selector_key *key = (struct selector_key *) arg;
 	client_session *session = (client_session *) key->data;
@@ -1093,19 +1096,9 @@ static void request_connect(struct selector_key *key) {
 
 	// Attempt connection
 	int connect_result = connect(session->remote_fd, addr->ai_addr, addr->ai_addrlen);
-	if (connect_result == 0 || (connect_result == -1 && errno == EINPROGRESS)) {
-		selector_status st = selector_register(key->s, session->remote_fd, &remote_handler, OP_WRITE, session);
-		if (st != SELECTOR_SUCCESS) {
-			log(ERROR, "[REQUEST_CONNECT] Failed to register remote fd: %d", st);
-			close(session->remote_fd);
-			session->remote_fd = -1;
-			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			handle_error(key);
-			return;
-		}
-
-		session->current_state = STATE_REQUEST_CONNECT;
-		selector_set_interest_key(key, OP_NOOP);
+	if (connect_result == 0) {
+		// session->current_state = STATE_REQUEST_CONNECT; // arent we already in this state?
+		// selector_set_interest_key(key, OP_NOOP); // we doing this to avoid selector trying to read from remote_fd
 		// Now that weve connected, create the write and read buffers
 		// using buffer_size because in a single session buffer size is locked in
 		session->raw_remote_read_buffer = malloc(session->buffer_size);
@@ -1127,10 +1120,52 @@ static void request_connect(struct selector_key *key) {
 		}
 		buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
 		buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
+
+		if (selector_register(key->s, session->remote_fd, &remote_handler, OP_NOOP, session) != SELECTOR_SUCCESS) {
+			log(ERROR, "[REQUEST_CONNECT] Failed to register remote fd");
+			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			handle_error(key);
+			return;
+		}
+
 		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
+		handle_connect_success(key);
+		return;
+	} else if (connect_result == -1 && errno == EINPROGRESS) {
+		selector_status st = selector_register(key->s, session->remote_fd, &remote_handler, OP_WRITE, session);
+		if (st != SELECTOR_SUCCESS) {
+			log(ERROR, "[REQUEST_CONNECT] Failed to register remote fd: %d", st);
+			close(session->remote_fd);
+			session->remote_fd = -1;
+			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			handle_error(key);
+			return;
+		}
+		// Asignar buffers para cuando se complete la conexión
+		session->raw_remote_read_buffer = malloc(session->buffer_size);
+		session->raw_remote_write_buffer = malloc(session->buffer_size);
+		if (!session->raw_remote_read_buffer || !session->raw_remote_write_buffer) {
+			log(ERROR, "[REQUEST_CONNECT] Failed to allocate buffers for remote connection.");
+			metrics_increment_errors(ERROR_TYPE_MEMORY);
+			if (session->raw_remote_read_buffer) {
+				free(session->raw_remote_read_buffer);
+				session->raw_remote_read_buffer = NULL;
+			}
+			if (session->raw_remote_write_buffer) {
+				free(session->raw_remote_write_buffer);
+				session->raw_remote_write_buffer = NULL;
+			}
+			handle_error(key);
+			return;
+		}
+
+		buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
+		buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
+
+		session->current_state = STATE_REQUEST_CONNECT;
+		selector_set_interest_key(key, OP_NOOP);
 		return;
 	}
-
 	log(ERROR, "[REQUEST_CONNECT] Connection failed immediately: %s", strerror(errno));
 
 	// try the next address if available
@@ -1143,13 +1178,6 @@ static void request_connect(struct selector_key *key) {
 		// unlink and free the failed address
 		failed_addr->ai_next = NULL;
 		freeaddrinfo(failed_addr);
-		// if (session->connection.atyp == SOCKS5_ATYP_DOMAIN) {
-		// 	freeaddrinfo(failed_addr); // DNS result
-		// } else {
-		// 	// Manually created addrinfo for IPv4/IPv6
-		// 	if (failed_addr->ai_addr) free(failed_addr->ai_addr);
-		// 	free(failed_addr);
-		// }
 
 		// Try connecting to next address
 		request_connect(key);
@@ -1178,12 +1206,6 @@ static void remote_connect_complete(struct selector_key *key) {
 static void handle_connect_failure(struct selector_key *key, int error) {
 	client_session *session = (client_session *) key->data;
 
-	// if (session->remote_fd == key->fd) {
-	//     log(DEBUG, "[HANDLE_CONNECT_FAILURE] Unregistering failed remote fd=%d", key->fd);
-	// selector_unregister_fd(key->s, session->remote_fd);
-	//     session->remote_fd = -1;
-	// }
-
 	selector_unregister_fd(key->s, key->fd);
 	close(key->fd);
 	session->remote_fd = -1;
@@ -1198,13 +1220,6 @@ static void handle_connect_failure(struct selector_key *key, int error) {
 		// free failed address
 		failed_addr->ai_next = NULL;
 		freeaddrinfo(failed_addr);
-		// if (session->connection.atyp == SOCKS5_ATYP_DOMAIN) {
-		// 	freeaddrinfo(failed_addr);
-		// } else {
-		// 	if (failed_addr->ai_addr)
-		// 		free(failed_addr->ai_addr);
-		// 	free(failed_addr);
-		// }
 
 		// try connecting to next IP
 		struct selector_key client_key = {.s = key->s, .fd = session->client_fd, .data = session};
@@ -1227,20 +1242,6 @@ static void handle_connect_success(struct selector_key *key) {
 	log(INFO, "[REMOTE_CONNECT_COMPLETE] Connection successful");
 	log_socks5_attempt(session, 0x00);
 
-	// if (session->connection.dst_addresses) {
-	// 	if (session->connection.atyp == SOCKS5_ATYP_DOMAIN) {
-	// 		freeaddrinfo(session->connection.dst_addresses);
-	// 	} else {
-	// 		struct addrinfo *current = session->connection.dst_addresses;
-	// 		while (current) {
-	// 			struct addrinfo *next = current->ai_next;
-	// 			if (current->ai_addr) free(current->ai_addr);
-	// 			free(current);
-	// 			current = next;
-	// 		}
-	// 	}
-	// 	session->connection.dst_addresses = NULL;
-	// }
 	if (session->connection.dst_addresses) {
 		freeaddrinfo(session->connection.dst_addresses);
 		session->connection.dst_addresses = NULL;
