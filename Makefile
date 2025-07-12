@@ -53,7 +53,7 @@ $(BIN_DIR):
 #  compiles libs to .o files, then compiles socks5 and main
 
 server: $(BIN_DIR) $(OBJ_DIR) $(LIBS_OBJS) $(SHARED_OBJS) $(SERVER_OBJS)
-	$(CC) $(SERVER_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/server
+	$(CC) $(SERVER_OBJS) $(LIBS_OBJS) $(LDFLAGS) -o $(BIN_DIR)/socks5d
 
 client: $(BIN_DIR) $(OBJ_DIR) $(CLIENT_OBJS) $(CLIENT_LIBS_OBJS) $(SHARED_OBJS) 
 	$(CC) $(CLIENT_OBJS) $(CLIENT_LIBS_OBJS) $(SHARED_OBJS) $(LDFLAGS) -o $(BIN_DIR)/client

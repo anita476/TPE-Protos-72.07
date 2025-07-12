@@ -1,5 +1,4 @@
 #!/bin/bash
-# test_nc_socks5.sh
 
 PROXY_HOST="localhost"
 PROXY_PORT=1080

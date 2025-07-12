@@ -7,8 +7,12 @@
 #include <stdio.h>	// perror
 #include <stdlib.h> // malloc
 #include <string.h> // memset
+#include <time.h>	// time_t, time()
 
+#include "../include/logger.h" // log function
 #include "../include/selector.h"
+#include "../include/socks5.h"			 // client_session
+#include "../include/socks5_constants.h" // SOCKS5_REPLY_TTL_EXPIRED
 #include <fcntl.h>
 #include <stdint.h> // SIZE_MAX
 #include <sys/epoll.h>
@@ -17,6 +21,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+// forward declaration for SOCKS5 functions
 
 #define N(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -150,6 +156,10 @@ struct fdselector {
 	 * notificados.
 	 */
 	struct blocking_job *resolution_jobs;
+
+	// timeout
+	time_t earliest_timeout;
+	int active_sessions;
 };
 
 /** cantidad máxima de file descriptors que la plataforma puede manejar */
@@ -249,6 +259,8 @@ fd_selector selector_new(const size_t initial_elements) {
 		ret->master_t.tv_sec = conf.select_timeout.tv_sec;
 		ret->master_t.tv_nsec = conf.select_timeout.tv_nsec;
 		ret->resolution_jobs = 0;
+		ret->earliest_timeout = 0;
+		ret->active_sessions = 0;
 		pthread_mutex_init(&ret->resolution_mutex, 0);
 		if (0 != ensure_capacity(ret, initial_elements)) {
 			selector_destroy(ret);
@@ -464,10 +476,48 @@ finally:
 	return ret;
 }
 
+/**
+ * Recalculates the earliest timeout among all active sessions -> only do it if the removed was the earliest,
+ * improved responsiveness by making epoll wake up exactly when needed, even though we need to recalculate
+ */
+static void recalculate_earliest_timeout(fd_selector s, time_t removed_session_timeout) {
+	if (removed_session_timeout == s->earliest_timeout) {
+		s->earliest_timeout = 0;
+		s->active_sessions = 0;
+
+		for (size_t i = 0; i < s->fd_size; i++) {
+			struct item *item = s->fds + i;
+			if (ITEM_USED(item)) {
+				client_session *session = (client_session *) item->data;
+				if (session && session->type == SESSION_SOCKS5 && session->next_timeout > 0) {
+					s->active_sessions++;
+					if (s->earliest_timeout == 0 || session->next_timeout < s->earliest_timeout) {
+						s->earliest_timeout = session->next_timeout;
+					}
+				}
+			}
+		}
+	}
+}
+
 selector_status selector_select(fd_selector s) {
 	selector_status ret = SELECTOR_SUCCESS;
 	s->selector_thread = pthread_self();
-	int timeout_ms = (int) (s->master_t.tv_sec * 1000 + s->master_t.tv_nsec / 1000000);
+	// Calculate timeout for epoll_wait based on earliest session timeout
+	int timeout_ms;
+	if (s->active_sessions == 0) {
+		// No active sessions, use default timeout
+		timeout_ms = (int) (s->master_t.tv_sec * 1000 + s->master_t.tv_nsec / 1000000);
+	} else {
+		time_t now = time(NULL);
+		if (s->earliest_timeout <= now) {
+			timeout_ms = 0; // Immediate timeout
+		} else {
+			timeout_ms = (int) ((s->earliest_timeout - now) * 1000);
+			if (timeout_ms < 0)
+				timeout_ms = 0;
+		}
+	}
 	int n = epoll_wait(s->epoll_fd, s->events, s->max_events, timeout_ms);
 	if (n < 0) {
 		if (errno == EINTR) {
@@ -476,6 +526,27 @@ selector_status selector_select(fd_selector s) {
 			perror("epoll_wait");
 			ret = SELECTOR_IO;
 			goto finally;
+		}
+	}
+	time_t now = time(NULL);
+	for (size_t i = 0; i < s->fd_size; i++) {
+		struct item *item = s->fds + i;
+		if (ITEM_USED(item) && item->data != NULL) {
+			// Only process if data exists and looks like a client session
+			client_session *session = (client_session *) item->data;
+			if (session->type == SESSION_SOCKS5) {
+				// Check if this looks like a valid client session by checking for timeout fields
+				if (session->idle_timeout > 0 && session->next_timeout > 0 && now >= session->next_timeout) {
+					log(INFO, "Idle connection timeout for fd=%d", item->fd);
+					// Set error state
+					session->has_error = true;
+					session->error_code = SOCKS5_REPLY_TTL_EXPIRED;
+					session->error_response_sent = false;
+					session->current_state = STATE_ERROR;
+					selector_remove_session_timeout(s, session);
+					selector_set_interest(s, item->fd, OP_WRITE);
+				}
+			}
 		}
 	}
 	for (int i = 0; i < n; i++) {
@@ -515,4 +586,29 @@ int selector_fd_set_nio(const int fd) {
 		}
 	}
 	return ret;
+}
+
+void selector_update_session_timeout(fd_selector s, void *session_data, time_t next_timeout) {
+	client_session *session = (client_session *) session_data;
+	if (session) {
+		session->next_timeout = next_timeout;
+		if (s->earliest_timeout == 0 || next_timeout < s->earliest_timeout) {
+			s->earliest_timeout = next_timeout;
+		}
+		s->active_sessions++;
+	}
+}
+
+void selector_remove_session_timeout(fd_selector s, void *session_data) {
+	client_session *session = (client_session *) session_data;
+	if (session) {
+		time_t old_timeout = session->next_timeout;
+		session->next_timeout = 0;
+		s->active_sessions--;
+		if (s->active_sessions == 0) {
+			s->earliest_timeout = 0;
+		} else {
+			recalculate_earliest_timeout(s, old_timeout);
+		}
+	}
 }

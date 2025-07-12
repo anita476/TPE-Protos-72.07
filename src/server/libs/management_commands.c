@@ -407,7 +407,7 @@ void process_change_timeout_command(management_session *session, uint8_t new_tim
 		log(ERROR, "[MANAGEMENT] Invalid timeout: %d seconds", new_timeout);
 		response_code = RESPONSE_BAD_REQUEST;
 	} else {
-		g_select_timeout = (struct timespec) {new_timeout, 0}; // Set seconds, nanoseconds = 0
+		g_connection_timeout = new_timeout; // Update global timeout
 		response_code = RESPONSE_SUCCESS;
 		log(INFO, "[MANAGEMENT] Timeout changed to %d seconds", new_timeout);
 	}

@@ -4,6 +4,7 @@
 
 #ifndef _SOCKS5_H_
 #define _SOCKS5_H_
+#include "constants.h"
 
 #include "../../shared/include/calsetting_protocol.h"
 #include "args.h"
@@ -53,30 +54,30 @@ typedef enum {
 
 typedef struct {
 	uint8_t atyp;
-    char *domain_to_resolve;        // Domain name for DNS resolution
-    struct addrinfo *dst_addresses; // Chain of addresses to try
-    uint16_t dst_port;             // Port for DNS resolution
+	char *domain_to_resolve;		// Domain name for DNS resolution
+	struct addrinfo *dst_addresses; // Chain of addresses to try
+	uint16_t dst_port;				// Port for DNS resolution
 } connection_data;
 
 typedef struct {
-    char client_ip[46];            // INET6_ADDRSTRLEN = 46
-    uint16_t client_port;
-    char dest_addr[256];           // Max domain name length
-    uint16_t dest_port;
-    uint8_t dest_atyp;
+	char client_ip[46]; // INET6_ADDRSTRLEN = 46
+	uint16_t client_port;
+	char dest_addr[256]; // Max domain name length
+	uint16_t dest_port;
+	uint8_t dest_atyp;
 } log_info;
-
 
 // Then we define a struct that holds *all* information for a SINGLE client connection
 typedef struct {
+	SessionType type;
 	// Core state
 	socks5_state current_state;
 	int remote_fd;
 	int client_fd; // socket for CLIENT CONNECTION
 
-    // Protocol data
-	connection_data connection;    // Temporary connection info
-    log_info logging;             // Persistent logging info
+	// Protocol data
+	connection_data connection; // Temporary connection info
+	log_info logging;			// Persistent logging info
 
 	// socks5_request current_request;
 	// socks5_response current_response;
@@ -96,7 +97,7 @@ typedef struct {
 
 	size_t buffer_size; // Size for all buffers
 
-	// DNS handling -> is it necessary to separate it? 
+	// DNS handling -> is it necessary to separate it?
 	bool dns_failed; // Add this field
 	uint8_t dns_error_code;
 
@@ -107,11 +108,16 @@ typedef struct {
 
 	// Authentication
 	bool authenticated;
-	char* username; // TODO: later should point to a struct with more user info 
-	uint8_t user_type; 
+	char *username; // TODO: later should point to a struct with more user info
+	uint8_t user_type;
 
 	// Lifecycle
-    bool cleaned_up;
+	bool cleaned_up;
+
+	// timeout related fields
+	time_t connection_start;
+	int idle_timeout;
+	time_t next_timeout;
 
 	// bool should_close; // TODO: maybe do this instead of STATE_CLIENT_CLOSE (mizrahi does this)
 } client_session;
@@ -119,7 +125,6 @@ typedef struct {
 void socks5_handle_new_connection(struct selector_key *key);
 
 #endif
-
 
 // typedef struct socks5_response {
 // 	uint8_t rep;				   // replyCode

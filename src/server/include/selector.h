@@ -177,4 +177,8 @@ selector_status selector_notify_block(fd_selector s, const int fd);
 
 // selector_status selector_unregister_fd_noclose(fd_selector s, const int fd);
 
+// timeout related functions
+void selector_update_session_timeout(fd_selector s, void *session_data, time_t next_timeout);
+void selector_remove_session_timeout(fd_selector s, void *session_data);
+
 #endif
