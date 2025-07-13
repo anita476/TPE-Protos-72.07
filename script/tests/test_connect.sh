@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script simplificado para debug
-set -x  # Debug mode
+#set -x  # Debug mode
 
 # Configuración
 SOCKS_HOST="127.0.0.1"
@@ -19,7 +19,7 @@ check_port() {
 }
 
 # Matar procesos previos
-echo "🧹 Limpiando procesos previos..."
+echo "Limpiando procesos previos..."
 pkill -f "$SERVER_BINARY" 2>/dev/null || true
 sleep 2
 
@@ -29,7 +29,7 @@ if check_port "$SOCKS_HOST" "$SOCKS_PORT"; then
     exit 1
 fi
 
-echo "🚀 Iniciando servidor..."
+echo "Iniciando servidor..."
 echo "Comando: $SERVER_BINARY -p $SOCKS_PORT -P $MANAGEMENT_PORT -u admin:admin:admin"
 
 # Iniciar servidor en background con logs
@@ -39,7 +39,7 @@ SERVER_PID=$!
 echo "PID del servidor: $SERVER_PID"
 
 # Esperar que el servidor inicie
-echo "⏳ Esperando que el servidor inicie..."
+echo "Esperando que el servidor inicie..."
 for i in {1..15}; do
     if check_port "$SOCKS_HOST" "$SOCKS_PORT"; then
         echo "Servidor iniciado correctamente en puerto $SOCKS_PORT"
@@ -65,7 +65,7 @@ fi
 
 # Test simple con netcat si está disponible
 if command -v nc >/dev/null 2>&1; then
-    echo "🧪 Test básico con netcat..."
+    echo "Test básico con netcat..."
     
     # Test 1: Conexión simple
     echo "Test 1: Conexión básica"
