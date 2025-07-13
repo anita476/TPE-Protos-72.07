@@ -14,9 +14,9 @@
 #define MAX_PASSWORD_LEN 24
 #define MIN_PASSWORD_LEN 4
 #define MIN_BUFFER_SIZE 1
-#define MAX_BUFFER_SIZE 255
+#define MAX_BUFFER_SIZE 64
 #define MIN_TIMEOUT 1
-#define MAX_TIMEOUT 255
+#define MAX_TIMEOUT 60
 #define MIN_PORT 1
 #define MAX_PORT 65535
 

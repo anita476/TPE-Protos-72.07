@@ -501,7 +501,9 @@ static int remove_user() {
 static void change_server_setting(const char *setting_name, const char *unit,
 								  int (*validate_func)(const char *, uint8_t *), uint8_t (*handle_func)(int, uint8_t)) {
 	if (server_socket < 0) {
-		(void) handle_connection_lost();
+		if (handle_connection_lost()) {
+			change_server_setting(setting_name, unit, validate_func, handle_func);
+		}
 		return;
 	}
 
