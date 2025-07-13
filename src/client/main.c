@@ -323,6 +323,13 @@ static void show_metrics() {
 }
 
 static void show_users() {
+	if (server_socket < 0) {
+		if (handle_connection_lost()) {
+			show_users();
+		}
+		return;
+	}
+
 	pagination_config_t config = {.title_format = "User list - Page %d",
 								  .no_data_message = "No users available",
 								  .no_more_data_message = "No more users available",
@@ -333,13 +340,23 @@ static void show_users() {
 								  .count_func = count_users};
 
 	handle_pagination(&config, server_socket, ITEMS_PER_PAGE);
+
 	if (errno == ENOTCONN) {
 		server_socket = -1;
-		return;
+		if (handle_connection_lost()) {
+			show_users();
+		}
 	}
 }
 
 static void show_logs() {
+	if (server_socket < 0) {
+		if (handle_connection_lost()) {
+			show_logs();
+		}
+		return;
+	}
+
 	pagination_config_t config = {.title_format = "Server logs - Page %d",
 								  .no_data_message = "No logs available",
 								  .no_more_data_message = "No more logs available",
@@ -350,9 +367,12 @@ static void show_logs() {
 								  .count_func = count_logs};
 
 	handle_pagination(&config, server_socket, ITEMS_PER_PAGE);
+
 	if (errno == ENOTCONN) {
 		server_socket = -1;
-		return;
+		if (handle_connection_lost()) {
+			show_logs();
+		}
 	}
 }
 
