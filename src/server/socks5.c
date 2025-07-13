@@ -309,6 +309,8 @@ static void socks5_handle_block(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
 	if (session->current_state == STATE_REQUEST_RESOLVE) {
+		// update timeout and proceed to connect
+		session->next_timeout = time(NULL) + session->idle_timeout;
 		if (session->dns_failed) {
 			log(ERROR, "[HANDLE_BLOCK] DNS resolution failed for fd=%d", key->fd);
 			log_socks5_attempt(session, session->dns_error_code);
@@ -1042,7 +1044,8 @@ static void *dns_resolution_thread(void *arg) {
 		session->dns_failed = false;
 		session->connection.dst_addresses = res;
 	}
-
+	session->next_timeout = time(NULL) + session->idle_timeout;
+	log(INFO, "[DNS_RESOLUTION_THREAD] Incremented timeout, notifying selector block...");
 	selector_notify_block(key->s, key->fd);
 	free(key);
 	return NULL;
@@ -1099,10 +1102,10 @@ static void request_connect(struct selector_key *key) {
 	// Attempt connection
 	int connect_result = connect(session->remote_fd, addr->ai_addr, addr->ai_addrlen);
 	if (connect_result == 0) {
-		// session->current_state = STATE_REQUEST_CONNECT; // arent we already in this state?
-		// selector_set_interest_key(key, OP_NOOP); // we doing this to avoid selector trying to read from remote_fd
-		// Now that weve connected, create the write and read buffers
-		// using buffer_size because in a single session buffer size is locked in
+		session->current_state = STATE_REQUEST_CONNECT; // arent we already in this state?
+		// selector_set_interest_key(key, OP_NOOP);		// we doing this to avoid selector trying to read from remote_fd
+		//  Now that weve connected, create the write and read buffers
+		//  using buffer_size because in a single session buffer size is locked in
 		session->raw_remote_read_buffer = malloc(session->buffer_size);
 		session->raw_remote_write_buffer = malloc(session->buffer_size);
 		if (!session->raw_remote_read_buffer || !session->raw_remote_write_buffer) {
@@ -1193,6 +1196,8 @@ static void request_connect(struct selector_key *key) {
 }
 
 static void remote_connect_complete(struct selector_key *key) {
+	log(DEBUG, "[REMOTE_CONNECT_COMPLETE] Called for fd=%d", key->fd);
+
 	int error = 0;
 	socklen_t len = sizeof(error);
 

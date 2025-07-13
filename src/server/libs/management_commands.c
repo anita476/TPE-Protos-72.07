@@ -534,7 +534,7 @@ void process_get_current_config_command(management_session *session) {
 		buffer_size_kb = 1;
 	}
 
-	uint8_t timeout_seconds = (uint8_t) g_select_timeout.tv_sec;
+	uint8_t timeout_seconds = (uint8_t) g_connection_timeout;
 
 	write_simple_response_header(wb, RESPONSE_SUCCESS, COMMAND_GET_CURRENT_CONFIG);
 	buffer_write(wb, buffer_size_kb);
