@@ -89,7 +89,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 			return;
 		}
 		metrics_increment_errors(ERROR_TYPE_NETWORK);
-		perror("accept error");
+		perror("accept error"); // TODO should chane this
 		return;
 	}
 
@@ -126,6 +126,8 @@ void socks5_handle_new_connection(struct selector_key *key) {
 
 	// Store client info immediately
 	store_client_info(session, &client_addr);
+
+	log_socks5_attempt(session, SOCKS5_REPLY_SUCCESS);
 
 	// Initialize destination info
 	strcpy(session->logging.dest_addr, "unknown");
@@ -219,7 +221,7 @@ static void socks5_handle_read(struct selector_key *key) {
 		case STATE_RELAY:
 			relay_data(key);
 			break;
-		case STATE_ERROR:
+		case STATE_ERROR: // 
 			handle_error(key);
 			break;
 		default:
@@ -333,6 +335,7 @@ static void socks5_handle_block(struct selector_key *key) {
 
 	if (session->connection.data.resolved.dst_addresses == NULL) {
 		log(ERROR, "[HANDLE_BLOCK] DNS resolution completed but no addresses returned");
+		log_socks5_attempt(session, SOCKS5_REPLY_HOST_UNREACHABLE);
 		set_error_state(session, SOCKS5_REPLY_HOST_UNREACHABLE);
 		handle_error(key);
 		return;
@@ -405,6 +408,7 @@ static void hello_read(struct selector_key *key) {
 	// Validate version
 	if (version != SOCKS5_VERSION) {
 		log(ERROR, "[HELLO_READ] Unsupported SOCKS version: 0x%02x. Closing connection.", version);
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		close_connection_immediately(key, ERROR_TYPE_PROTOCOL);
 		return;
 	}
@@ -412,6 +416,7 @@ static void hello_read(struct selector_key *key) {
 	// Validate nmethods
 	if (nmethods == 0) {
 		log(ERROR, "[HELLO_READ] Invalid nmethods: 0");
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		close_connection_immediately(key, ERROR_TYPE_PROTOCOL);
 		return;
 	}
@@ -496,6 +501,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 
 	if (bytes_to_write == 0) {
 		log(ERROR, "[WRITE_TO_CLIENT] No data to write.");
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		return;
 	}
@@ -517,10 +523,12 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 			return;
 		}
 		log(ERROR, "[WRITE_TO_CLIENT] send() error: %s", strerror(errno));
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		return;
 	} else if (bytes_written == 0) {
 		log(INFO, "[WRITE_TO_CLIENT] Connection closed by peer during send");
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		return;
 	}
@@ -574,8 +582,10 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 
 		default:
 			log(ERROR, "[WRITE_TO_CLIENT] Unexpected state for write completion: %d", session->current_state);
+			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			handle_error(key);
+			// set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			// handle_error(key); // MAL! 
 			return;
 	}
 
@@ -633,6 +643,7 @@ static void auth_read(struct selector_key *key) {
 
 	if (version != SOCKS5_AUTH_VERSION) {
 		log(ERROR, "[AUTH_READ] Unsupported Subnegotiation version: 0x%02x. Closing connection.", version);
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
 		return;
@@ -760,6 +771,7 @@ static void request_read(struct selector_key *key) {
 	// Version validation
 	if (version != SOCKS5_VERSION) {
 		log(ERROR, "[REQUEST_READ] Unsupported SOCKS version: 0x%02x. Closing connection.", version);
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_COMMAND_NOT_SUPPORTED);
 		handle_error(key);
 		return;
@@ -777,6 +789,7 @@ static void request_read(struct selector_key *key) {
 	// Reserved field validation
 	if (rsv != 0x00) {
 		log(ERROR, "[REQUEST_READ] Invalid RSV: 0x%02x. Closing connection.", rsv);
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
 		return;
@@ -821,6 +834,7 @@ static void request_read(struct selector_key *key) {
 		// Port cant be bigger than 65535, so no need to check that
 		if (port == 0) {
 			log(ERROR, "[REQUEST_READ] Invalid port number: %d", port);
+			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			handle_error(key);
 			return;
@@ -862,6 +876,7 @@ static void request_read(struct selector_key *key) {
 
 		if (port == 0) {
 			log(ERROR, "[REQUEST_READ] Invalid port number: %d", port);
+			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			handle_error(key);
 			return;
@@ -894,6 +909,7 @@ static void request_read(struct selector_key *key) {
 
 		if (domain_len == 0) {
 			log(ERROR, "[REQUEST_READ] Invalid domain length: 0");
+			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			handle_error(key);
 			return;
@@ -902,6 +918,7 @@ static void request_read(struct selector_key *key) {
 		char *domain_name = malloc(domain_len + 1);
 		if (!domain_name) {
 			log(ERROR, "[REQUEST_READ] Failed to allocate memory for domain name");
+			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			handle_error(key);
 			return;
@@ -915,6 +932,7 @@ static void request_read(struct selector_key *key) {
 		uint16_t port = (buffer_read(rb) << 8) | buffer_read(rb);
 		if (port == 0) {
 			log(ERROR, "[REQUEST_READ] Invalid port number: %d", port);
+			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			handle_error(key);
 			return;
@@ -932,6 +950,7 @@ static void request_read(struct selector_key *key) {
 
 	} else {
 		log(ERROR, "[REQUEST_READ] Unsupported ATYP: 0x%02x. Closing connection.", atyp);
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
 		return;
@@ -967,6 +986,7 @@ static void request_resolve(struct selector_key *key) {
 	struct selector_key *thread_key = malloc(sizeof(*key));
 	if (thread_key == NULL) {
 		log(ERROR, "[REQUEST_RESOLVE] Failed to allocate memory for thread key.");
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE); // TODO: idk what error to set here
 		handle_error(key);
 		return;
@@ -976,6 +996,7 @@ static void request_resolve(struct selector_key *key) {
 	if (pthread_create(&tid, NULL, dns_resolution_thread, thread_key) != 0) {
 		log(ERROR, "[REQUEST_RESOLVE] Failed to create DNS thread.");
 		free(thread_key);
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
 		return;
@@ -1107,6 +1128,7 @@ static void request_connect(struct selector_key *key) {
 		struct addrinfo *addrinfo = session->connection.data.resolved.dst_addresses;
 		if (!addrinfo) {
 			log(ERROR, "[REQUEST_CONNECT] No resolved addresses available");
+			log_socks5_attempt(session, SOCKS5_REPLY_HOST_UNREACHABLE);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			handle_error(key);
 			return;
@@ -1118,6 +1140,7 @@ static void request_connect(struct selector_key *key) {
 
 	} else {
 		log(ERROR, "[REQUEST_CONNECT] Invalid connection type: %d", session->connection.atyp);
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
 		return;
@@ -1140,6 +1163,7 @@ static void request_connect(struct selector_key *key) {
 	session->remote_fd = socket(addr->sa_family, SOCK_STREAM, 0);
 	if (session->remote_fd == -1) {
 		log(ERROR, "[REQUEST_CONNECT] Failed to create socket: %s", strerror(errno));
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_connect_failure(key, errno, has_next_address);
 		return;
 	}
@@ -1147,6 +1171,7 @@ static void request_connect(struct selector_key *key) {
 	// Set non-blocking
 	if (selector_fd_set_nio(session->remote_fd) == -1) {
 		log(ERROR, "[REQUEST_CONNECT] Failed to set non-blocking mode.");
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		close(session->remote_fd);
 		session->remote_fd = -1;
 		handle_connect_failure(key, errno, has_next_address);
@@ -1169,6 +1194,7 @@ static void request_connect(struct selector_key *key) {
 			log(ERROR, "[REQUEST_CONNECT] Failed to register remote fd");
 			close(session->remote_fd);
 			session->remote_fd = -1;
+			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			handle_connect_failure(key, ECONNREFUSED, has_next_address);
 			return;
 		}
@@ -1252,6 +1278,7 @@ static void handle_connect_success(struct selector_key *key) {
 
 	if (!build_socks5_success_response(session)) {
 		log(ERROR, "[CONNECT_SUCCESS] Failed to build success response");
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
 		return;
@@ -1279,6 +1306,7 @@ static bool allocate_remote_buffers(client_session *session) {
 			session->raw_remote_write_buffer = NULL;
 		}
 
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		return false;
 	}
