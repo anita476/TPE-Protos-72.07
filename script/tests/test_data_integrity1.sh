@@ -23,14 +23,19 @@ mkdir -p "$TMP_DIR"
 cd /tmp
 python3 -m http.server $HTTP_PORT > "$TMP_DIR/http_server.log" 2>&1 &
 HTTP_PID=$!
-sleep 2  # Give the server time to start
+sleep 10  # Give the server time to start
 
 trap "kill $HTTP_PID 2>/dev/null || true" EXIT
 
 
 # Download the file through the SOCKS5 proxy
-time curl --socks5-hostname $PROXY "http://localhost:$HTTP_PORT/$(basename "$BIGFILE")" -o "$DOWNLOADED_FILE"
+curl --socks5 $PROXY "http://localhost:$HTTP_PORT/$(basename "$BIGFILE")" -o "$DOWNLOADED_FILE" \
+ -w "\nDNS: %{time_namelookup}\nConnect: %{time_connect}\nStartTransfer: %{time_starttransfer}\nTotal: %{time_total}\n"
 CURL_STATUS=$?
+
+# now without proxy
+#curl "http://localhost:$HTTP_PORT/$(basename "$BIGFILE")" -o "$DOWNLOADED_FILE" \
+#  -w "\nDNS: %{time_namelookup}\nConnect: %{time_connect}\nStartTransfer: %{time_starttransfer}\nTotal: %{time_total}\n"
 
 # Stop the HTTP server if still running
 if kill -0 $HTTP_PID 2>/dev/null; then
@@ -49,11 +54,11 @@ ORIG_HASH=$(sha256sum "$BIGFILE" | awk '{print $1}')
 DOWN_HASH=$(sha256sum "$DOWNLOADED_FILE" | awk '{print $1}')
 
 if [ "$ORIG_HASH" = "$DOWN_HASH" ]; then
-    echo "SUCCESS: Hashes match. Data integrity verified."
+    echo "SUCCESS: Hashes match. Data integrity verified"
     rm -rf "$TMP_DIR"
     exit 0
 else
-    echo "FAILURE: Hashes differ! Data integrity compromised."
+    echo "FAILURE: Hashes differ! Data integrity compromised"
     echo "Original:   $ORIG_HASH"
     echo "Downloaded: $DOWN_HASH"
     exit 3

@@ -315,8 +315,8 @@ static void socks5_handle_block(struct selector_key *key) {
 		return;
 	}
 
-	 log(DEBUG, "[HANDLE_BLOCK] Session state: %d, DNS failed: %s", 
-        session->current_state, session->dns_failed ? "YES" : "NO");
+	log(DEBUG, "[HANDLE_BLOCK] Session state: %d, DNS failed: %s", session->current_state,
+		session->dns_failed ? "YES" : "NO");
 
 	if (session->current_state != STATE_REQUEST_RESOLVE || session->connection.atyp != SOCKS5_ATYP_DOMAIN) {
 		log(DEBUG, "[HANDLE_BLOCK] Ignoring block event - not resolving domain");
@@ -1382,6 +1382,11 @@ static void relay_client_to_remote(struct selector_key *key) {
 	buffer_write_adv(client_to_remote_buf, bytes_read);
 	metrics_add_bytes_in(bytes_read);
 
+	// Reset timeout on successful data transfer
+	time_t now = time(NULL);
+	session->next_timeout = now + session->idle_timeout;
+	selector_update_session_timeout(key->s, session, session->next_timeout);
+
 	// Flush from client_to_remote_buf to remote
 	while (buffer_can_read(client_to_remote_buf)) {
 		size_t len;
@@ -1434,6 +1439,11 @@ static void relay_remote_to_client(struct selector_key *key) {
 	buffer_write_adv(remote_to_client_buf, bytes_read);
 	metrics_add_bytes_in(bytes_read);
 
+	// Reset timeout on successful data transfer
+	time_t now = time(NULL);
+	session->next_timeout = now + session->idle_timeout;
+	selector_update_session_timeout(key->s, session, session->next_timeout);
+
 	// Flush to client
 	while (buffer_can_read(remote_to_client_buf)) {
 		size_t read_len;
@@ -1484,6 +1494,13 @@ static void relay_write(struct selector_key *key) {
 			buffer_read_adv(remote_to_client_buf, bytes_written);
 		}
 
+		// Reset timeout on successful data transfer
+		if (buffer_can_read(remote_to_client_buf) == false) {
+			time_t now = time(NULL);
+			session->next_timeout = now + session->idle_timeout;
+			selector_update_session_timeout(key->s, session, session->next_timeout);
+		}
+
 		// if data was flushed, remove write interest from client
 		if (!buffer_can_read(remote_to_client_buf)) {
 			selector_set_interest(key->s, session->client_fd, OP_READ);
@@ -1512,6 +1529,13 @@ static void relay_write(struct selector_key *key) {
 			buffer_read_adv(client_to_remote_buf, bytes_written);
 		}
 
+		// Reset timeout on successful data transfer
+		if (buffer_can_read(client_to_remote_buf) == false) {
+			time_t now = time(NULL);
+			session->next_timeout = now + session->idle_timeout;
+			selector_update_session_timeout(key->s, session, session->next_timeout);
+		}
+
 		// If we've flushed all data, remove write interest from remote
 		if (!buffer_can_read(client_to_remote_buf)) {
 			selector_set_interest(key->s, session->remote_fd, OP_READ);
@@ -1529,6 +1553,11 @@ static void socks5_remote_read(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
 	if (session->current_state == STATE_RELAY) {
+		// Reset timeout on remote data received
+		time_t now = time(NULL);
+		session->next_timeout = now + session->idle_timeout;
+		selector_update_session_timeout(key->s, session, session->next_timeout);
+
 		relay_remote_to_client(key);
 	} else {
 		log(ERROR, "[REMOTE_READ] Unexpected read in state %d", session->current_state);
