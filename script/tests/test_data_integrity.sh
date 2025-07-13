@@ -68,8 +68,8 @@ test_file_size() {
         if [ "$orig_size" -eq "$down_size" ]; then
             echo "✅ SUCCESS: Complete transfer ($down_size bytes) in ${duration}s"
             
-            # Verify integrity for smaller files
-            if [ $size_mb -le 10 ]; then
+            # Verify integrity 
+            
                 local orig_hash=$(sha256sum "$bigfile" | awk '{print $1}')
                 local down_hash=$(sha256sum "$downloaded_file" | awk '{print $1}')
                 
@@ -81,9 +81,6 @@ test_file_size() {
                     echo "   Downloaded: $down_hash"
                     return 3
                 fi
-            else
-                echo "ℹ️  INTEGRITY: Skipped hash check for large file"
-            fi
         else
             echo "❌ PARTIAL: Incomplete transfer"
             echo "   Expected: $orig_size bytes"

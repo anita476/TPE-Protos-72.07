@@ -111,7 +111,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 		close(client_fd);
 		return;
 	}
-	session->type = SESSION_SOCKS5;			   // Set session type
+	session->type = SESSION_SOCKS5; // Set session type
 	// initialize timeout
 	session->connection_start = time(NULL);
 	session->idle_timeout = g_connection_timeout;
@@ -220,7 +220,7 @@ static void socks5_handle_read(struct selector_key *key) {
 		case STATE_RELAY:
 			relay_data(key);
 			break;
-		case STATE_ERROR: // 
+		case STATE_ERROR: //
 			handle_error(key);
 			break;
 		default:
@@ -584,7 +584,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			// set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			// handle_error(key); // MAL! 
+			// handle_error(key); // MAL!
 			return;
 	}
 
@@ -1052,8 +1052,8 @@ static void *dns_resolution_thread(void *arg) {
 
 		if (res)
 			freeaddrinfo(res);
-		
-			selector_notify_block_with_result(key->s, key->fd, NULL);
+
+		selector_notify_block_with_result(key->s, key->fd, NULL);
 
 	} else {
 		log(DEBUG, "[DNS_THREAD] DNS resolution succeeded for %s", domain_name);
@@ -1066,7 +1066,6 @@ static void *dns_resolution_thread(void *arg) {
 		selector_notify_block_with_result(key->s, key->fd, res);
 		log(DEBUG, "[DNS_THREAD] Selector notification sent for fd=%d", key->fd);
 	}
-
 
 	free(key);
 	return NULL;
@@ -1454,7 +1453,7 @@ static void relay_remote_to_client(struct selector_key *key) {
 		buffer_read_adv(remote_to_client_buf, bytes_written);
 	}
 
-	// log(DEBUG, "[RELAY] Relayed data remote->client");
+	log(DEBUG, "[RELAY] Relayed data remote->client");
 
 	// is there more to read from ?
 	if (buffer_can_read(remote_to_client_buf)) {
