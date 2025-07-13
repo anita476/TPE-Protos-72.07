@@ -68,7 +68,7 @@ void management_handle_new_connection(struct selector_key *key) {
 	session->authenticated = false;
 	session->user_type = 0xFF; // invalid until authenticated
 	session->has_error = false;
-	session->error_code = RESPONSE_SUCCESS_CLIENT;
+	session->error_code = NULL;
 	session->error_response_sent = false;
 	session->cleaned_up = false;
 
@@ -247,7 +247,6 @@ static void hello_read(struct selector_key *key) {
 	uint8_t auth_result = authenticate_user(username, password);
 	uint8_t response_code;
 
-	// TODO: determine whether there is a better way to handle user types and do this check
 	if (auth_result == USER_TYPE_ADMIN) {
 		response_code = RESPONSE_SUCCESS_ADMIN;
 		session->user_type = USER_TYPE_ADMIN;

@@ -536,6 +536,14 @@ selector_status selector_select(fd_selector s) {
 		if (ITEM_USED(item) && item->data != NULL) {
 			// Only process if data exists and looks like a client session
 			client_session *session = (client_session *) item->data;
+			
+			if (session->cleaned_up) {
+				log(DEBUG, "[SELECTOR] Skipping cleaned up session for fd=%d", item->fd);
+				// Clear the stale pointer
+				item->data = NULL;
+				item->handler = NULL;
+				continue;
+			}
 			if (session->type == SESSION_SOCKS5) {
 				// Check if this looks like a valid client session by checking for timeout fields
 				if (session->idle_timeout > 0 && session->next_timeout > 0 && now >= session->next_timeout) {
@@ -567,9 +575,22 @@ selector_status selector_select(fd_selector s) {
 		if ((ev & EPOLLOUT) && (item->interest & OP_WRITE) && item->handler->handle_write) {
 			item->handler->handle_write(&key);
 		}
-		if ((ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) && item->handler->handle_close) {
-			item->handler->handle_close(&key);
+		if (ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
+			// CRITICAL: Take a snapshot of the handler to avoid race
+			struct fd_handler *handler = item->handler;
+			if (handler && handler->handle_close) {
+				handler->handle_close(&key);
+			} else {
+				// Manual cleanup if handler is gone
+				close(item->fd);
+				item->fd = -1;
+				item->handler = NULL;
+				item->data = NULL;
+			}
 		}
+		// if ((ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) && item->handler && item->handler->handle_close) {
+		// 	item->handler->handle_close(&key);
+		// }
 	}
 	handle_block_notifications(s);
 finally:

@@ -53,10 +53,24 @@ typedef enum {
 // } socks5_request;
 
 typedef struct {
-	uint8_t atyp;
-	char *domain_to_resolve;		// Domain name for DNS resolution
-	struct addrinfo *dst_addresses; // Chain of addresses to try
-	uint16_t dst_port;				// Port for DNS resolution
+	uint8_t atyp;					// SOCKS5_ATYP_IPV4, SOCKS5_ATYP_IPV6, or SOCKS5_ATYP_DOMAIN
+	union {
+        // For direct IP addresses (IPv4 and IPv6)
+        struct {
+            struct sockaddr_storage addr;
+            socklen_t addr_len;
+        } direct;
+        
+        // For resolved domains
+        struct {
+            char *domain_name;
+            struct addrinfo *dst_addresses;
+            uint16_t dst_port;
+        } resolved;
+    } data;
+	// char *domain_to_resolve;		// Domain name for DNS resolution
+	// struct addrinfo *dst_addresses; // Chain of addresses to try
+	// uint16_t dst_port;				// Port for DNS resolution
 } connection_data;
 
 typedef struct {
@@ -79,9 +93,6 @@ typedef struct {
 	connection_data connection; // Temporary connection info
 	log_info logging;			// Persistent logging info
 
-	// socks5_request current_request;
-	// socks5_response current_response;
-
 	// Buffers (client side)
 	uint8_t *raw_read_buffer; // make into pointer to allocate at runtime
 	uint8_t *raw_write_buffer;
@@ -100,6 +111,7 @@ typedef struct {
 	// DNS handling -> is it necessary to separate it?
 	bool dns_failed; // Add this field
 	uint8_t dns_error_code;
+	pthread_mutex_t mutex; // for dns 
 
 	// Error handling
 	bool has_error;
