@@ -1452,7 +1452,7 @@ static void relay_remote_to_client(struct selector_key *key) {
 		buffer_read_adv(remote_to_client_buf, bytes_written);
 	}
 
-	log(DEBUG, "[RELAY] Relayed data remote->client");
+	// log(DEBUG, "[RELAY] Relayed data remote->client");
 
 	// is there more to read from ?
 	if (buffer_can_read(remote_to_client_buf)) {
