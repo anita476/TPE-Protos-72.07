@@ -667,35 +667,7 @@ selector_status selector_select(fd_selector s) {
 		}
 	}
 
-	time_t now = time(NULL);
-	for (size_t i = 0; i < s->fd_size; i++) {
-		struct item *item = s->fds + i;
-		if (ITEM_USED(item) && item->data != NULL) {
-			// Only process if data exists and looks like a client session
-			client_session *session = (client_session *) item->data;
-
-			if (session->type == SESSION_SOCKS5 && session->cleaned_up) {
-				log(DEBUG, "[SELECTOR] Skipping cleaned up session for fd=%d", item->fd);
-				// Clear the stale pointer
-				item->data = NULL;
-				item->handler = NULL;
-				continue;
-			}
-			if (session->type == SESSION_SOCKS5) {
-				// Check if this looks like a valid client session by checking for timeout fields
-				if (session->idle_timeout > 0 && session->next_timeout > 0 && now >= session->next_timeout) {
-					log(INFO, "[SELECTOR_SELECT] Idle connection timeout for fd=%d", item->fd);
-					// Set error state
-					session->has_error = true;
-					session->error_code = SOCKS5_REPLY_TTL_EXPIRED;
-					session->error_response_sent = false;
-					session->current_state = STATE_ERROR;
-					selector_remove_session_timeout(s, session);
-					selector_set_interest(s, item->fd, OP_WRITE);
-				}
-			}
-		}
-	}
+	// Process I/O events FIRST, so timeout resets are applied before timeout checks
 	for (int i = 0; i < n; i++) {
 		struct item *item = (struct item *) s->events[i].data.ptr;
 		// Handle eventfd notifications (data.ptr == NULL is our marker)
@@ -741,6 +713,38 @@ selector_status selector_select(fd_selector s) {
 		// 	item->handler->handle_close(&key);
 		// }
 	}
+
+	// NOW check for timeouts AFTER processing events
+	time_t now = time(NULL);
+	for (size_t i = 0; i < s->fd_size; i++) {
+		struct item *item = s->fds + i;
+		if (ITEM_USED(item) && item->data != NULL) {
+			// Only process if data exists and looks like a client session
+			client_session *session = (client_session *) item->data;
+
+			if (session->type == SESSION_SOCKS5 && session->cleaned_up) {
+				log(DEBUG, "[SELECTOR] Skipping cleaned up session for fd=%d", item->fd);
+				// Clear the stale pointer
+				item->data = NULL;
+				item->handler = NULL;
+				continue;
+			}
+			if (session->type == SESSION_SOCKS5) {
+				// Check if this looks like a valid client session by checking for timeout fields
+				if (session->idle_timeout > 0 && session->next_timeout > 0 && now >= session->next_timeout) {
+					log(INFO, "[SELECTOR_SELECT] Idle connection timeout for fd=%d", item->fd);
+					// Set error state
+					session->has_error = true;
+					session->error_code = SOCKS5_REPLY_TTL_EXPIRED;
+					session->error_response_sent = false;
+					session->current_state = STATE_ERROR;
+					selector_remove_session_timeout(s, session);
+					selector_set_interest(s, item->fd, OP_WRITE);
+				}
+			}
+		}
+	}
+
 	handle_block_notifications(s);
 finally:
 	return ret;
