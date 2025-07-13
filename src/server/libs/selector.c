@@ -9,9 +9,8 @@
 #include <stdio.h>	// perror
 #include <stdlib.h> // malloc
 #include <string.h> // memset
-#include <time.h>	// time_t, time()
 #include <sys/eventfd.h>
-
+#include <time.h> // time_t, time()
 
 #include "../include/logger.h" // log function
 #include "../include/selector.h"
@@ -268,7 +267,7 @@ fd_selector selector_new(const size_t initial_elements) {
 		ret->active_sessions = 0;
 
 		pthread_mutex_init(&ret->resolution_mutex, 0);
-		
+
 		// Create epoll FIRST
 		ret->epoll_fd = epoll_create1(0);
 		if (ret->epoll_fd == -1) {
@@ -292,8 +291,7 @@ fd_selector selector_new(const size_t initial_elements) {
 			goto fail_cleanup;
 		}
 
-		log(DEBUG, "[SELECTOR_NEW] EventFD %d added to epoll %d for notifications", 
-		    ret->notify_fd, ret->epoll_fd);
+		log(DEBUG, "[SELECTOR_NEW] EventFD %d added to epoll %d for notifications", ret->notify_fd, ret->epoll_fd);
 
 		if (0 != ensure_capacity(ret, initial_elements)) {
 			goto fail_cleanup;
@@ -409,8 +407,8 @@ void selector_destroy(fd_selector s) {
 			s->epoll_fd = -1;
 		}
 		if (s->notify_fd >= 0) {
-            close(s->notify_fd);
-        }
+			close(s->notify_fd);
+		}
 		free(s);
 	}
 }
@@ -577,18 +575,18 @@ selector_status selector_notify_block(fd_selector s, const int fd) {
 	pthread_mutex_unlock(&s->resolution_mutex);
 
 	// Wake up selector using eventfd instead of signal
-    uint64_t value = 1;
-    ssize_t bytes_written = write(s->notify_fd, &value, sizeof(value));
-    if (bytes_written != sizeof(value)) {
-        if (bytes_written == -1) {
-            log(ERROR, "[SELECTOR_NOTIFY] Failed to write to eventfd: %s", strerror(errno));
-        } else {
-            log(ERROR, "[SELECTOR_NOTIFY] Partial write to eventfd: %zd bytes", bytes_written);
-        }
-        ret = SELECTOR_IO;
-    } else {
-        log(DEBUG, "[SELECTOR_NOTIFY] EventFD notification sent successfully");
-    }
+	uint64_t value = 1;
+	ssize_t bytes_written = write(s->notify_fd, &value, sizeof(value));
+	if (bytes_written != sizeof(value)) {
+		if (bytes_written == -1) {
+			log(ERROR, "[SELECTOR_NOTIFY] Failed to write to eventfd: %s", strerror(errno));
+		} else {
+			log(ERROR, "[SELECTOR_NOTIFY] Partial write to eventfd: %zd bytes", bytes_written);
+		}
+		ret = SELECTOR_IO;
+	} else {
+		log(DEBUG, "[SELECTOR_NOTIFY] EventFD notification sent successfully");
+	}
 
 	// // notificamos al hilo principal
 	// pthread_kill(s->selector_thread, conf.signal);
@@ -641,7 +639,6 @@ selector_status selector_select(fd_selector s) {
 		}
 	}
 
-	
 	int n = epoll_wait(s->epoll_fd, s->events, s->max_events, timeout_ms);
 	if (n < 0) {
         if (errno == EINTR) {
@@ -669,7 +666,7 @@ selector_status selector_select(fd_selector s) {
 			goto finally;
 		}
 	}
-	
+
 	time_t now = time(NULL);
 	for (size_t i = 0; i < s->fd_size; i++) {
 		struct item *item = s->fds + i;
@@ -677,7 +674,7 @@ selector_status selector_select(fd_selector s) {
 			// Only process if data exists and looks like a client session
 			client_session *session = (client_session *) item->data;
 
-			if (session->cleaned_up) {
+			if (session->type == SESSION_SOCKS5 && session->cleaned_up) {
 				log(DEBUG, "[SELECTOR] Skipping cleaned up session for fd=%d", item->fd);
 				// Clear the stale pointer
 				item->data = NULL;
@@ -702,17 +699,17 @@ selector_status selector_select(fd_selector s) {
 	for (int i = 0; i < n; i++) {
 		struct item *item = (struct item *) s->events[i].data.ptr;
 		// Handle eventfd notifications (data.ptr == NULL is our marker)
-        if (item == NULL) {
-            uint64_t value;
-            ssize_t bytes = read(s->notify_fd, &value, sizeof(value));
-            if (bytes == sizeof(value)) {
-                log(DEBUG, "[SELECTOR_SELECT] DNS notification received via eventfd (value=%lu)", value);
-            } else if (bytes == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-                log(ERROR, "[SELECTOR_SELECT] Error reading from eventfd: %s", strerror(errno));
-            }
-            // Note: We don't call handle_block_notifications here - it's called at the end
-            continue;
-        }
+		if (item == NULL) {
+			uint64_t value;
+			ssize_t bytes = read(s->notify_fd, &value, sizeof(value));
+			if (bytes == sizeof(value)) {
+				log(DEBUG, "[SELECTOR_SELECT] DNS notification received via eventfd (value=%lu)", value);
+			} else if (bytes == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+				log(ERROR, "[SELECTOR_SELECT] Error reading from eventfd: %s", strerror(errno));
+			}
+			// Note: We don't call handle_block_notifications here - it's called at the end
+			continue;
+		}
 		if (!item || !ITEM_USED(item) || !item->handler)
 			continue;
 		struct selector_key key = {
