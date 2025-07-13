@@ -543,7 +543,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	// TODO: probably a better way tod othis is using a state machine
 	switch (session->current_state) {
 		case STATE_HELLO_WRITE:
-			if (session->authenticated) {
+			if (session->authenticated == true) {
 				session->current_state = STATE_AUTH_READ;
 				log(DEBUG, "[WRITE_TO_CLIENT] Hello complete, transitioning to AUTH_READ");
 			} else {
@@ -831,7 +831,7 @@ static void request_read(struct selector_key *key) {
 		// Convert IP to string for both logging and getaddrinfo
 		char ip_str[INET_ADDRSTRLEN];
 		struct in_addr addr = {.s_addr = htonl(ip)};
-		if (inet_ntop(AF_INET, &addr, ip_str, sizeof(ip_str)) != 1) {
+		if (inet_ntop(AF_INET, &addr, ip_str, sizeof(ip_str)) == NULL) {
 			log(ERROR, "[REQUEST_READ] Failed to convert IPv4 address");
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			handle_error(key);
@@ -864,6 +864,9 @@ static void request_read(struct selector_key *key) {
 		addr6->sin6_family = AF_INET6;
 		memcpy(&addr6->sin6_addr, ip, 16);
 		addr6->sin6_port = htons(port);
+
+		session->connection.atyp = SOCKS5_ATYP_IPV6;
+		session->connection.data.direct.addr_len = sizeof(struct sockaddr_in6);
 
 		char ip_str[INET6_ADDRSTRLEN];
 		if (inet_ntop(AF_INET6, ip, ip_str, sizeof(ip_str)) == NULL) {

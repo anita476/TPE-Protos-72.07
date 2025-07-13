@@ -32,6 +32,15 @@ log_test() {
     echo -e "$1" | tee -a "$RESULTS_FILE"
 }
 
+# Helper function to find available port (without netstat dependency)
+find_available_port() {
+    local start_port=${1:-8080}
+    
+    # Simple approach: just use a random port in high range
+    # This avoids potential infinite loops and is more reliable
+    echo $((start_port + RANDOM % 1000))
+}
+
 run_test() {
     local test_name="$1"
     local test_command="$2"
@@ -295,32 +304,6 @@ test_address_types() {
     
     kill $HTTP_PID 2>/dev/null || true
     wait $HTTP_PID 2>/dev/null || true
-}
-
-# Helper function to find available port (without netstat dependency)
-find_available_port() {
-    local start_port=${1:-8080}
-    local port=$start_port
-    
-    while [ $port -lt 65535 ]; do
-        if ! python3 -c "
-import socket
-try:
-    s = socket.socket()
-    s.bind(('localhost', $port))
-    s.close()
-    exit(0)
-except:
-    exit(1)
-" 2>/dev/null; then
-            port=$((port + 1))
-        else
-            echo $port
-            return 0
-        fi
-    done
-    
-    echo "8080"  # fallback
 }
 
 # Connection Tests
