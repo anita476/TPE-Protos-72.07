@@ -489,62 +489,62 @@ client_log_entry_t *handle_log(int sock, uint8_t n, uint8_t offset) {
 }
 
 user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock) {
-    if (request_send(COMMAND_USER_LIST, n, offset, sock) != 0) {
-        errno = ENOTCONN;
-        return NULL; // Failed to send request
-    }
+	if (request_send(COMMAND_USER_LIST, n, offset, sock) != 0) {
+		errno = ENOTCONN;
+		return NULL; // Failed to send request
+	}
 
-    char header[RESPONSE_HEADER_LEN] = {0};
-    if (recv_all(sock, header, RESPONSE_HEADER_LEN) != RESPONSE_HEADER_LEN) {
-        errno = ENOTCONN;
-        return NULL;
-    }
+	char header[RESPONSE_HEADER_LEN] = {0};
+	if (recv_all(sock, header, RESPONSE_HEADER_LEN) != RESPONSE_HEADER_LEN) {
+		errno = ENOTCONN;
+		return NULL;
+	}
 
-    uint8_t nusers = header[3];
-    if (nusers == 0) {
-        return NULL;
-    }
+	uint8_t nusers = header[3];
+	if (nusers == 0) {
+		return NULL;
+	}
 
-    user_list_entry *head = NULL;
-    user_list_entry *current = NULL;
+	user_list_entry *head = NULL;
+	user_list_entry *current = NULL;
 
-    for (uint8_t i = 0; i < nusers; i++) {
-        char user_entry[USER_ENTRY_SIZE];
-        if (recv_all(sock, user_entry, USER_ENTRY_SIZE) != USER_ENTRY_SIZE) {
-            free_user_list(head);
-            errno = ENOTCONN;
-            return NULL;
-        }
+	for (uint8_t i = 0; i < nusers; i++) {
+		char user_entry[USER_ENTRY_SIZE];
+		if (recv_all(sock, user_entry, USER_ENTRY_SIZE) != USER_ENTRY_SIZE) {
+			free_user_list(head);
+			errno = ENOTCONN;
+			return NULL;
+		}
 
-        uint8_t ulen = user_entry[0];
-        uint8_t user_type = user_entry[1];
-        char *username_data = &user_entry[2];
+		uint8_t ulen = user_entry[0];
+		uint8_t user_type = user_entry[1];
+		char *username_data = &user_entry[2];
 
-        // Create new user entry
-        user_list_entry *new_user = malloc(sizeof(user_list_entry));
-        if (!new_user) {
-            free_user_list(head);
-            errno = ENOTCONN;
-            return NULL;
-        }
+		// Create new user entry
+		user_list_entry *new_user = malloc(sizeof(user_list_entry));
+		if (!new_user) {
+			free_user_list(head);
+			errno = ENOTCONN;
+			return NULL;
+		}
 
-        new_user->ulen = ulen;
-        memcpy(new_user->username, username_data, ulen);
-        new_user->username[ulen] = '\0'; // Null terminate
-        new_user->user_type = user_type;
-        new_user->package_id = 0; // TODO: not being used atm
-        new_user->next = NULL;
+		new_user->ulen = ulen;
+		memcpy(new_user->username, username_data, ulen);
+		new_user->username[ulen] = '\0';
+		new_user->user_type = user_type;
+		new_user->package_id = 0; // TODO: not being used atm
+		new_user->next = NULL;
 
-        if (head == NULL) {
-            head = new_user;
-            current = head;
-        } else {
-            current->next = new_user;
-            current = new_user;
-        }
-    }
+		if (head == NULL) {
+			head = new_user;
+			current = head;
+		} else {
+			current->next = new_user;
+			current = new_user;
+		}
+	}
 
-    return head;
+	return head;
 }
 
 void fill_log_struct(char *data, client_log_entry_t *log) {
