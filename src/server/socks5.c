@@ -308,7 +308,15 @@ static void socks5_handle_close(struct selector_key *key) {
 
 // Block events should only happen during DNS resolution for DOMAIN names
 static void socks5_handle_block(struct selector_key *key) {
+	log(DEBUG, "[HANDLE_BLOCK] DNS completion handler called for fd=%d", key->fd);
 	client_session *session = (client_session *) key->data;
+	if (!session) {
+		log(ERROR, "[HANDLE_BLOCK] No session found for fd=%d", key->fd);
+		return;
+	}
+
+	 log(DEBUG, "[HANDLE_BLOCK] Session state: %d, DNS failed: %s", 
+        session->current_state, session->dns_failed ? "YES" : "NO");
 
 	if (session->current_state != STATE_REQUEST_RESOLVE || session->connection.atyp != SOCKS5_ATYP_DOMAIN) {
 		log(DEBUG, "[HANDLE_BLOCK] Ignoring block event - not resolving domain");
@@ -1066,12 +1074,15 @@ static void *dns_resolution_thread(void *arg) {
 		session->dns_failed = false;
 		session->dns_error_code = 0;
 		session->connection.data.resolved.dst_addresses = res;
+
+		// Notify the selector that DNS resolution is complete
+		log(DEBUG, "[DNS_THREAD] About to notify selector for fd=%d", key->fd);
+		selector_notify_block(key->s, key->fd);
+		log(DEBUG, "[DNS_THREAD] Selector notification sent for fd=%d", key->fd);
 	}
 
 	pthread_mutex_unlock(&session->mutex);
 
-	// Notify the selector that DNS resolution is complete
-	selector_notify_block(key->s, key->fd);
 	free(key);
 	return NULL;
 }
@@ -1714,7 +1725,6 @@ static void cleanup_session(client_session *session) {
 		free(session->raw_remote_write_buffer);
 		session->raw_remote_write_buffer = NULL;
 	}
-
 	// Clean up authentication data
 	if (session->username) {
 		free(session->username);
