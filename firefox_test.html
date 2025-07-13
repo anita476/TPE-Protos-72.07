@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SOCKS5 Crash Test</title>
+</head>
+<body>
+    <h1>Firefox SOCKS5 Crash Test</h1>
+    <button onclick="startTest()">Start Rapid DNS Test</button>
+    <button onclick="stopTest()">Stop Test</button>
+    <button onclick="aggressiveTest()">Aggressive Test</button>
+    <div id="status"></div>
+
+    <script>
+        let testInterval;
+        let requestCount = 0;
+
+        function startTest() {
+            document.getElementById('status').innerHTML = 'Test running...';
+            testInterval = setInterval(() => {
+                createFailingRequests();
+            }, 200);
+        }
+
+        function stopTest() {
+            clearInterval(testInterval);
+            document.getElementById('status').innerHTML = 'Test stopped';
+        }
+
+        function createFailingRequests() {
+            // Crear múltiples requests a dominios inexistentes
+            for(let i = 1; i <= 5; i++) {
+                requestCount++;
+                
+                // Usar diferentes métodos para generar DNS requests
+                
+                // Método 1: Image requests
+                let img = new Image();
+                img.src = `http://crash-test-${requestCount}-${i}.nonexistent/pixel.png`;
+                
+                // Método 2: Fetch requests (si CORS permite)
+                fetch(`http://dns-fail-${requestCount}-${i}.invalid/api`, {
+                    mode: 'no-cors',
+                    cache: 'no-cache'
+                }).catch(() => {});
+                
+                // Método 3: Script loading
+                let script = document.createElement('script');
+                script.src = `http://fake-js-${requestCount}-${i}.missing/script.js`;
+                document.head.appendChild(script);
+                
+                // Remover después de un momento para limpiar DOM
+                setTimeout(() => {
+                    if(script.parentNode) {
+                        script.parentNode.removeChild(script);
+                    }
+                }, 300);
+            }
+            
+            document.getElementById('status').innerHTML = 
+                `Test running... Requests sent: ${requestCount}`;
+        }
+
+        function aggressiveTest() {
+            document.getElementById('status').innerHTML = 'Aggressive test running...';
+            
+            // Test más agresivo - muchos requests simultáneos
+            for(let batch = 0; batch < 5; batch++) {
+                setTimeout(() => {
+                    for(let i = 1; i <= 20; i++) {
+                        requestCount++;
+                        
+                        // Múltiples tipos de requests
+                        let img = new Image();
+                        img.src = `http://aggressive-${batch}-${i}-${Date.now()}.crash/test.jpg`;
+                        
+                        let link = document.createElement('link');
+                        link.rel = 'stylesheet';
+                        link.href = `http://css-fail-${batch}-${i}.broken/style.css`;
+                        document.head.appendChild(link);
+                        
+                        // Limpiar después
+                        setTimeout(() => {
+                            if(link.parentNode) {
+                                link.parentNode.removeChild(link);
+                            }
+                        }, 200);
+                    }
+                }, batch * 100);
+            }
+        }
+
+        // Auto-start test cuando se presiona F12 (Dev Tools)
+        document.addEventListener('keydown', function(e) {
+            if(e.key === 'F12') {
+                aggressiveTest();
+            }
+        });
+    </script>
+
+    <h2>Instrucciones:</h2>
+    <ol>
+        <li>Asegúrate de que Firefox esté configurado con proxy SOCKS5: 127.0.0.1:1080</li>
+        <li>Ejecuta tu proxy bajo GDB en otra terminal</li>
+        <li>Haz click en "Start Rapid DNS Test"</li>
+        <li>Presiona ESC repetidamente para cancelar requests</li>
+        <li>Para test más agresivo, usa "Aggressive Test" o presiona F12</li>
+        <li>Combinar con navegación rápida (abrir/cerrar tabs)</li>
+    </ol>
+
+    <h2>Técnicas adicionales:</h2>
+    <ul>
+        <li><strong>Ctrl+R</strong> (reload) + <strong>ESC</strong> rápidamente</li>
+        <li><strong>Ctrl+T</strong> (nuevo tab) + cargar esta página + <strong>Ctrl+W</strong> (cerrar tab)</li>
+        <li>Hacer click en "Aggressive Test" en múltiples tabs simultáneamente</li>
+    </ul>
+</body>
+</html>

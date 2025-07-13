@@ -64,14 +64,12 @@ static error_type_t map_socks5_error_to_type(uint8_t error_code);
 static void log_resolved_addresses(const char *domain,
 								   struct addrinfo *addr_list); // This could be deleted since its just for debugging
 static void *dns_resolution_thread(void *arg);
-// static void handle_connect_failure(struct selector_key *key, int error);
-static void handle_connect_failure(struct selector_key *key, int error, bool has_next_address);
+static void handle_connect_failure(struct selector_key *key, int error);
 static void handle_connect_success(struct selector_key *key);
 bool valid_user(const char *username, const char *password, uint8_t *out_type);
 static bool build_socks5_success_response(client_session *session);
 void store_client_info(client_session *session, struct sockaddr_storage *client_addr);
 void store_dest_info(client_session *session, uint8_t atyp, const char *addr, uint16_t port);
-static bool allocate_remote_buffers(client_session *session);
 
 // Destructor
 static void cleanup_session(client_session *session);
@@ -111,8 +109,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 		close(client_fd);
 		return;
 	}
-	session->type = SESSION_SOCKS5;			   // Set session type
-	pthread_mutex_init(&session->mutex, NULL); // Initialize mutex for DNS handling
+	session->type = SESSION_SOCKS5; // Set session type
 	// initialize timeout
 	session->connection_start = time(NULL);
 	session->idle_timeout = g_connection_timeout;
@@ -131,6 +128,12 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	strcpy(session->logging.dest_addr, "unknown");
 	session->logging.dest_port = 0;
 	session->logging.dest_atyp = 0x01; // Default to IPv4
+
+	// Initialize connection data
+	session->connection.domain_to_resolve = NULL;
+	session->connection.dst_addresses = NULL;
+	session->connection.dst_port = 0;
+	session->connection.atyp = 0xFF; // Invalid until set
 
 	// Initialize error handling
 	session->has_error = false;
@@ -151,7 +154,6 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	session->raw_read_buffer = malloc(session->buffer_size);
 	if (session->raw_read_buffer == NULL) {
 		log(ERROR, "[HANDLE CONNECTION] Failed to allocate read buffer");
-		selector_unregister_fd(key->s, client_fd);
 		close(client_fd);
 		free(session);
 		metrics_increment_errors(ERROR_TYPE_MEMORY);
@@ -160,7 +162,6 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	session->raw_write_buffer = malloc(session->buffer_size);
 	if (session->raw_write_buffer == NULL) {
 		log(ERROR, "[HANDLE CONNECTION] Failed to allocate read buffer");
-		selector_unregister_fd(key->s, client_fd);
 		free(session->raw_read_buffer);
 		close(client_fd);
 		free(session);
@@ -270,9 +271,6 @@ static void socks5_handle_close(struct selector_key *key) {
 		return;
 	}
 
-	// prevent recursive calls
-	session->cleaned_up = true;
-
 	// Mark which fd was closed
 	if (session->client_fd == key->fd) {
 		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Client fd=%d closed", key->fd);
@@ -281,6 +279,9 @@ static void socks5_handle_close(struct selector_key *key) {
 		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Remote fd=%d closed", key->fd);
 		session->remote_fd = -1;
 	}
+
+	// prevent recursive calls
+	session->cleaned_up = true;
 
 	// Clean up the other fd if it's still open
 	if (session->client_fd != -1 && session->client_fd != key->fd) {
@@ -298,51 +299,44 @@ static void socks5_handle_close(struct selector_key *key) {
 
 	// If both remote and client are closed, only then clean up resources
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Both fds closed, cleaning up session");
-	selector_unregister_fd(key->s, key->fd);
 	cleanup_session(session);
-	// free(session);
+	free(session);
 	metrics_decrement_connections();
 
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Close handler complete for fd=%d", key->fd);
 }
-
-// Block events should only happen during DNS resolution for DOMAIN names
 static void socks5_handle_block(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
-	if (session->current_state != STATE_REQUEST_RESOLVE || session->connection.atyp != SOCKS5_ATYP_DOMAIN) {
-		log(DEBUG, "[HANDLE_BLOCK] Ignoring block event - not resolving domain");
-		return;
-	}
-
-	if (session->dns_failed) {
-		log(ERROR, "[HANDLE_BLOCK] DNS resolution failed for fd=%d", key->fd);
-		log_socks5_attempt(session, session->dns_error_code);
-		set_error_state(session, session->dns_error_code);
-		handle_error(key);
-		return;
-	}
-
-	if (session->connection.data.resolved.dst_addresses == NULL) {
-		log(ERROR, "[HANDLE_BLOCK] DNS resolution completed but no addresses returned");
-		set_error_state(session, SOCKS5_REPLY_HOST_UNREACHABLE);
-		handle_error(key);
-		return;
-	}
-	log(DEBUG, "[HANDLE_BLOCK] DNS resolution completed for fd=%d", key->fd);
 	if (session->current_state == STATE_REQUEST_RESOLVE) {
-		// update timeout and proceed to connect
-		session->next_timeout = time(NULL) + session->idle_timeout;
+		if (session->dns_failed) {
+			log(ERROR, "[HANDLE_BLOCK] DNS resolution failed for fd=%d", key->fd);
+			log_socks5_attempt(session, session->dns_error_code);
+			set_error_state(session, session->dns_error_code);
+			handle_error(key);
+			return;
+		}
+
+		if (session->connection.dst_addresses == NULL) {
+			log(ERROR, "[HANDLE_BLOCK] DNS resolution completed but no addresses returned");
+			set_error_state(session, SOCKS5_REPLY_HOST_UNREACHABLE);
+			handle_error(key);
+			return;
+		}
+		log(DEBUG, "[HANDLE_BLOCK] DNS resolution completed for fd=%d", key->fd);
+		request_connect(key);
+	} else if (session->current_state == STATE_REQUEST_CONNECT) {
+		// DNS resolution completed but we're already in connect state, continue
+		// timing issue
+		log(DEBUG, "[HANDLE_BLOCK] DNS resolution completed while already in connect state for fd=%d", key->fd);
+		// DONT call request_connect again, it's already running
+	} else {
+		log(ERROR, "[HANDLE_BLOCK] Unexpected block event in state %d", session->current_state);
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
 	}
-	request_connect(key);
 }
 
-static void close_connection_immediately(struct selector_key *key, error_type_t error_type) {
-	metrics_increment_errors(error_type);
-	log(DEBUG, "[CLOSE_CONNECTION] Closing fd=%d immediately", key->fd);
-	selector_unregister_fd(key->s, key->fd);
-	close(key->fd);
-}
 // this is the FIRST message, it looks like:
 /*
 |VER | NMETHODS | METHODS  |
@@ -356,113 +350,128 @@ static void hello_read(struct selector_key *key) {
 
 	log(DEBUG, "[HELLO_READ] Entered hello_read");
 
-	// FIRST: Try to read any available data from the socket
 	size_t wbytes;
-	uint8_t *ptr = buffer_write_ptr(rb, &wbytes);
-	if (wbytes > 0) {
-		ssize_t bytes_read = recv(key->fd, ptr, wbytes, 0);
-		if (bytes_read < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				log(DEBUG, "[HELLO_READ] No data available right now");
-			} else {
-				log(ERROR, "[HELLO_READ] recv() error: %s", strerror(errno));
-				close_connection_immediately(key, ERROR_TYPE_NETWORK);
-				return;
-			}
-		} else if (bytes_read == 0) {
-			log(DEBUG, "[HELLO_READ] Connection closed by peer");
-			close_connection_immediately(key, ERROR_TYPE_NETWORK);
+	uint8_t *ptr = buffer_write_ptr(rb, &wbytes); // get where to write and how much space is left
+	if (wbytes <= 0) {
+		log(DEBUG, "[HELLO_READ] No space to write, trying to compact buffer");
+		buffer_compact(rb);					 // try to recover space
+		ptr = buffer_write_ptr(rb, &wbytes); // get the new pointer and size
+		if (wbytes <= 0) {					 // still no space to write
+			log(ERROR, "[HELLO_READ] No space to write even after compaction. Closing connection.");
+			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			handle_error(key);
 			return;
-		} else {
-			metrics_add_bytes_in(bytes_read);
-			buffer_write_adv(rb, bytes_read);
-			log(DEBUG, "[HELLO_READ] Read %zd bytes from client.", bytes_read);
-
-			time_t now = time(NULL);
-			session->connection_start = now;
-			session->next_timeout = now + session->idle_timeout;
-			selector_update_session_timeout(key->s, session, session->next_timeout);
 		}
 	}
 
-	size_t available;
-	uint8_t *data = buffer_read_ptr(rb, &available);
-
-	if (available < 2) {
-		log(DEBUG, "[HELLO_READ] Need at least 2 bytes for header, have %zu", available);
+	// Read all available data from the socket into our buffer
+	ssize_t bytes_read = recv(key->fd, ptr, wbytes, 0);
+	if (bytes_read < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			return; // no data available - normal for non-blocking
+		}
+		log(ERROR, "[HELLO_READ] recv() error: %s", strerror(errno));
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
+		return;
+	} else if (bytes_read == 0) {
+		log(INFO, "[HELLO_READ] Connection closed by peer");
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		// Immediately handle the error instead of just returning
+		handle_error(key);
 		return;
 	}
+	// read some bytes
+	time_t now = time(NULL);
+	session->connection_start = now;
+	session->next_timeout = now + session->idle_timeout;
+	selector_update_session_timeout(key->s, session, session->next_timeout);
+
+	metrics_add_bytes_in(bytes_read);
+
+	buffer_write_adv(rb, bytes_read);
+	log(DEBUG, "[HELLO_READ] Read %zd bytes from client.", bytes_read);
+
+	//  we received the initial 2 bytes ?
+
+	size_t available;
+	uint8_t *data = buffer_read_ptr(rb, &available);
+	if (available < 2)
+		return;
 
 	uint8_t version = data[0]; // Peek, don't consume
 	uint8_t nmethods = data[1];
 
 	log(DEBUG, "[HELLO_READ] Received version: 0x%02x, nmethods: %d", version, nmethods);
 
-	// Validate version
 	if (version != SOCKS5_VERSION) {
 		log(ERROR, "[HELLO_READ] Unsupported SOCKS version: 0x%02x. Closing connection.", version);
-		close_connection_immediately(key, ERROR_TYPE_PROTOCOL);
+		set_error_state(session, SOCKS5_REPLY_COMMAND_NOT_SUPPORTED);
+		handle_error(key);
 		return;
 	}
 
-	// Validate nmethods
 	if (nmethods == 0) {
 		log(ERROR, "[HELLO_READ] Invalid nmethods: 0");
-		close_connection_immediately(key, ERROR_TYPE_PROTOCOL);
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
 		return;
 	}
 
-	// Check if we have the complete message
-	size_t total_needed = 2 + nmethods;
-	if (available < total_needed) {
-		log(DEBUG, "[HELLO_READ] Need %zu bytes total, have %zu. Waiting for more.", total_needed, available);
-		return; // Wait for more data
+	if (available < (size_t) (2 + nmethods)) {
+		log(DEBUG, "[HELLO_READ] Not enough data yet. Waiting for more.");
+		return;
 	}
 
-	log(DEBUG, "[HELLO_READ] Have complete hello message (%zu bytes)", total_needed);
-
-	// Consume the header
+	// // consume header
 	buffer_read_adv(rb, 2);
 
-	// Parse authentication methods
+	// client supports 0x00 ? no auth
 	bool no_auth_supported = false;
 	bool auth_supported = false;
-
 	for (int i = 0; i < nmethods; i++) {
 		uint8_t method = buffer_read(rb);
-		log(DEBUG, "[HELLO_READ] Client method %d: 0x%02x", i, method);
-
-		if (method == SOCKS5_NO_AUTH) {
+		if (method == SOCKS5_NO_AUTH) { // consume the byte
 			no_auth_supported = true;
 		} else if (method == SOCKS5_USER_PASS_AUTH) {
 			auth_supported = true;
 		}
 	}
+	// should we check if there is more data to read?
 
-	// Prepare response
+	// prepare reply and change interest to WRITE (we want to send the hello response)
+	// TODO: what should we do if there is no space to write the response? for now we are just returning
 	buffer *wb = &session->write_buffer;
-	buffer_write(wb, SOCKS5_VERSION);
-
-	if (no_auth_supported) {
-		buffer_write(wb, SOCKS5_NO_AUTH);
-		log(DEBUG, "[HELLO_READ] Selected NO_AUTH method");
-		session->current_state = STATE_HELLO_WRITE;
-		session->authenticated = false;
-	} else if (auth_supported) {
-		buffer_write(wb, SOCKS5_USER_PASS_AUTH);
-		log(DEBUG, "[HELLO_READ] Selected USER_PASS_AUTH method");
-		session->current_state = STATE_HELLO_WRITE;
-		session->authenticated = true;
-	} else {
-		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS);
-		log(ERROR, "[HELLO_READ] No acceptable methods. Sending 0xFF.");
-		log_socks5_attempt(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED); // TODO dont think this is ok here
-		metrics_increment_errors(ERROR_TYPE_AUTH);
-		session->current_state = STATE_ERROR_WRITE;
+	if (buffer_writeable_bytes(wb) < 2) {
+		log(ERROR,
+			"[HELLO_READ] No space to write response."); // shouldnt we wait until there is more space left maybe?
+		// session->current_state = STATE_ERROR;
+		return; // no space to write the response
 	}
 
-	log(DEBUG, "[HELLO_READ] Switching to write mode to send response");
-	selector_set_interest_key(key, OP_WRITE);
+	// now safe to write the response
+	buffer_write(wb, SOCKS5_VERSION); // SOCKS version TODO: should we be checking if there is space to write? --> it
+									  // will silently fail if there is no space, so we should handle that somehow
+	if (auth_supported) {
+		buffer_write(wb, SOCKS5_USER_PASS_AUTH); // no auth
+		log(DEBUG, "[HELLO_READ] USER_PASSWORD AUTH supported Moving to STATE_AUTH_READ.");
+		session->authenticated = true; // Mark session as authenticated
+		session->current_state = STATE_HELLO_WRITE;
+	} else if (no_auth_supported) {
+		buffer_write(wb, SOCKS5_NO_AUTH); // no auth
+		log(DEBUG, "[HELLO_READ] No auth supported. Moving to STATE_HELLO_WRITE.");
+		session->current_state = STATE_HELLO_WRITE;
+		session->authenticated = false;
+	} else {
+		log_socks5_attempt(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED);
+
+		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS); // FF means error
+		log(ERROR, "[HELLO_READ] No acceptable methods. Moving to STATE_ERROR.");
+		set_error_state(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED); // Maps to AUTH
+		// session->current_state = STATE_ERROR_WRITE; // close
+	}
+
+	selector_set_interest_key(key, OP_WRITE); // change interest to write
 }
 
 /*
@@ -533,12 +542,12 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 
 	// The shutdown is justified because the RFC specifies that the CLIENT must close the connection.
 	// Gracefully shutting down from the server side is considered good practice and is commonly done by
-	// industry standards such as nginx. By calling shutdown(), we signal we won't send or receive more data,
-	// allowing for a clean connection teardown.
+	// industry standards such as nginx. By calling shutdown(), we signal we won't send or receive more data, allowing
+	// for a clean connection teardown.
 	if (should_shutdown) {
 		log(DEBUG, "[WRITE_TO_CLIENT] All data sent. Shutting down socket.");
-		selector_unregister_fd(key->s, key->fd);
 		shutdown(key->fd, SHUT_RDWR);
+		selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
 		return;
 	}
@@ -547,7 +556,7 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	// TODO: probably a better way tod othis is using a state machine
 	switch (session->current_state) {
 		case STATE_HELLO_WRITE:
-			if (session->authenticated == true) {
+			if (session->authenticated) {
 				session->current_state = STATE_AUTH_READ;
 				log(DEBUG, "[WRITE_TO_CLIENT] Hello complete, transitioning to AUTH_READ");
 			} else {
@@ -664,9 +673,9 @@ static void auth_read(struct selector_key *key) {
 	buffer *wb = &session->write_buffer;
 	if (buffer_writeable_bytes(wb) < 2) {
 		log(ERROR,
-			"[AUTH_READ] No space to write response."); // shouldnt we wait until there is more space left maybe?
-														// --> YES, by returning we are indeed waiting for the next
-														// time the selector notifies us
+			"[AUTH_READ] No space to write response."); // shouldnt we wait until there is more space left maybe? -->
+														// YES, by returning we are indeed waiting for the next time the
+														// selector notifies us
 		// session->current_state = STATE_ERROR;
 		return; // no space to write the response
 	}
@@ -815,6 +824,7 @@ static void request_read(struct selector_key *key) {
 		// Port 0 is reserved and means "any available port" in some contexts (like bind())
 		// For outbound connections, port 0 doesn't make sense - you can't connect TO port 0
 		// Port cant be bigger than 65535, so no need to check that
+
 		if (port == 0) {
 			log(ERROR, "[REQUEST_READ] Invalid port number: %d", port);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
@@ -822,20 +832,10 @@ static void request_read(struct selector_key *key) {
 			return;
 		}
 
-		// Build sockaddr_in directly
-		struct sockaddr_in *addr4 = (struct sockaddr_in *) &session->connection.data.direct.addr;
-		memset(addr4, 0, sizeof(struct sockaddr_in));
-		addr4->sin_family = AF_INET;
-		addr4->sin_addr.s_addr = htonl(ip);
-		addr4->sin_port = htons(port);
-
-		session->connection.atyp = SOCKS5_ATYP_IPV4;
-		session->connection.data.direct.addr_len = sizeof(struct sockaddr_in);
-
 		// Convert IP to string for both logging and getaddrinfo
 		char ip_str[INET_ADDRSTRLEN];
 		struct in_addr addr = {.s_addr = htonl(ip)};
-		if (inet_ntop(AF_INET, &addr, ip_str, sizeof(ip_str)) == NULL) {
+		if (!inet_ntop(AF_INET, &addr, ip_str, sizeof(ip_str))) {
 			log(ERROR, "[REQUEST_READ] Failed to convert IPv4 address");
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			handle_error(key);
@@ -844,6 +844,26 @@ static void request_read(struct selector_key *key) {
 
 		// Store destination info for logging
 		store_dest_info(session, SOCKS5_ATYP_IPV4, ip_str, port);
+
+		// Convert port to string
+		char port_str[6];
+		snprintf(port_str, sizeof(port_str), "%u", port);
+
+		// Use getaddrinfo for consistent memory management
+		struct addrinfo hints;
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = AF_INET;
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_protocol = IPPROTO_TCP;
+		hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV; // No DNS lookup needed
+
+		int err = getaddrinfo(ip_str, port_str, &hints, &session->connection.dst_addresses);
+		if (err != 0) {
+			log(ERROR, "[REQUEST_READ] IPv4 getaddrinfo failed: %s", gai_strerror(err));
+			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			handle_error(key);
+			return;
+		}
 
 		log(DEBUG, "[REQUEST_READ] IPv4 address resolved: %s:%u", ip_str, port);
 		request_connect(key);
@@ -863,24 +883,38 @@ static void request_read(struct selector_key *key) {
 			return;
 		}
 
-		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *) &session->connection.data.direct.addr;
-		memset(addr6, 0, sizeof(struct sockaddr_in6));
-		addr6->sin6_family = AF_INET6;
-		memcpy(&addr6->sin6_addr, ip, 16);
-		addr6->sin6_port = htons(port);
-
-		session->connection.atyp = SOCKS5_ATYP_IPV6;
-		session->connection.data.direct.addr_len = sizeof(struct sockaddr_in6);
-
+		// Convert IPv6 to string for both logging and getaddrinfo
 		char ip_str[INET6_ADDRSTRLEN];
-		if (inet_ntop(AF_INET6, ip, ip_str, sizeof(ip_str)) == NULL) {
+		if (!inet_ntop(AF_INET6, ip, ip_str, sizeof(ip_str))) {
 			log(ERROR, "[REQUEST_READ] Failed to convert IPv6 address");
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			handle_error(key);
 			return;
 		}
 
+		// Store destination info for logging
 		store_dest_info(session, SOCKS5_ATYP_IPV6, ip_str, port);
+
+		// Convert port to string
+		char port_str[6];
+		snprintf(port_str, sizeof(port_str), "%u", port);
+
+		// Use getaddrinfo for consistent memory management
+		struct addrinfo hints;
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = AF_INET6;
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_protocol = IPPROTO_TCP;
+		hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV; // No DNS lookup needed
+
+		int err = getaddrinfo(ip_str, port_str, &hints, &session->connection.dst_addresses);
+		if (err != 0) {
+			log(ERROR, "[REQUEST_READ] IPv6 getaddrinfo failed: %s", gai_strerror(err));
+			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			handle_error(key);
+			return;
+		}
+
 		log(DEBUG, "[REQUEST_READ] IPv6 address resolved: [%s]:%u", ip_str, port);
 		request_connect(key);
 		return;
@@ -888,21 +922,7 @@ static void request_read(struct selector_key *key) {
 	} else if (atyp == SOCKS5_ATYP_DOMAIN) {
 		uint8_t domain_len = buffer_read(rb);
 
-		if (domain_len == 0) {
-			log(ERROR, "[REQUEST_READ] Invalid domain length: 0");
-			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			handle_error(key);
-			return;
-		}
-
-		char *domain_name = malloc(domain_len + 1);
-		if (!domain_name) {
-			log(ERROR, "[REQUEST_READ] Failed to allocate memory for domain name");
-			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			handle_error(key);
-			return;
-		}
-
+		char domain_name[256] = {0};
 		for (int i = 0; i < domain_len; i++) {
 			domain_name[i] = buffer_read(rb);
 		}
@@ -916,11 +936,15 @@ static void request_read(struct selector_key *key) {
 			return;
 		}
 
-		session->connection.data.resolved.dst_port = port;
-		session->connection.data.resolved.domain_name = domain_name;
-		session->connection.data.resolved.dst_addresses = NULL;
-
+		// Store destination info for logging
 		store_dest_info(session, SOCKS5_ATYP_DOMAIN, domain_name, port);
+
+		// Store for DNS resolution (async)
+		session->connection.dst_port = port;
+		if (session->connection.domain_to_resolve) {
+			free(session->connection.domain_to_resolve);
+		}
+		session->connection.domain_to_resolve = strdup(domain_name);
 
 		log(DEBUG, "[REQUEST_READ] Parsed domain name %s and port %d.", domain_name, port);
 		request_resolve(key);
@@ -957,7 +981,7 @@ static void request_write(struct selector_key *key) {
 static void request_resolve(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
-	log(DEBUG, "[REQUEST_RESOLVE] Starting DNS resolution for %s", session->connection.data.resolved.domain_name);
+	log(DEBUG, "[REQUEST_RESOLVE] Starting DNS resolution for %s", session->connection.domain_to_resolve);
 
 	pthread_t tid;
 	struct selector_key *thread_key = malloc(sizeof(*key));
@@ -981,7 +1005,7 @@ static void request_resolve(struct selector_key *key) {
 	session->current_state = STATE_REQUEST_RESOLVE;
 
 	// suspend processing until DNS resolution completes
-	selector_set_interest_key(key, OP_NOOP);
+	selector_set_interest_key(key, OP_READ);
 }
 
 // NOTE: During abrupt server shutdown (SIGTERM), there may be a small memory leak
@@ -991,28 +1015,6 @@ static void *dns_resolution_thread(void *arg) {
 	struct selector_key *key = (struct selector_key *) arg;
 	client_session *session = (client_session *) key->data;
 
-	if (pthread_mutex_lock(&session->mutex) != 0) {
-		log(ERROR, "[DNS_THREAD] Failed to lock mutex!");
-		free(key);
-		return NULL;
-	}
-
-	if (session->cleaned_up || session->connection.atyp != SOCKS5_ATYP_DOMAIN) {
-		log(DEBUG, "[DNS_THREAD] Session cleaned up or invalid, exiting DNS thread");
-		pthread_mutex_unlock(&session->mutex);
-		free(key);
-		return NULL;
-	}
-
-	// Copy essential data to local variables FIRST (thread-safe)
-	char domain_name[256];
-	uint16_t port;
-	strncpy(domain_name, session->connection.data.resolved.domain_name, sizeof(domain_name) - 1);
-	domain_name[sizeof(domain_name) - 1] = '\0';
-	port = session->connection.data.resolved.dst_port;
-
-	pthread_mutex_unlock(&session->mutex);
-
 	struct addrinfo hints;
 	struct addrinfo *res = NULL;
 
@@ -1021,61 +1023,26 @@ static void *dns_resolution_thread(void *arg) {
 	hints.ai_socktype = SOCK_STREAM; // TCP only
 	hints.ai_protocol = IPPROTO_TCP; // TCP protocol
 	hints.ai_flags = AI_ADDRCONFIG;	 // Only return addresses we can actually use check
+									 // TODO: check this
 
-	// TODO: can remove this if we don't want to log the port
 	char port_str[6];
-	snprintf(port_str, sizeof(port_str), "%u", port);
+	snprintf(port_str, sizeof(port_str), "%u", session->connection.dst_port);
 
-	log(DEBUG, "[DNS_THREAD] Starting DNS resolution for %s:%s", domain_name, port_str);
-
-	int err = getaddrinfo(domain_name, port_str, &hints, &res);
-
-	if (pthread_mutex_lock(&session->mutex) != 0) {
-		log(ERROR, "[DNS_THREAD] Failed to lock session mutex, discarding DNS results");
-		if (res)
-			freeaddrinfo(res);
-		free(key);
-		return NULL;
-	}
-
-	// Double-check session is still valid and in correct state
-	if (session->cleaned_up || session->current_state != STATE_REQUEST_RESOLVE ||
-		session->connection.atyp != SOCKS5_ATYP_DOMAIN) {
-		log(DEBUG, "[DNS_THREAD] Session invalid or wrong state, discarding DNS results for %s", domain_name);
-		pthread_mutex_unlock(&session->mutex);
-		if (res)
-			freeaddrinfo(res);
-		free(key);
-		return NULL;
-	}
-
-	// Safe to update session with DNS results
+	int err = getaddrinfo(session->connection.domain_to_resolve, port_str, &hints, &res);
 	if (err != 0) {
 		if (err == EAI_MEMORY) {
 			metrics_increment_errors(ERROR_TYPE_MEMORY);
 		}
-		log(ERROR, "[DNS_THREAD] DNS resolution failed for %s: %s", domain_name, gai_strerror(err));
-
+		log(ERROR, "[DNS_THREAD] getaddrinfo failed: %s", gai_strerror(err));
 		session->dns_failed = true;
 		session->dns_error_code = map_getaddrinfo_error_to_socks5(err);
-		session->connection.data.resolved.dst_addresses = NULL;
-
-		if (res)
-			freeaddrinfo(res);
-
+		session->connection.dst_addresses = NULL;
 	} else {
-		log(DEBUG, "[DNS_THREAD] DNS resolution succeeded for %s", domain_name);
-		log_resolved_addresses(domain_name, res);
-
+		log_resolved_addresses(session->connection.domain_to_resolve, res);
 		session->dns_failed = false;
-		session->dns_error_code = 0;
-		session->connection.data.resolved.dst_addresses = res;
+		session->connection.dst_addresses = res;
 	}
-	session->next_timeout = time(NULL) + session->idle_timeout;
-	log(INFO, "[DNS_RESOLUTION_THREAD] Incremented timeout, notifying selector block...");
-	pthread_mutex_unlock(&session->mutex);
 
-	// Notify the selector that DNS resolution is complete
 	selector_notify_block(key->s, key->fd);
 	free(key);
 	return NULL;
@@ -1084,44 +1051,26 @@ static void *dns_resolution_thread(void *arg) {
 static void request_connect(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
-	log(INFO, "[REQUEST_CONNECT] Attempting to connect to destination.");
+	log(INFO, "[REQUEST_CONNECT] Attempting to connect to resolved address.");
 
-	struct sockaddr *addr;
-	socklen_t addr_len;
-	bool has_next_address = false;
+	struct addrinfo *addr = session->connection.dst_addresses;
 
-	// Handle different connection types based on atyp
-	if (session->connection.atyp == SOCKS5_ATYP_IPV4 || session->connection.atyp == SOCKS5_ATYP_IPV6) {
-		// Direct IP connection - single address
-		addr = (struct sockaddr *) &session->connection.data.direct.addr;
-		addr_len = session->connection.data.direct.addr_len;
-		has_next_address = false;
-
-	} else if (session->connection.atyp == SOCKS5_ATYP_DOMAIN) {
-		struct addrinfo *addrinfo = session->connection.data.resolved.dst_addresses;
-		if (!addrinfo) {
-			log(ERROR, "[REQUEST_CONNECT] No resolved addresses available");
-			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			handle_error(key);
-			return;
-		}
-
-		addr = addrinfo->ai_addr;
-		addr_len = addrinfo->ai_addrlen;
-		has_next_address = (addrinfo->ai_next != NULL);
-
-	} else {
-		log(ERROR, "[REQUEST_CONNECT] Invalid connection type: %d", session->connection.atyp);
+	if (!addr) {
+		log(ERROR, "[REQUEST_CONNECT] No destination address available");
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
 		return;
 	}
-
-	// TODO: delete this
-	// Log connection attempt
 	char addr_buf[INET6_ADDRSTRLEN + 8];
-	sockaddr_to_human(addr_buf, sizeof(addr_buf), addr);
-	const char *family_str = (addr->sa_family == AF_INET) ? "IPv4" : (addr->sa_family == AF_INET6) ? "IPv6" : "Unknown";
+	sockaddr_to_human(addr_buf, sizeof(addr_buf), addr->ai_addr);
+
+	const char *family_str = "Unknown";
+	if (addr->ai_family == AF_INET) {
+		family_str = "IPv4";
+	} else if (addr->ai_family == AF_INET6) {
+		family_str = "IPv6";
+	}
+
 	log(INFO, "[REQUEST_CONNECT] Attempting connection to %s: %s", family_str, addr_buf);
 
 	// Close existing remote_fd if it was already set
@@ -1130,161 +1079,191 @@ static void request_connect(struct selector_key *key) {
 		session->remote_fd = -1;
 	}
 
-	// Create socket
-	session->remote_fd = socket(addr->sa_family, SOCK_STREAM, 0);
+	session->remote_fd = socket(addr->ai_family, SOCK_STREAM, 0);
 	if (session->remote_fd == -1) {
 		log(ERROR, "[REQUEST_CONNECT] Failed to create socket: %s", strerror(errno));
-		handle_connect_failure(key, errno, has_next_address);
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
 		return;
 	}
 
-	// Set non-blocking
 	if (selector_fd_set_nio(session->remote_fd) == -1) {
 		log(ERROR, "[REQUEST_CONNECT] Failed to set non-blocking mode.");
-		close(session->remote_fd);
+		close(session->remote_fd); // cant think clearly, dunno if this is the right place to close it
 		session->remote_fd = -1;
-		handle_connect_failure(key, errno, has_next_address);
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(key);
 		return;
 	}
 
 	// Attempt connection
-	int connect_result = connect(session->remote_fd, addr, addr_len);
-
+	int connect_result = connect(session->remote_fd, addr->ai_addr, addr->ai_addrlen);
 	if (connect_result == 0) {
-		// Immediate success
-		session->current_state = STATE_REQUEST_CONNECT; // arent we already in this state?
-		log(DEBUG, "[REQUEST_CONNECT] Connection succeeded immediately");
-		handle_connect_success(key);
+		// session->current_state = STATE_REQUEST_CONNECT; // arent we already in this state?
+		// selector_set_interest_key(key, OP_NOOP); // we doing this to avoid selector trying to read from remote_fd
+		// Now that weve connected, create the write and read buffers
+		// using buffer_size because in a single session buffer size is locked in
+		session->raw_remote_read_buffer = malloc(session->buffer_size);
+		session->raw_remote_write_buffer = malloc(session->buffer_size);
+		if (!session->raw_remote_read_buffer || !session->raw_remote_write_buffer) {
+			log(ERROR, "[REQUEST_CONNECT] Failed to allocate buffers for remote connection.");
+			metrics_increment_errors(ERROR_TYPE_MEMORY);
+			// Free the other buffer if one failed
+			if (session->raw_remote_read_buffer) {
+				free(session->raw_remote_read_buffer);
+				session->raw_remote_read_buffer = NULL;
+			}
+			if (session->raw_remote_write_buffer) {
+				free(session->raw_remote_write_buffer);
+				session->raw_remote_write_buffer = NULL;
+			}
+			handle_error(key);
+			return;
+		}
+		buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
+		buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
 
-	} else if (connect_result == -1 && errno == EINPROGRESS) {
-		// Connection in progress
-		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
-
-		if (selector_register(key->s, session->remote_fd, &remote_handler, OP_WRITE, session) != SELECTOR_SUCCESS) {
+		if (selector_register(key->s, session->remote_fd, &remote_handler, OP_NOOP, session) != SELECTOR_SUCCESS) {
 			log(ERROR, "[REQUEST_CONNECT] Failed to register remote fd");
-			close(session->remote_fd);
-			session->remote_fd = -1;
-			handle_connect_failure(key, ECONNREFUSED, has_next_address);
+			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			handle_error(key);
 			return;
 		}
 
+		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
+		handle_connect_success(key);
+		return;
+	} else if (connect_result == -1 && errno == EINPROGRESS) {
+		selector_status st = selector_register(key->s, session->remote_fd, &remote_handler, OP_WRITE, session);
+		if (st != SELECTOR_SUCCESS) {
+			log(ERROR, "[REQUEST_CONNECT] Failed to register remote fd: %d", st);
+			close(session->remote_fd);
+			session->remote_fd = -1;
+			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			handle_error(key);
+			return;
+		}
+		// Asignar buffers para cuando se complete la conexión
+		session->raw_remote_read_buffer = malloc(session->buffer_size);
+		session->raw_remote_write_buffer = malloc(session->buffer_size);
+		if (!session->raw_remote_read_buffer || !session->raw_remote_write_buffer) {
+			log(ERROR, "[REQUEST_CONNECT] Failed to allocate buffers for remote connection.");
+			metrics_increment_errors(ERROR_TYPE_MEMORY);
+			if (session->raw_remote_read_buffer) {
+				free(session->raw_remote_read_buffer);
+				session->raw_remote_read_buffer = NULL;
+			}
+			if (session->raw_remote_write_buffer) {
+				free(session->raw_remote_write_buffer);
+				session->raw_remote_write_buffer = NULL;
+			}
+			handle_error(key);
+			return;
+		}
+
+		buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
+		buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
+
 		session->current_state = STATE_REQUEST_CONNECT;
-		selector_set_interest_key(key, OP_NOOP); // wait for remote connect completion
-
-	} else {
-		// Immediate failure
-		log(ERROR, "[REQUEST_CONNECT] Connection failed immediately: %s", strerror(errno));
-		handle_connect_failure(key, errno, has_next_address);
-	}
-}
-
-static void remote_connect_complete(struct selector_key *key) {
-	client_session *session = (client_session *) key->data;
-	log(DEBUG, "[REMOTE_CONNECT_COMPLETE] Called for fd=%d", key->fd);
-
-	int error = 0;
-	socklen_t len = sizeof(error);
-
-	if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
-		log(ERROR, "[REMOTE_CONNECT_COMPLETE] Connection failed: %s", strerror(error != 0 ? error : errno));
-
-		handle_connect_failure(key, error != 0 ? error : errno, true);
+		selector_set_interest_key(key, OP_NOOP);
 		return;
 	}
+	log(ERROR, "[REQUEST_CONNECT] Connection failed immediately: %s", strerror(errno));
 
-	log(DEBUG, "[REMOTE_CONNECT_COMPLETE] Connection completed successfully");
-	handle_connect_success(key);
-}
+	// try the next address if available
+	if (addr->ai_next) {
+		log(DEBUG, "[REQUEST_CONNECT] Trying next address...");
 
-static void handle_connect_failure(struct selector_key *key, int error, bool check_next) {
-	client_session *session = (client_session *) key->data;
+		struct addrinfo *failed_addr = session->connection.dst_addresses;
+		session->connection.dst_addresses = addr->ai_next;
 
-	if (session->remote_fd != -1) {
-		close(session->remote_fd);
-		session->remote_fd = -1;
-	}
-
-	if (check_next && session->connection.atyp == SOCKS5_ATYP_DOMAIN &&
-		session->connection.data.resolved.dst_addresses && session->connection.data.resolved.dst_addresses->ai_next) {
-		// Try next address for domain resolution
-		log(DEBUG, "[CONNECT_FAILURE] Trying next address...");
-
-		struct addrinfo *failed_addr = session->connection.data.resolved.dst_addresses;
-		session->connection.data.resolved.dst_addresses = failed_addr->ai_next;
-
-		// Free the failed address
+		// unlink and free the failed address
 		failed_addr->ai_next = NULL;
 		freeaddrinfo(failed_addr);
 
-		// Retry with next address
+		// Try connecting to next address
 		request_connect(key);
 		return;
 	}
-
-	// No more addresses to try
-	log(ERROR, "[CONNECT_FAILURE] No more addresses to try");
-	uint8_t error_code = map_connect_error_to_socks5(error);
+	log(ERROR, "[REQUEST_CONNECT] No more addresses to try");
+	uint8_t error_code = map_connect_error_to_socks5(errno);
 	log_socks5_attempt(session, error_code);
 	set_error_state(session, error_code);
 	handle_error(key);
 }
 
-static void handle_connect_success(struct selector_key *key) {
-	client_session *session = (client_session *) key->data;
+static void remote_connect_complete(struct selector_key *key) {
+	int error = 0;
+	socklen_t len = sizeof(error);
 
-	log(INFO, "[CONNECT_SUCCESS] Connection successful");
-	log_socks5_attempt(session, 0x00);
-
-	// Clean up DNS addresses if they exist
-	if (session->connection.atyp == SOCKS5_ATYP_DOMAIN && session->connection.data.resolved.dst_addresses) {
-		freeaddrinfo(session->connection.data.resolved.dst_addresses);
-		session->connection.data.resolved.dst_addresses = NULL;
-	}
-
-	// Allocate buffers ONLY when connection is successful
-	if (!allocate_remote_buffers(session)) {
-		handle_error(key);
+	if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
+		log(ERROR, "[REMOTE_CONNECT_COMPLETE] Connection failed: %s", strerror(error != 0 ? error : errno));
+		handle_connect_failure(key, error);
 		return;
 	}
 
+	handle_connect_success(key);
+}
+
+static void handle_connect_failure(struct selector_key *key, int error) {
+	client_session *session = (client_session *) key->data;
+
+	selector_unregister_fd(key->s, key->fd);
+	close(key->fd);
+	session->remote_fd = -1;
+
+	struct addrinfo *current_addr = session->connection.dst_addresses;
+	if (current_addr && current_addr->ai_next != NULL) {
+		log(INFO, "[REMOTE_CONNECT_COMPLETE] Trying next address...");
+
+		struct addrinfo *failed_addr = current_addr;
+		session->connection.dst_addresses = current_addr->ai_next;
+
+		// free failed address
+		failed_addr->ai_next = NULL;
+		freeaddrinfo(failed_addr);
+
+		// try connecting to next IP
+		struct selector_key client_key = {.s = key->s, .fd = session->client_fd, .data = session};
+		request_connect(&client_key);
+		return;
+	}
+
+	log(ERROR, "[HANDLE_CONNECT_FAILURE] No more addresses to try.");
+	uint8_t error_code = map_connect_error_to_socks5(error);
+	log_socks5_attempt(session, error_code);
+
+	struct selector_key client_key = {.s = key->s, .fd = session->client_fd, .data = session};
+	set_error_state(session, error_code);
+	handle_error(&client_key);
+}
+
+static void handle_connect_success(struct selector_key *key) {
+	client_session *session = (client_session *) key->data;
+
+	log(INFO, "[REMOTE_CONNECT_COMPLETE] Connection successful");
+	log_socks5_attempt(session, 0x00);
+
+	if (session->connection.dst_addresses) {
+		freeaddrinfo(session->connection.dst_addresses);
+		session->connection.dst_addresses = NULL;
+	}
+
 	if (!build_socks5_success_response(session)) {
-		log(ERROR, "[CONNECT_SUCCESS] Failed to build success response");
+		log(ERROR, "[REMOTE_CONNECT_COMPLETE] Failed to build success response");
+
+		struct selector_key client_key = {.s = key->s, .fd = session->client_fd, .data = session};
 		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		handle_error(key);
+		handle_error(&client_key);
 		return;
 	}
 
 	selector_set_interest(key->s, key->fd, OP_NOOP);
+
 	session->current_state = STATE_REQUEST_WRITE;
 	selector_set_interest(key->s, session->client_fd, OP_WRITE);
 }
 
-static bool allocate_remote_buffers(client_session *session) {
-	session->raw_remote_read_buffer = malloc(session->buffer_size);
-	session->raw_remote_write_buffer = malloc(session->buffer_size);
-
-	if (!session->raw_remote_read_buffer || !session->raw_remote_write_buffer) {
-		log(ERROR, "[ALLOCATE_BUFFERS] Failed to allocate remote buffers");
-		metrics_increment_errors(ERROR_TYPE_MEMORY);
-
-		if (session->raw_remote_read_buffer) {
-			free(session->raw_remote_read_buffer);
-			session->raw_remote_read_buffer = NULL;
-		}
-		if (session->raw_remote_write_buffer) {
-			free(session->raw_remote_write_buffer);
-			session->raw_remote_write_buffer = NULL;
-		}
-
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		return false;
-	}
-
-	buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
-	buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
-
-	return true;
-}
 static bool build_socks5_success_response(client_session *session) {
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);
@@ -1664,37 +1643,26 @@ bool valid_user(const char *username, const char *password, uint8_t *out_type) {
 }
 
 static void cleanup_session(client_session *session) {
-	if (!session)
+	if (!session) // no longer need the flag setting here
 		return;
 
 	log(DEBUG, "[CLEANUP] Starting session cleanup for client_fd=%d, remote_fd=%d", session->client_fd,
 		session->remote_fd);
 
-	// Lock mutex during cleanup to prevent DNS thread access
-	pthread_mutex_lock(&session->mutex);
-
-	// Clean up connection data based on type
-	if (session->connection.atyp == SOCKS5_ATYP_DOMAIN) {
-		// Clean up domain-specific data
-		if (session->connection.data.resolved.domain_name) {
-			log(DEBUG, "[CLEANUP] Freeing domain name: %s", session->connection.data.resolved.domain_name);
-			free(session->connection.data.resolved.domain_name);
-			session->connection.data.resolved.domain_name = NULL;
-		}
-
-		if (session->connection.data.resolved.dst_addresses) {
-			log(DEBUG, "[CLEANUP] Freeing dst_addresses (atyp=DOMAIN)");
-			freeaddrinfo(session->connection.data.resolved.dst_addresses);
-			session->connection.data.resolved.dst_addresses = NULL;
-		}
+	// Clean up connection data
+	if (session->connection.dst_addresses) {
+		log(DEBUG, "[CLEANUP] Freeing dst_addresses (atyp=%d)", session->connection.atyp);
+		freeaddrinfo(session->connection.dst_addresses);
+		session->connection.dst_addresses = NULL;
 	}
-	// Note: IPv4/IPv6 direct addresses use stack storage in the union - no cleanup needed
 
-	pthread_mutex_unlock(&session->mutex);
+	if (session->connection.domain_to_resolve) {
+		free(session->connection.domain_to_resolve);
+		session->connection.domain_to_resolve = NULL;
+	}
 
-	// Clean up file descriptors
 	if (session->remote_fd != -1) {
-		log(DEBUG, "[CLEANUP] Closing remote_fd=%d", session->remote_fd);
+		log(ERROR, "[CLEANUP] remote_fd=%d still open during cleanup", session->remote_fd);
 		close(session->remote_fd);
 		session->remote_fd = -1;
 	}
@@ -1723,75 +1691,11 @@ static void cleanup_session(client_session *session) {
 		session->raw_remote_write_buffer = NULL;
 	}
 
-	// Clean up authentication data
 	if (session->username) {
 		free(session->username);
 		session->username = NULL;
 	}
-
-	// Destroy mutex last (after all other cleanup is done)
-	pthread_mutex_destroy(&session->mutex);
-
-	free(session);	// Free the session structure itself
-	session = NULL; // Avoid dangling pointer
-
-	log(DEBUG, "[CLEANUP] Session cleanup completed");
 }
-
-// static void cleanup_session(client_session *session) {
-// 	if (!session) // no longer need the flag setting here
-// 		return;
-
-// 	log(DEBUG, "[CLEANUP] Starting session cleanup for client_fd=%d, remote_fd=%d", session->client_fd,
-// 		session->remote_fd);
-
-// 	// Clean up connection data
-// 	if (session->connection.dst_addresses) {
-// 		log(DEBUG, "[CLEANUP] Freeing dst_addresses (atyp=%d)", session->connection.atyp);
-// 		freeaddrinfo(session->connection.dst_addresses);
-// 		session->connection.dst_addresses = NULL;
-// 	}
-
-// 	if (session->connection.domain_to_resolve) {
-// 		free(session->connection.domain_to_resolve);
-// 		session->connection.domain_to_resolve = NULL;
-// 	}
-
-// 	if (session->remote_fd != -1) {
-// 		log(ERROR, "[CLEANUP] remote_fd=%d still open during cleanup", session->remote_fd);
-// 		close(session->remote_fd);
-// 		session->remote_fd = -1;
-// 	}
-
-// 	// Clean up client buffers
-// 	if (session->raw_read_buffer) {
-// 		buffer_reset(&session->read_buffer);
-// 		free(session->raw_read_buffer);
-// 		session->raw_read_buffer = NULL;
-// 	}
-// 	if (session->raw_write_buffer) {
-// 		buffer_reset(&session->write_buffer);
-// 		free(session->raw_write_buffer);
-// 		session->raw_write_buffer = NULL;
-// 	}
-
-// 	// Clean up remote buffers only if they were allocated
-// 	if (session->raw_remote_read_buffer) {
-// 		buffer_reset(&session->remote_read_buffer);
-// 		free(session->raw_remote_read_buffer);
-// 		session->raw_remote_read_buffer = NULL;
-// 	}
-// 	if (session->raw_remote_write_buffer) {
-// 		buffer_reset(&session->remote_write_buffer);
-// 		free(session->raw_remote_write_buffer);
-// 		session->raw_remote_write_buffer = NULL;
-// 	}
-
-// 	if (session->username) {
-// 		free(session->username);
-// 		session->username = NULL;
-// 	}
-// }
 
 static void log_socks5_attempt(client_session *session, uint8_t status_code) {
 	const char *username = session->username ? session->username : NULL;
