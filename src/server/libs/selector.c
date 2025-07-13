@@ -532,11 +532,11 @@ static void handle_block_notifications(fd_selector s) {
 	};
 	pthread_mutex_lock(&s->resolution_mutex);
 	struct blocking_job *j = s->resolution_jobs;
-	if (j == NULL) {
-		log(DEBUG, "[HANDLE_BLOCK] No pending DNS notifications");
-	} else {
-		log(DEBUG, "[HANDLE_BLOCK] Processing DNS notifications");
-	}
+	// if (j == NULL) {
+	// 	log(DEBUG, "[HANDLE_BLOCK] No pending DNS notifications");
+	// } else {
+	// 	log(DEBUG, "[HANDLE_BLOCK] Processing DNS notifications");
+	// }
 	while (j != NULL) {
 		struct item *item = s->fds + j->fd;
 		if (ITEM_USED(item)) {
@@ -641,18 +641,18 @@ selector_status selector_select(fd_selector s) {
 
 	int n = epoll_wait(s->epoll_fd, s->events, s->max_events, timeout_ms);
 	if (n < 0) {
-		if (errno == EINTR) {
-			log(DEBUG, "[SELECTOR_SELECT] Interrupted by signal");
-			// Continue processing - don't return early
-		} else {
-			perror("epoll_wait");
-			ret = SELECTOR_IO;
-			goto finally;
-		}
-	}
-
-	log(DEBUG, "[SELECTOR_SELECT] epoll_wait returned %d events", n);
-
+        if (errno == EINTR) {
+            log(DEBUG, "[SELECTOR_SELECT] Interrupted by signal");
+            // Continue processing - don't return early
+        } else {
+            perror("epoll_wait");
+            ret = SELECTOR_IO;
+            goto finally;
+        }
+    }
+    
+    // log(DEBUG, "[SELECTOR_SELECT] epoll_wait returned %d events", n);
+    
 	// log(DEBUG, "[SELECTOR_SELECT] epoll_wait returned %d, errno=%d", n, errno);
 
 	if (n < 0) {
