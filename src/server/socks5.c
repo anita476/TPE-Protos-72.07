@@ -112,7 +112,6 @@ void socks5_handle_new_connection(struct selector_key *key) {
 		return;
 	}
 	session->type = SESSION_SOCKS5;			   // Set session type
-	pthread_mutex_init(&session->mutex, NULL); // Initialize mutex for DNS handling
 	// initialize timeout
 	session->connection_start = time(NULL);
 	session->idle_timeout = g_connection_timeout;
@@ -1016,27 +1015,12 @@ static void *dns_resolution_thread(void *arg) {
 	struct selector_key *key = (struct selector_key *) arg;
 	client_session *session = (client_session *) key->data;
 
-	if (pthread_mutex_lock(&session->mutex) != 0) {
-		log(ERROR, "[DNS_THREAD] Failed to lock mutex!");
-		free(key);
-		return NULL;
-	}
-
-	if (session->cleaned_up || session->connection.atyp != SOCKS5_ATYP_DOMAIN) {
-		log(DEBUG, "[DNS_THREAD] Session cleaned up or invalid, exiting DNS thread");
-		pthread_mutex_unlock(&session->mutex);
-		free(key);
-		return NULL;
-	}
-
 	// Copy essential data to local variables FIRST (thread-safe)
 	char domain_name[256];
 	uint16_t port;
 	strncpy(domain_name, session->connection.data.resolved.domain_name, sizeof(domain_name) - 1);
 	domain_name[sizeof(domain_name) - 1] = '\0';
 	port = session->connection.data.resolved.dst_port;
-
-	pthread_mutex_unlock(&session->mutex);
 
 	struct addrinfo hints;
 	struct addrinfo *res = NULL;
@@ -1055,25 +1039,6 @@ static void *dns_resolution_thread(void *arg) {
 
 	int err = getaddrinfo(domain_name, port_str, &hints, &res);
 
-	if (pthread_mutex_lock(&session->mutex) != 0) {
-		log(ERROR, "[DNS_THREAD] Failed to lock session mutex, discarding DNS results");
-		if (res)
-			freeaddrinfo(res);
-		free(key);
-		return NULL;
-	}
-
-	// Double-check session is still valid and in correct state
-	if (session->cleaned_up || session->current_state != STATE_REQUEST_RESOLVE ||
-		session->connection.atyp != SOCKS5_ATYP_DOMAIN) {
-		log(DEBUG, "[DNS_THREAD] Session invalid or wrong state, discarding DNS results for %s", domain_name);
-		pthread_mutex_unlock(&session->mutex);
-		if (res)
-			freeaddrinfo(res);
-		free(key);
-		return NULL;
-	}
-
 	// Safe to update session with DNS results
 	if (err != 0) {
 		if (err == EAI_MEMORY) {
@@ -1081,28 +1046,27 @@ static void *dns_resolution_thread(void *arg) {
 		}
 		log(ERROR, "[DNS_THREAD] DNS resolution failed for %s: %s", domain_name, gai_strerror(err));
 
-		session->dns_failed = true;
-		session->dns_error_code = map_getaddrinfo_error_to_socks5(err);
-		session->connection.data.resolved.dst_addresses = NULL;
+		// session->dns_failed = true;
+		// session->dns_error_code = map_getaddrinfo_error_to_socks5(err);
+		// session->connection.data.resolved.dst_addresses = NULL;
 
 		if (res)
 			freeaddrinfo(res);
+		
+			selector_notify_block_with_result(key->s, key->fd, NULL);
 
 	} else {
 		log(DEBUG, "[DNS_THREAD] DNS resolution succeeded for %s", domain_name);
 		log_resolved_addresses(domain_name, res);
 
-		session->dns_failed = false;
-		session->dns_error_code = 0;
-		session->connection.data.resolved.dst_addresses = res;
+		// session->dns_failed = false;
+		// session->dns_error_code = 0;
+		// session->connection.data.resolved.dst_addresses = res;
 
-		// Notify the selector that DNS resolution is complete
-		log(DEBUG, "[DNS_THREAD] About to notify selector for fd=%d", key->fd);
-		selector_notify_block(key->s, key->fd);
+		selector_notify_block_with_result(key->s, key->fd, res);
 		log(DEBUG, "[DNS_THREAD] Selector notification sent for fd=%d", key->fd);
 	}
 
-	pthread_mutex_unlock(&session->mutex);
 
 	free(key);
 	return NULL;
@@ -1730,9 +1694,6 @@ static void cleanup_session(client_session *session) {
 	log(DEBUG, "[CLEANUP] Starting session cleanup for client_fd=%d, remote_fd=%d", session->client_fd,
 		session->remote_fd);
 
-	// Lock mutex during cleanup to prevent DNS thread access
-	pthread_mutex_lock(&session->mutex);
-
 	// Clean up connection data based on type
 	if (session->connection.atyp == SOCKS5_ATYP_DOMAIN) {
 		// Clean up domain-specific data
@@ -1749,8 +1710,6 @@ static void cleanup_session(client_session *session) {
 		}
 	}
 	// Note: IPv4/IPv6 direct addresses use stack storage in the union - no cleanup needed
-
-	pthread_mutex_unlock(&session->mutex);
 
 	// Clean up file descriptors
 	if (session->remote_fd != -1) {
@@ -1787,9 +1746,6 @@ static void cleanup_session(client_session *session) {
 		free(session->username);
 		session->username = NULL;
 	}
-
-	// Destroy mutex last (after all other cleanup is done)
-	pthread_mutex_destroy(&session->mutex);
 
 	free(session);	// Free the session structure itself
 	session = NULL; // Avoid dangling pointer

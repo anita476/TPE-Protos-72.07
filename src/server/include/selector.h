@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <sys/time.h>
 #include <sys/types.h>
-
+#include <netdb.h>
 /**
  * selector.c - un muliplexor de entrada salida
  *
@@ -174,6 +174,8 @@ int selector_fd_set_nio(const int fd);
 
 /** notifica que un trabajo bloqueante terminó */
 selector_status selector_notify_block(fd_selector s, const int fd);
+
+selector_status selector_notify_block_with_result(fd_selector s, const int fd, struct addrinfo *dns_result);
 
 // selector_status selector_unregister_fd_noclose(fd_selector s, const int fd);
 

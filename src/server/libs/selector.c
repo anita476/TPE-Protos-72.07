@@ -526,31 +526,114 @@ selector_status selector_set_interest_key(struct selector_key *key, fd_interest 
  * se encarga de manejar los resultados del select.
  * se encuentra separado para facilitar el testing
  */
+// static void handle_block_notifications(fd_selector s) {
+// 	struct selector_key key = {
+// 		.s = s,
+// 	};
+// 	pthread_mutex_lock(&s->resolution_mutex);
+// 	struct blocking_job *j = s->resolution_jobs;
+// 	// if (j == NULL) {
+// 	// 	log(DEBUG, "[HANDLE_BLOCK] No pending DNS notifications");
+// 	// } else {
+// 	// 	log(DEBUG, "[HANDLE_BLOCK] Processing DNS notifications");
+// 	// }
+// 	while (j != NULL) {
+// 		struct item *item = s->fds + j->fd;
+// 		if (ITEM_USED(item)) {
+// 			key.fd = item->fd;
+// 			key.data = item->data;
+// 			item->handler->handle_block(&key);
+// 		}
+
+// 		struct blocking_job *aux = j;
+// 		j = j->next;
+// 		free(aux);
+// 	}
+// 	s->resolution_jobs = 0;
+// 	pthread_mutex_unlock(&s->resolution_mutex);
+// }
 static void handle_block_notifications(fd_selector s) {
-	struct selector_key key = {
-		.s = s,
-	};
+	struct selector_key key = { .s = s };
+	
 	pthread_mutex_lock(&s->resolution_mutex);
 	struct blocking_job *j = s->resolution_jobs;
-	// if (j == NULL) {
-	// 	log(DEBUG, "[HANDLE_BLOCK] No pending DNS notifications");
-	// } else {
-	// 	log(DEBUG, "[HANDLE_BLOCK] Processing DNS notifications");
-	// }
+	
 	while (j != NULL) {
 		struct item *item = s->fds + j->fd;
-		if (ITEM_USED(item)) {
+		
+		if (ITEM_USED(item) && item->data != NULL) {
+			// Session válida - procesar resultado
+			client_session *session = (client_session *) item->data;
+			
+			struct addrinfo *dns_result = (struct addrinfo *) j->data;
+			if (dns_result) {
+				// DNS tuvo éxito
+				session->dns_failed = false;
+				session->dns_error_code = 0;
+				session->connection.data.resolved.dst_addresses = dns_result;
+			} else {
+				// DNS falló
+				session->dns_failed = true;
+				session->dns_error_code = SOCKS5_REPLY_HOST_UNREACHABLE; // o mapear error
+				session->connection.data.resolved.dst_addresses = NULL;
+			}
+			
+			// Llamar handle_block
 			key.fd = item->fd;
 			key.data = item->data;
-			item->handler->handle_block(&key);
+			if (item->handler->handle_block) {
+				item->handler->handle_block(&key);
+			}
+		} else {			
+			if (j->data) {
+				freeaddrinfo((struct addrinfo *) j->data);
+			}
 		}
 
 		struct blocking_job *aux = j;
 		j = j->next;
 		free(aux);
 	}
-	s->resolution_jobs = 0;
+	s->resolution_jobs = NULL;
 	pthread_mutex_unlock(&s->resolution_mutex);
+}
+
+selector_status selector_notify_block_with_result(fd_selector s, const int fd, struct addrinfo *dns_result) {
+	log(DEBUG, "[SELECTOR_NOTIFY] Notifying selector for fd=%d", fd);
+
+	selector_status ret = SELECTOR_SUCCESS;
+
+	struct blocking_job *job = malloc(sizeof(*job));
+	if (job == NULL) {
+		ret = SELECTOR_ENOMEM;
+		goto finally;
+	}
+	job->s = s;
+	job->fd = fd;
+	job->data = dns_result; 
+
+	// encolamos en el selector los resultados
+	pthread_mutex_lock(&s->resolution_mutex);
+	job->next = s->resolution_jobs;
+	s->resolution_jobs = job;
+	pthread_mutex_unlock(&s->resolution_mutex);
+
+	// Wake up selector using eventfd
+	uint64_t value = 1;
+	ssize_t bytes_written = write(s->notify_fd, &value, sizeof(value));
+	if (bytes_written != sizeof(value)) {
+		if (bytes_written == -1) {
+			log(ERROR, "[SELECTOR_NOTIFY] Failed to write to eventfd: %s", strerror(errno));
+		} else {
+			log(ERROR, "[SELECTOR_NOTIFY] Partial write to eventfd: %zd bytes", bytes_written);
+		}
+		ret = SELECTOR_IO;
+	} else {
+		log(DEBUG, "[SELECTOR_NOTIFY] EventFD notification sent successfully");
+	}
+
+finally:
+	return ret;
 }
 
 selector_status selector_notify_block(fd_selector s, const int fd) {

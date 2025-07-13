@@ -111,7 +111,6 @@ typedef struct {
 	// DNS handling -> is it necessary to separate it?
 	bool dns_failed; // Add this field
 	uint8_t dns_error_code;
-	pthread_mutex_t mutex; // for dns 
 
 	// Error handling
 	bool has_error;
