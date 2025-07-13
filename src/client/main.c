@@ -204,7 +204,6 @@ static int count_logs(void *data) {
 
 static void display_users(void *data, int count, int page) {
 	if (count == 0) {
-		ui_show_message("Info", "No users found");
 		return;
 	}
 
@@ -235,7 +234,6 @@ static void display_users(void *data, int count, int page) {
 
 static void display_logs(void *data, int count, int page) {
 	if (count == 0) {
-		ui_show_message("Info", "No logs found");
 		return;
 	}
 
