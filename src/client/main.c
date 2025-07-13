@@ -114,7 +114,7 @@ static int authenticate() {
 	char username[MAX_INPUT], password[MAX_INPUT];
 
 	for (int attempts = 0; attempts < 3; attempts++) {
-		server_socket = setup_tcp_client_Socket(server_address, server_port);
+		server_socket = setup_tcp_client_socket(server_address, server_port);
 		if (server_socket < 0) {
 			ui_show_message("Error", "Failed to connect to server");
 			return 0;

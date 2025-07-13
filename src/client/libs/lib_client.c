@@ -27,7 +27,7 @@ static uint8_t get_user_type() {
 	return user_type;
 }
 
-int setup_tcp_client_Socket(char *address, char *port) {
+int setup_tcp_client_socket(char *address, char *port) {
 	struct addrinfo addrCriteria = {0};		// Criteria for address match
 	addrCriteria.ai_family = AF_UNSPEC;		// v4 or v6 is OK
 	addrCriteria.ai_socktype = SOCK_STREAM; // Only streaming sockets
