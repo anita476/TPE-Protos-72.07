@@ -381,6 +381,7 @@ selector_status selector_register(fd_selector s, const int fd, const fd_handler 
 	if (ufd > s->fd_size) {
 		ret = ensure_capacity(s, ufd);
 		if (SELECTOR_SUCCESS != ret) {
+			log(ERROR, "Couldnt ensure capacity");
 			goto finally;
 		}
 	}
@@ -580,6 +581,7 @@ selector_status selector_notify_block(fd_selector s, const int fd) {
 		if (bytes_written == -1) {
 			log(ERROR, "[SELECTOR_NOTIFY] Failed to write to eventfd: %s", strerror(errno));
 		} else {
+			// should never happen
 			log(ERROR, "[SELECTOR_NOTIFY] Partial write to eventfd: %zd bytes", bytes_written);
 		}
 		ret = SELECTOR_IO;
