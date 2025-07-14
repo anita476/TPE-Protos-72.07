@@ -124,7 +124,6 @@ typedef struct user_list_entry {
 	uint8_t ulen;
 	char username[USERNAME_MAX_SIZE];
 	uint8_t user_type;
-	uint8_t package_id; // TODO capaz sacar?
 	struct user_list_entry *next;
 } user_list_entry;
 

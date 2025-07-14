@@ -255,7 +255,7 @@ static void display_logs(void *data, int count, int page) {
 				 "  Origin port: %d\n"
 				 "  Destination: %s\n"
 				 "  Destination port: %d\n"
-				 "  Status code: 0x%02x\n\n",
+				 "  Status code: %s\n\n",
 				 start_index + display_count + 1, current->date, current->username, current->register_type,
 				 current->origin_ip, current->origin_port, current->destination_address, current->destination_port,
 				 current->status_code);

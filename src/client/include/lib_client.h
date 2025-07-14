@@ -5,6 +5,9 @@
 #include <netinet/in.h>
 #include <stdint.h>
 
+#define MAX_STATUS_CODE_LEN_TEXT 35
+
+
 typedef struct client_log_entry {
 	char date[DATE_SIZE];
 	uint8_t ulen;
@@ -15,7 +18,7 @@ typedef struct client_log_entry {
 	uint8_t destination_ATYP;
 	char destination_address[DOMAIN_MAX_SIZE + 1];
 	uint16_t destination_port;
-	uint8_t status_code;
+	char status_code[MAX_STATUS_CODE_LEN_TEXT];
 	struct client_log_entry *next; // Only client needs this
 } client_log_entry_t;
 

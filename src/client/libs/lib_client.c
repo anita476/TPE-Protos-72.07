@@ -16,11 +16,14 @@
 #include "buffer.h"
 #include "lib_client.h"
 
+#include "socks5_constants.h"
+
 metrics_t *handle_metrics_response(int sock, metrics_t *m);
 void fill_log_struct(char *data, client_log_entry_t *log);
 void fill_user_list_entry(char *data, user_list_entry *user);
 uint8_t add_user_send_req(int sock, char *username, char *password, uint8_t user_type_command_code);
 uint8_t remove_user_send_req(int sock, char *username);
+void fill_log_struct_status_code(char * status_code_ptr, uint8_t status_code);
 static uint8_t user_type;
 
 static uint8_t get_user_type() {
@@ -269,7 +272,7 @@ uint8_t handle_change_timeout(int sock, uint8_t new_timeout) {
 	}
 
 	if (request_send(COMMAND_CHANGE_TIMEOUT, new_timeout, RESERVED_BYTE, sock) != 0) {
-		return RESPONSE_GENERAL_SERVER_FAILURE; // TODO check error codes for send error
+		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to send request
 	}
 
 	char response[RESPONSE_HEADER_LEN];
@@ -501,7 +504,7 @@ user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock) {
 		memcpy(new_user->username, username_data, ulen);
 		new_user->username[ulen] = '\0';
 		new_user->user_type = user_type;
-		new_user->package_id = 0; // TODO: not being used atm
+
 		new_user->next = NULL;
 
 		if (head == NULL) {
@@ -515,6 +518,51 @@ user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock) {
 
 	return head;
 }
+void fill_log_struct_status_code(char * status_code_ptr, uint8_t status_code) {
+	snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT, "0x%02X", status_code);
+	status_code_ptr += 4;
+	*status_code_ptr = ' ';
+	status_code_ptr++;
+	switch (status_code) {
+		case SOCKS5_REPLY_SUCCESS:
+			snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT - 5, "SUCCESS");
+			status_code_ptr[7] = '\0'; // Ensure null termination
+			break;
+		case SOCKS5_REPLY_GENERAL_FAILURE:
+			snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT - 5, "SOCKS5 GENERAL FAILURE");
+			status_code_ptr[24] = '\0'; // Ensure null termination
+			break;
+		case SOCKS5_REPLY_CONNECTION_NOT_ALLOWED:
+			snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT - 5, "CONNECTION NOT ALLOWED");
+			status_code_ptr[22] = '\0'; // Ensure null termination
+			break;
+		case SOCKS5_REPLY_NETWORK_UNREACHABLE:
+			snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT - 5, "NETWORK UNREACHABLE");
+			status_code_ptr[20] = '\0';
+			break;
+		case SOCKS5_REPLY_HOST_UNREACHABLE:
+			snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT - 5, "HOST UNREACHABLE");
+			status_code_ptr[18] = '\0';
+			break;
+		case SOCKS5_REPLY_TTL_EXPIRED:
+			snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT - 5, "TTL EXPIRED");
+			status_code_ptr[12] = '\0';
+			break;
+		case SOCKS5_REPLY_COMMAND_NOT_SUPPORTED:
+			snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT - 5, "COMMAND NOT SUPPORTED");
+			status_code_ptr[20] = '\0';
+			break;
+		case SOCKS5_REPLY_ADDRESS_TYPE_NOT_SUPPORTED:
+			snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT - 5, "ADDRESS TYPE NOT SUPPORTED");
+			status_code_ptr[26] = '\0';
+			break;
+		default:
+			snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT - 5, "UNKNOWN");
+			status_code_ptr[7] = '\0';
+			break;
+	}
+}
+
 
 void fill_log_struct(char *data, client_log_entry_t *log) {
 	char *ptr = data;
@@ -559,8 +607,9 @@ void fill_log_struct(char *data, client_log_entry_t *log) {
 	log->destination_port = ntohs(dest_port_net);
 	ptr += sizeof(uint16_t);
 
-	// Status code (1 byte)
-	log->status_code = *ptr++;
+	fill_log_struct_status_code(log->status_code, *ptr);
+
+
 }
 
 void fill_user_list_entry(char *data, user_list_entry *user) {
@@ -569,7 +618,6 @@ void fill_user_list_entry(char *data, user_list_entry *user) {
 	user->username[user->ulen] = '\0';
 	data += user->ulen;
 	user->user_type = *data++;
-	user->package_id = *data++; // Set the package ID
 }
 
 void free_log_list(client_log_entry_t *node) {
