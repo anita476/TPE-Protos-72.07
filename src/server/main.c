@@ -237,6 +237,12 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	if (selector != NULL) {
+		selector_destroy(selector);
+	}
+	selector_close();
+
+	// cleanup
 	metrics_cleanup();
 
 	exit(0);

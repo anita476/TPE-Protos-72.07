@@ -1365,19 +1365,27 @@ static void relay_client_to_remote(struct selector_key *key) {
 		return;
 	}
 	if (bytes_read == 0) {
-		log(DEBUG, "[RELAY] Client closed connection");
+		log(INFO, "[RELAY] Client closed connection");
 
 		// Check if there's still buffered data to send to remote
 		if (buffer_can_read(client_to_remote_buf)) {
-			log(DEBUG, "[RELAY] Client closed but buffered data remains, keeping connection open");
+			log(INFO, "[RELAY] Client closed but buffered data remains, keeping connection open");
 			// Keep connection open to flush remaining data
 			selector_set_interest(key->s, session->remote_fd, OP_WRITE);
 			return;
 		}
+		int remote_fd = session->remote_fd;
 
-		// No buffered data, safe to close
+		// No buffered data, safe to close only this FD
 		selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
+
+		// delete the dangling session if open..
+		// If remote_fd is still open, unregister and close it
+		if (remote_fd != -1 && remote_fd != key->fd) {
+			selector_unregister_fd(key->s, remote_fd);
+			close(remote_fd);
+		}
 		return;
 	}
 
@@ -1432,19 +1440,25 @@ static void relay_remote_to_client(struct selector_key *key) {
 		return;
 	}
 	if (bytes_read == 0) {
-		log(DEBUG, "[RELAY] Remote closed connection");
+		log(INFO, "[RELAY] Remote closed connection");
 
 		// Check if there's still buffered data to send to client
 		if (buffer_can_read(remote_to_client_buf)) {
-			log(DEBUG, "[RELAY] Remote closed but buffered data remains, keeping connection open");
+			log(INFO, "[RELAY] Remote closed but buffered data remains, keeping connection open");
 			// Keep connection open to flush remaining data
 			selector_set_interest(key->s, session->client_fd, OP_WRITE);
 			return;
 		}
-
+		int client_fd = session->client_fd;
 		// No buffered data, safe to close
 		selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
+
+		// close potentially dangling session
+		if (client_fd != -1 && client_fd != key->fd) {
+			selector_unregister_fd(key->s, client_fd);
+			close(client_fd);
+		}
 		return;
 	}
 
