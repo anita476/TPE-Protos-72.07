@@ -9,7 +9,6 @@
 #include <string.h>
 
 void handle_pagination(const pagination_config_t *config, int socket, int items_per_page) {
-	printf("SOCKET: %d\n", socket);
 	if (socket < 0) {
 		ui_show_message("Error", "No server connection");
 		return;

@@ -64,7 +64,6 @@ static error_type_t map_socks5_error_to_type(uint8_t error_code);
 static void log_resolved_addresses(const char *domain,
 								   struct addrinfo *addr_list); // This could be deleted since its just for debugging
 static void *dns_resolution_thread(void *arg);
-// static void handle_connect_failure(struct selector_key *key, int error);
 static void handle_connect_failure(struct selector_key *key, int error, bool has_next_address);
 static void handle_connect_success(struct selector_key *key);
 bool valid_user(const char *username, const char *password, uint8_t *out_type);
@@ -89,7 +88,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 			return;
 		}
 		metrics_increment_errors(ERROR_TYPE_NETWORK);
-		perror("accept error"); // TODO should chane this
+		perror("accept error");
 		return;
 	}
 
@@ -112,6 +111,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 		return;
 	}
 	session->type = SESSION_SOCKS5; // Set session type
+
 	// initialize timeout
 	session->connection_start = time(NULL);
 	session->idle_timeout = g_connection_timeout;
@@ -125,8 +125,6 @@ void socks5_handle_new_connection(struct selector_key *key) {
 
 	// Store client info immediately
 	store_client_info(session, &client_addr);
-
-	log_socks5_attempt(session, SOCKS5_REPLY_SUCCESS);
 
 	// Initialize destination info
 	strcpy(session->logging.dest_addr, "unknown");
@@ -189,6 +187,7 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	log(INFO, "===============================================================");
 	log(INFO, "[HANDLE_CONNECTION] Accepted new client: fd=%d from %s:%d", client_fd, session->logging.client_ip,
 		session->logging.client_port);
+	log_socks5_attempt(session, SOCKS5_REPLY_SUCCESS);
 
 	metrics_increment_connections();
 }
@@ -302,7 +301,6 @@ static void socks5_handle_close(struct selector_key *key) {
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Both fds closed, cleaning up session");
 	selector_unregister_fd(key->s, key->fd);
 	cleanup_session(session);
-	// free(session);
 	metrics_decrement_connections();
 
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Close handler complete for fd=%d", key->fd);
@@ -350,6 +348,7 @@ static void close_connection_immediately(struct selector_key *key, error_type_t 
 	selector_unregister_fd(key->s, key->fd);
 	close(key->fd);
 }
+
 // this is the FIRST message, it looks like:
 /*
 |VER | NMETHODS | METHODS  |
@@ -489,7 +488,6 @@ If the selected METHOD is X'FF', none of the methods listed by the
 client are acceptable, and the CLIENT MUST close the connection. -> shutdown from server side and wait for client to
 disconnect
 
-TODO: maybe change some debugs since it's now being globally used
 */
 
 static void write_to_client(struct selector_key *key, bool should_shutdown) {
@@ -556,7 +554,6 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	}
 
 	// If we're not shutting down, update to next state
-	// TODO: probably a better way tod othis is using a state machine
 	switch (session->current_state) {
 		case STATE_HELLO_WRITE:
 			if (session->authenticated == true) {
@@ -584,8 +581,6 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 			log(ERROR, "[WRITE_TO_CLIENT] Unexpected state for write completion: %d", session->current_state);
 			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			// set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			// handle_error(key); // MAL!
 			return;
 	}
 
@@ -674,15 +669,10 @@ static void auth_read(struct selector_key *key) {
 	buffer_read_adv(rb, plen);
 
 	// prepare reply and change interest to WRITE (we want to send the auth response)
-	// TODO: what should we do if there is no space to write the response? for now we are just returning
 
 	buffer *wb = &session->write_buffer;
 	if (buffer_writeable_bytes(wb) < 2) {
-		log(ERROR,
-			"[AUTH_READ] No space to write response."); // shouldnt we wait until there is more space left maybe?
-														// --> YES, by returning we are indeed waiting for the next
-														// time the selector notifies us
-		// session->current_state = STATE_ERROR;
+		log(ERROR, "[AUTH_READ] No space to write response.");
 		return; // no space to write the response
 	}
 
@@ -1032,7 +1022,6 @@ static void *dns_resolution_thread(void *arg) {
 	hints.ai_protocol = IPPROTO_TCP; // TCP protocol
 	hints.ai_flags = AI_ADDRCONFIG;	 // Only return addresses we can actually use check
 
-	// TODO: can remove this if we don't want to log the port
 	char port_str[6];
 	snprintf(port_str, sizeof(port_str), "%u", port);
 
@@ -1047,10 +1036,6 @@ static void *dns_resolution_thread(void *arg) {
 		}
 		log(ERROR, "[DNS_THREAD] DNS resolution failed for %s: %s", domain_name, gai_strerror(err));
 
-		// session->dns_failed = true;
-		// session->dns_error_code = map_getaddrinfo_error_to_socks5(err);
-		// session->connection.data.resolved.dst_addresses = NULL;
-
 		if (res)
 			freeaddrinfo(res);
 
@@ -1059,10 +1044,6 @@ static void *dns_resolution_thread(void *arg) {
 	} else {
 		log(DEBUG, "[DNS_THREAD] DNS resolution succeeded for %s", domain_name);
 		log_resolved_addresses(domain_name, res);
-
-		// session->dns_failed = false;
-		// session->dns_error_code = 0;
-		// session->connection.data.resolved.dst_addresses = res;
 
 		selector_notify_block_with_result(key->s, key->fd, res);
 		log(DEBUG, "[DNS_THREAD] Selector notification sent for fd=%d", key->fd);
@@ -1174,7 +1155,6 @@ static void request_connect(struct selector_key *key) {
 }
 
 static void remote_connect_complete(struct selector_key *key) {
-	client_session *session = (client_session *) key->data;
 	int error = 0;
 	socklen_t len = sizeof(error);
 
@@ -1337,6 +1317,7 @@ static void relay_data(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
 	if (key->fd == session->client_fd) {
+		log(DEBUG, "[RELAY_DATA] Relay client to remote");
 		// Data from client to remote server
 		relay_client_to_remote(key);
 	} else if (key->fd == session->remote_fd) {
@@ -1657,9 +1638,6 @@ static bool send_socks5_error_response(struct selector_key *key) {
 	return true;
 }
 
-// if connect_to_destination fails: log(ERROR, "[REQUEST_READ] Connection to destination failed");
-// set_error_state(session, SOCKS5_REPLY_CONNECTION_REFUSED);
-// return;
 static void handle_error(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
@@ -1675,7 +1653,6 @@ static void handle_error(struct selector_key *key) {
 			return;
 		}
 	}
-	// selector_unregister_fd(key->s, key->fd); REMOVED line bc the selector will handle cleanup via EPOLLHUP
 	log(DEBUG, "[HANDLE_ERROR] Closing fd=%d to trigger cleanup", key->fd);
 	selector_unregister_fd(key->s, key->fd);
 	close(key->fd); // always close the fd, selector does NOT handle it
@@ -1784,61 +1761,6 @@ static void cleanup_session(client_session *session) {
 
 	log(DEBUG, "[CLEANUP] Session cleanup completed");
 }
-
-// static void cleanup_session(client_session *session) {
-// 	if (!session) // no longer need the flag setting here
-// 		return;
-
-// 	log(DEBUG, "[CLEANUP] Starting session cleanup for client_fd=%d, remote_fd=%d", session->client_fd,
-// 		session->remote_fd);
-
-// 	// Clean up connection data
-// 	if (session->connection.dst_addresses) {
-// 		log(DEBUG, "[CLEANUP] Freeing dst_addresses (atyp=%d)", session->connection.atyp);
-// 		freeaddrinfo(session->connection.dst_addresses);
-// 		session->connection.dst_addresses = NULL;
-// 	}
-
-// 	if (session->connection.domain_to_resolve) {
-// 		free(session->connection.domain_to_resolve);
-// 		session->connection.domain_to_resolve = NULL;
-// 	}
-
-// 	if (session->remote_fd != -1) {
-// 		log(ERROR, "[CLEANUP] remote_fd=%d still open during cleanup", session->remote_fd);
-// 		close(session->remote_fd);
-// 		session->remote_fd = -1;
-// 	}
-
-// 	// Clean up client buffers
-// 	if (session->raw_read_buffer) {
-// 		buffer_reset(&session->read_buffer);
-// 		free(session->raw_read_buffer);
-// 		session->raw_read_buffer = NULL;
-// 	}
-// 	if (session->raw_write_buffer) {
-// 		buffer_reset(&session->write_buffer);
-// 		free(session->raw_write_buffer);
-// 		session->raw_write_buffer = NULL;
-// 	}
-
-// 	// Clean up remote buffers only if they were allocated
-// 	if (session->raw_remote_read_buffer) {
-// 		buffer_reset(&session->remote_read_buffer);
-// 		free(session->raw_remote_read_buffer);
-// 		session->raw_remote_read_buffer = NULL;
-// 	}
-// 	if (session->raw_remote_write_buffer) {
-// 		buffer_reset(&session->remote_write_buffer);
-// 		free(session->raw_remote_write_buffer);
-// 		session->raw_remote_write_buffer = NULL;
-// 	}
-
-// 	if (session->username) {
-// 		free(session->username);
-// 		session->username = NULL;
-// 	}
-// }
 
 static void log_socks5_attempt(client_session *session, uint8_t status_code) {
 	const char *username = session->username ? session->username : NULL;

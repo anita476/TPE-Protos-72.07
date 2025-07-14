@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -g -Wpedantic -std=c11 -fsanitize=address -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
+CFLAGS = -Wall -Wextra -g -std=c11 -fsanitize=address -g -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L
 # added -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L because of "implicit declaration of pselect"
 # https://barnowl.mit.edu/ticket/166
 # TODO add pedantic flag

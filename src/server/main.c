@@ -144,12 +144,11 @@ int main(int argc, char **argv) {
 	/********************************************** SETTING UP THE SERVER  ***********************/
 
 	printf("Starting server...\n");
-	// parse args is in charge of initializing the args struct, all info will be there (already should be rfc compliant)
 	parse_args(argc, argv, &args);
 	load_users(args.users, args.nusers); //
 	metrics_init();
 
-	close(0); // Close stdin we dont need it
+	close(0);
 	// flags
 	const char *error_msg = NULL;
 	selector_status selectorStatus = SELECTOR_SUCCESS;
@@ -176,7 +175,7 @@ int main(int argc, char **argv) {
 	/*
 	** It takes a socket (srv file descriptor)
 	** that was previously set up with socket() and bind() and marks it as a passive socket
-	** n is the queue max length -> we use SOMAXCONN to set it to the SO dfined max
+	** n is the queue max length -> we use SOMAXCONN to set it to the SO dfined max, probably a bit overkill
 	*/
 
 	// Register the handlers for sigterm and sigint to then exit nicely
@@ -203,11 +202,9 @@ int main(int argc, char **argv) {
 		error_msg = "Error initializing selector";
 		exit_error(error_msg, errno);
 	}
-	// todo check that its not being lmited
 	selector = selector_new(1024);
 	if (selector == NULL) {
 		error_msg = "Error creating selector";
-		// todo create error enum
 		exit_error(error_msg, 2);
 	}
 

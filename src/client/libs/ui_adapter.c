@@ -10,11 +10,6 @@ static int ui_mode = 0; // 0 = dialog, 1 = console
 
 void ui_init(int use_console) {
 	ui_mode = use_console;
-	if (use_console) {
-		printf("Console UI initialized\n");
-	} else {
-		printf("Dialog UI initialized\n");
-	}
 }
 
 void ui_show_message(const char *title, const char *message) {

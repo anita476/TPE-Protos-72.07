@@ -68,7 +68,7 @@ void management_handle_new_connection(struct selector_key *key) {
 	session->authenticated = false;
 	session->user_type = 0xFF; // invalid until authenticated
 	session->has_error = false;
-	session->error_code = NULL;
+	// session->error_code = NULL;
 	session->error_response_sent = false;
 	session->cleaned_up = false;
 
@@ -432,8 +432,6 @@ static void command_write(struct selector_key *key) {
 }
 
 void handle_error(struct selector_key *key) {
-	// management_session *session = (management_session *) key->data;
-
 	log(DEBUG, "[MANAGEMENT] Handling error state for fd %d", key->fd);
 
 	// for management protocol, we usually just close the connection on error

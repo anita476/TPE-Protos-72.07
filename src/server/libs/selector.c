@@ -324,60 +324,6 @@ fail_cleanup:
 	return NULL;
 }
 
-// fd_selector selector_new(const size_t initial_elements) {
-// 	size_t size = sizeof(struct fdselector);
-// 	fd_selector ret = malloc(size);
-// 	if (ret != NULL) {
-// 		memset(ret, 0x00, size);
-// 		ret->master_t.tv_sec = conf.select_timeout.tv_sec;
-// 		ret->master_t.tv_nsec = conf.select_timeout.tv_nsec;
-// 		ret->resolution_jobs = 0;
-// 		ret->earliest_timeout = 0;
-// 		ret->active_sessions = 0;
-
-// 		// Create eventfd for notifications
-// 		ret->notify_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-// 		if (ret->notify_fd == -1) {
-// 			perror("eventfd creation failed");
-// 			// cleanup and return NULL
-// 			goto fail;
-// 		}
-// 		struct epoll_event ev = {0};
-// 		ev.events = EPOLLIN;
-// 		ev.data.ptr = NULL; // Special marker - not a regular fd item
-// 		if (epoll_ctl(s->epoll_fd, EPOLL_CTL_ADD, s->notify_fd, &ev) == -1) {
-// 			perror("epoll_ctl add notify_fd failed");
-// 			close(s->notify_fd);
-// 			goto fail;
-// 		}
-
-// 		log(DEBUG, "[SELECTOR_NEW] EventFD %d added to epoll for notifications", s->notify_fd);
-
-// 		pthread_mutex_init(&ret->resolution_mutex, 0);
-// 		if (0 != ensure_capacity(ret, initial_elements)) {
-// 			selector_destroy(ret);
-// 			ret = NULL;
-// 		} else {
-// 			// max events that can be handled at once
-// 			ret->max_events = initial_elements > 0 ? initial_elements : 1024;
-// 			ret->events = calloc(ret->max_events, sizeof(struct epoll_event));
-// 			if (!ret->events) {
-// 				selector_destroy(ret);
-// 				return NULL;
-// 			}
-// 			ret->epoll_fd = epoll_create1(0);
-// 			if (ret->epoll_fd == -1) {
-// 				perror("epoll_create1");
-// 				selector_destroy(ret);
-// 				return NULL;
-// 			}
-// 		}
-// 	}
-// 	return ret;
-// fail:
-// 	return NULL;
-// }
-
 void selector_destroy(fd_selector s) {
 	if (s != NULL) {
 		if (s->fds != NULL) {
@@ -522,49 +468,19 @@ selector_status selector_set_interest_key(struct selector_key *key, fd_interest 
 	return ret;
 }
 
-/**
- * se encarga de manejar los resultados del select.
- * se encuentra separado para facilitar el testing
- */
-// static void handle_block_notifications(fd_selector s) {
-// 	struct selector_key key = {
-// 		.s = s,
-// 	};
-// 	pthread_mutex_lock(&s->resolution_mutex);
-// 	struct blocking_job *j = s->resolution_jobs;
-// 	// if (j == NULL) {
-// 	// 	log(DEBUG, "[HANDLE_BLOCK] No pending DNS notifications");
-// 	// } else {
-// 	// 	log(DEBUG, "[HANDLE_BLOCK] Processing DNS notifications");
-// 	// }
-// 	while (j != NULL) {
-// 		struct item *item = s->fds + j->fd;
-// 		if (ITEM_USED(item)) {
-// 			key.fd = item->fd;
-// 			key.data = item->data;
-// 			item->handler->handle_block(&key);
-// 		}
-
-// 		struct blocking_job *aux = j;
-// 		j = j->next;
-// 		free(aux);
-// 	}
-// 	s->resolution_jobs = 0;
-// 	pthread_mutex_unlock(&s->resolution_mutex);
-// }
 static void handle_block_notifications(fd_selector s) {
-	struct selector_key key = { .s = s };
-	
+	struct selector_key key = {.s = s};
+
 	pthread_mutex_lock(&s->resolution_mutex);
 	struct blocking_job *j = s->resolution_jobs;
-	
+
 	while (j != NULL) {
 		struct item *item = s->fds + j->fd;
-		
+
 		if (ITEM_USED(item) && item->data != NULL) {
 			// Session válida - procesar resultado
 			client_session *session = (client_session *) item->data;
-			
+
 			struct addrinfo *dns_result = (struct addrinfo *) j->data;
 			if (dns_result) {
 				// DNS tuvo éxito
@@ -577,14 +493,14 @@ static void handle_block_notifications(fd_selector s) {
 				session->dns_error_code = SOCKS5_REPLY_HOST_UNREACHABLE; // o mapear error
 				session->connection.data.resolved.dst_addresses = NULL;
 			}
-			
+
 			// Llamar handle_block
 			key.fd = item->fd;
 			key.data = item->data;
 			if (item->handler->handle_block) {
 				item->handler->handle_block(&key);
 			}
-		} else {			
+		} else {
 			if (j->data) {
 				freeaddrinfo((struct addrinfo *) j->data);
 			}
@@ -610,7 +526,7 @@ selector_status selector_notify_block_with_result(fd_selector s, const int fd, s
 	}
 	job->s = s;
 	job->fd = fd;
-	job->data = dns_result; 
+	job->data = dns_result;
 
 	// encolamos en el selector los resultados
 	pthread_mutex_lock(&s->resolution_mutex);
@@ -724,19 +640,15 @@ selector_status selector_select(fd_selector s) {
 
 	int n = epoll_wait(s->epoll_fd, s->events, s->max_events, timeout_ms);
 	if (n < 0) {
-        if (errno == EINTR) {
-            log(DEBUG, "[SELECTOR_SELECT] Interrupted by signal");
-            // Continue processing - don't return early
-        } else {
-            perror("epoll_wait");
-            ret = SELECTOR_IO;
-            goto finally;
-        }
-    }
-    
-    // log(DEBUG, "[SELECTOR_SELECT] epoll_wait returned %d events", n);
-    
-	// log(DEBUG, "[SELECTOR_SELECT] epoll_wait returned %d, errno=%d", n, errno);
+		if (errno == EINTR) {
+			log(DEBUG, "[SELECTOR_SELECT] Interrupted by signal");
+			// Continue processing - don't return early
+		} else {
+			perror("epoll_wait");
+			ret = SELECTOR_IO;
+			goto finally;
+		}
+	}
 
 	if (n < 0) {
 		if (errno == EINTR) {
@@ -780,8 +692,8 @@ selector_status selector_select(fd_selector s) {
 			item->handler->handle_write(&key);
 		}
 		if (ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
-			// CRITICAL: Take a snapshot of the handler to avoid race
-			struct fd_handler *handler = item->handler;
+			// take a snapshot of the handler to avoid race
+			const struct fd_handler *handler = item->handler;
 			if (handler && handler->handle_close) {
 				handler->handle_close(&key);
 			} else {
@@ -792,9 +704,6 @@ selector_status selector_select(fd_selector s) {
 				item->data = NULL;
 			}
 		}
-		// if ((ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) && item->handler && item->handler->handle_close) {
-		// 	item->handler->handle_close(&key);
-		// }
 	}
 
 	// NOW check for timeouts AFTER processing events
@@ -813,7 +722,6 @@ selector_status selector_select(fd_selector s) {
 				continue;
 			}
 			if (session->type == SESSION_SOCKS5) {
-				// Check if this looks like a valid client session by checking for timeout fields
 				if (session->idle_timeout > 0 && session->next_timeout > 0 && now >= session->next_timeout) {
 					log(INFO, "[SELECTOR_SELECT] Idle connection timeout for fd=%d", item->fd);
 					// Set error state
