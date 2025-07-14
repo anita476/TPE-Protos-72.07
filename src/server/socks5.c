@@ -1072,6 +1072,112 @@ static void *dns_resolution_thread(void *arg) {
 	return NULL;
 }
 
+// Fixed handle_connect_failure function - takes client key instead of session
+static void handle_connect_failure(struct selector_key *client_key, int error, bool check_next) {
+	client_session *session = (client_session *) client_key->data;
+	
+	// Clean up remote socket
+	if (session->remote_fd != -1) {
+		// selector_unregister_fd_no_close(client_key->s, session->remote_fd);
+		close(session->remote_fd);
+		session->remote_fd = -1;
+	}
+
+	// Try next address if available
+	if (check_next && session->connection.atyp == SOCKS5_ATYP_DOMAIN &&
+		session->connection.data.resolved.dst_addresses && 
+		session->connection.data.resolved.dst_addresses->ai_next) {
+		
+		log(DEBUG, "[CONNECT_FAILURE] Trying next address...");
+
+		struct addrinfo *failed_addr = session->connection.data.resolved.dst_addresses;
+		session->connection.data.resolved.dst_addresses = failed_addr->ai_next;
+
+		// Free the failed address
+		failed_addr->ai_next = NULL;
+		freeaddrinfo(failed_addr);
+
+		// Retry with next address using the client key
+		request_connect(client_key);
+		return;
+	}
+
+	// No more addresses to try
+	log(ERROR, "[CONNECT_FAILURE] No more addresses to try");
+	uint8_t error_code = map_connect_error_to_socks5(error);
+	log_socks5_attempt(session, error_code);
+	set_error_state(session, error_code);
+	
+	// Handle error through client socket
+	handle_error(client_key);
+}
+
+// Fixed handle_connect_success_from_remote function - takes client key
+static void handle_connect_success_from_remote(struct selector_key *client_key) {
+	client_session *session = (client_session *) client_key->data;
+	
+	log(INFO, "[CONNECT_SUCCESS] Connection successful");
+	log_socks5_attempt(session, SOCKS5_REPLY_SUCCESS);
+
+	// Clean up DNS addresses if they exist
+	if (session->connection.atyp == SOCKS5_ATYP_DOMAIN && 
+		session->connection.data.resolved.dst_addresses) {
+		freeaddrinfo(session->connection.data.resolved.dst_addresses);
+		session->connection.data.resolved.dst_addresses = NULL;
+	}
+
+	// Allocate buffers ONLY when connection is successful
+	if (!allocate_remote_buffers(session)) {
+		log(ERROR, "[CONNECT_SUCCESS] Failed to allocate remote buffers");
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(client_key);
+		return;
+	}
+
+	if (!build_socks5_success_response(session)) {
+		log(ERROR, "[CONNECT_SUCCESS] Failed to build success response");
+		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+		handle_error(client_key);
+		return;
+	}
+
+	// Switch to writing response to client
+	session->current_state = STATE_REQUEST_WRITE;
+	selector_set_interest(client_key->s, session->client_fd, OP_WRITE);
+}
+
+// Fixed remote_connect_complete function
+static void remote_connect_complete(struct selector_key *key) {
+	client_session *session = (client_session *) key->data;
+	int error = 0;
+	socklen_t len = sizeof(error);
+
+	// Create client key for error handling
+	struct selector_key client_key = {
+		.s = key->s,
+		.fd = session->client_fd,
+		.data = session
+	};
+
+	// Check if connection completed successfully
+	if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
+		log(ERROR, "[REMOTE_CONNECT_COMPLETE] getsockopt failed: %s", strerror(errno));
+		handle_connect_failure(&client_key, errno, true);
+		return;
+	}
+
+	if (error != 0) {
+		log(ERROR, "[REMOTE_CONNECT_COMPLETE] Connection failed: %s", strerror(error));
+		handle_connect_failure(&client_key, error, true);
+		return;
+	}
+
+	log(DEBUG, "[REMOTE_CONNECT_COMPLETE] Connection completed successfully");
+	handle_connect_success_from_remote(&client_key);
+}
+
+// Fixed request_connect function
 static void request_connect(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 
@@ -1093,7 +1199,7 @@ static void request_connect(struct selector_key *key) {
 		if (!addrinfo) {
 			log(ERROR, "[REQUEST_CONNECT] No resolved addresses available");
 			log_socks5_attempt(session, SOCKS5_REPLY_HOST_UNREACHABLE);
-			set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
+			set_error_state(session, SOCKS5_REPLY_HOST_UNREACHABLE);
 			handle_error(key);
 			return;
 		}
@@ -1110,7 +1216,6 @@ static void request_connect(struct selector_key *key) {
 		return;
 	}
 
-	// TODO: delete this
 	// Log connection attempt
 	char addr_buf[INET6_ADDRSTRLEN + 8];
 	sockaddr_to_human(addr_buf, sizeof(addr_buf), addr);
@@ -1119,6 +1224,7 @@ static void request_connect(struct selector_key *key) {
 
 	// Close existing remote_fd if it was already set
 	if (session->remote_fd != -1) {
+		selector_unregister_fd_no_close(key->s, session->remote_fd);
 		close(session->remote_fd);
 		session->remote_fd = -1;
 	}
@@ -1128,17 +1234,17 @@ static void request_connect(struct selector_key *key) {
 	if (session->remote_fd == -1) {
 		log(ERROR, "[REQUEST_CONNECT] Failed to create socket: %s", strerror(errno));
 		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		handle_connect_failure(key, errno, has_next_address);
+		handle_connect_failure(session, errno, has_next_address);
 		return;
 	}
 
 	// Set non-blocking
 	if (selector_fd_set_nio(session->remote_fd) == -1) {
-		log(ERROR, "[REQUEST_CONNECT] Failed to set non-blocking mode.");
+		log(ERROR, "[REQUEST_CONNECT] Failed to set non-blocking mode: %s", strerror(errno));
 		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		close(session->remote_fd);
 		session->remote_fd = -1;
-		handle_connect_failure(key, errno, has_next_address);
+		handle_connect_failure(session, errno, has_next_address);
 		return;
 	}
 
@@ -1155,11 +1261,11 @@ static void request_connect(struct selector_key *key) {
 		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
 
 		if (selector_register(key->s, session->remote_fd, &remote_handler, OP_WRITE, session) != SELECTOR_SUCCESS) {
-			log(ERROR, "[REQUEST_CONNECT] Failed to register remote fd");
+			log(ERROR, "[REQUEST_CONNECT] Failed to register remote fd: %s", strerror(errno));
 			close(session->remote_fd);
 			session->remote_fd = -1;
 			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
-			handle_connect_failure(key, ECONNREFUSED, has_next_address);
+			handle_connect_failure(key, errno, has_next_address);
 			return;
 		}
 
@@ -1169,58 +1275,60 @@ static void request_connect(struct selector_key *key) {
 	} else {
 		// Immediate failure
 		log(ERROR, "[REQUEST_CONNECT] Connection failed immediately: %s", strerror(errno));
+		close(session->remote_fd);
+		session->remote_fd = -1;
 		handle_connect_failure(key, errno, has_next_address);
 	}
 }
 
-static void remote_connect_complete(struct selector_key *key) {
-	client_session *session = (client_session *) key->data;
-	int error = 0;
-	socklen_t len = sizeof(error);
 
-	if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
-		log(ERROR, "[REMOTE_CONNECT_COMPLETE] Connection failed: %s", strerror(error != 0 ? error : errno));
+// static void remote_connect_complete(struct selector_key *key) {
+// 	client_session *session = (client_session *) key->data;
+// 	int error = 0;
+// 	socklen_t len = sizeof(error);
 
-		handle_connect_failure(key, error != 0 ? error : errno, true);
-		return;
-	}
+// 	if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
+// 		log(ERROR, "[REMOTE_CONNECT_COMPLETE] Connection failed: %s", strerror(error != 0 ? error : errno));
 
-	log(DEBUG, "[REMOTE_CONNECT_COMPLETE] Connection completed successfully");
-	handle_connect_success(key);
-}
+// 		handle_connect_failure(session, error != 0 ? error : errno, true);
+// 		return;
+// 	}
 
-static void handle_connect_failure(struct selector_key *key, int error, bool check_next) {
-	client_session *session = (client_session *) key->data;
+// 	log(DEBUG, "[REMOTE_CONNECT_COMPLETE] Connection completed successfully");
+// 	handle_connect_success(key);
+// }
+// static void handle_connect_failure(struct selector_key *key, int error, bool check_next) {
+// 	client_session *session = (client_session *) key->data;
 
-	if (session->remote_fd != -1) {
-		close(session->remote_fd);
-		session->remote_fd = -1;
-	}
+// 	if (session->remote_fd != -1) {
+// 		close(session->remote_fd);
+// 		session->remote_fd = -1;
+// 	}
 
-	if (check_next && session->connection.atyp == SOCKS5_ATYP_DOMAIN &&
-		session->connection.data.resolved.dst_addresses && session->connection.data.resolved.dst_addresses->ai_next) {
-		// Try next address for domain resolution
-		log(DEBUG, "[CONNECT_FAILURE] Trying next address...");
+// 	if (check_next && session->connection.atyp == SOCKS5_ATYP_DOMAIN &&
+// 		session->connection.data.resolved.dst_addresses && session->connection.data.resolved.dst_addresses->ai_next) {
+// 		// Try next address for domain resolution
+// 		log(DEBUG, "[CONNECT_FAILURE] Trying next address...");
 
-		struct addrinfo *failed_addr = session->connection.data.resolved.dst_addresses;
-		session->connection.data.resolved.dst_addresses = failed_addr->ai_next;
+// 		struct addrinfo *failed_addr = session->connection.data.resolved.dst_addresses;
+// 		session->connection.data.resolved.dst_addresses = failed_addr->ai_next;
 
-		// Free the failed address
-		failed_addr->ai_next = NULL;
-		freeaddrinfo(failed_addr);
+// 		// Free the failed address
+// 		failed_addr->ai_next = NULL;
+// 		freeaddrinfo(failed_addr);
 
-		// Retry with next address
-		request_connect(key);
-		return;
-	}
+// 		// Retry with next address
+// 		request_connect(key);
+// 		return;
+// 	}
 
-	// No more addresses to try
-	log(ERROR, "[CONNECT_FAILURE] No more addresses to try");
-	uint8_t error_code = map_connect_error_to_socks5(error);
-	log_socks5_attempt(session, error_code);
-	set_error_state(session, error_code);
-	handle_error(key);
-}
+// 	// No more addresses to try
+// 	log(ERROR, "[CONNECT_FAILURE] No more addresses to try");
+// 	uint8_t error_code = map_connect_error_to_socks5(error);
+// 	log_socks5_attempt(session, error_code);
+// 	set_error_state(session, error_code);
+// 	handle_error(key);
+// }
 
 static void handle_connect_success(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
