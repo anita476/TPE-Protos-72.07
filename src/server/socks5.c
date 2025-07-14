@@ -691,6 +691,7 @@ static void auth_read(struct selector_key *key) {
 		}
 		session->user_type = user_type;
 		session->username = strdup(username);
+		log(FATAL, "Username is: %s", username);
 		buffer_write(wb, SOCKS5_AUTH_SUCCESS);
 		session->current_state = STATE_AUTH_WRITE;
 	}
@@ -1137,7 +1138,7 @@ static void request_connect(struct selector_key *key) {
 		log(DEBUG, "[REQUEST_CONNECT] Connection in progress...");
 
 		if (selector_register(key->s, session->remote_fd, &remote_handler, OP_WRITE, session) != SELECTOR_SUCCESS) {
-			log(ERROR, "[REQUEST_CONNECT] Failed to register remote fd");
+			log(ERROR, "[REQUEST_CONNECT] Failed to register remote fd: %d", session->remote_fd);
 			close(session->remote_fd);
 			session->remote_fd = -1;
 			log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
@@ -1160,7 +1161,8 @@ static void remote_connect_complete(struct selector_key *key) {
 	socklen_t len = sizeof(error);
 
 	if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
-		log(ERROR, "[REMOTE_CONNECT_COMPLETE] Connection failed: %s", strerror(error != 0 ? error : errno));
+		log(ERROR, "[REMOTE_CONNECT_COMPLETE] Connection failed: %s for fd %d", strerror(error != 0 ? error : errno),
+			key->fd);
 
 		handle_connect_failure(key, error != 0 ? error : errno, true);
 		return;
@@ -1174,6 +1176,8 @@ static void handle_connect_failure(struct selector_key *key, int error, bool che
 	client_session *session = (client_session *) key->data;
 
 	if (session->remote_fd != -1) {
+		log(ERROR, "[HANDLE_CONNECT_FAILURE] closing session remote fd");
+		selector_unregister_fd(key->s, session->remote_fd);
 		close(session->remote_fd);
 		session->remote_fd = -1;
 	}
