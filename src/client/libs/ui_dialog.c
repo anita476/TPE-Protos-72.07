@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "../include/constants.h"
+#include "../include/client_constants.h"
 #include "../include/ui_dialog.h"
 
 static int count_lines(const char *text) {

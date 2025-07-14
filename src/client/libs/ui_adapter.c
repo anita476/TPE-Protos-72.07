@@ -2,7 +2,7 @@
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include <stdio.h>
 
-#include "../include/constants.h"
+#include "../include/client_constants.h"
 #include "../include/ui_adapter.h"
 #include "../include/ui_console.h"
 #include "../include/ui_dialog.h"

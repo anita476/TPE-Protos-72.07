@@ -8,7 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "include/constants.h"
+#include "include/client_constants.h"
 #include "include/lib_client.h"
 #include "include/pagination.h"
 #include "include/ui_adapter.h"

@@ -6,7 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "../include/constants.h"
+#include "../include/client_constants.h"
 #include "../include/ui_console.h"
 
 /* Draw functions */

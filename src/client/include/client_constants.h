@@ -1,5 +1,5 @@
-#ifndef CONSTANTS_H
-#define CONSTANTS_H
+#ifndef CLIENT_CONSTANTS_H
+#define CLIENT_CONSTANTS_H
 
 #define UI_MODE_DIALOG 0
 #define UI_MODE_CONSOLE 1
@@ -33,4 +33,4 @@
 #define ITEMS_PER_PAGE 10
 #define MAX_DISPLAY_ITEMS 10
 
-#endif // CONSTANTS_H
+#endif // CLIENT_CONSTANTS_H

@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../include/constants.h"
+#include "../include/client_constants.h"
 #include "../include/ui_adapter.h"
 #include "../include/validation.h"
 
