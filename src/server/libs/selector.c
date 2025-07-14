@@ -436,6 +436,25 @@ finally:
 	return ret;
 }
 
+selector_status selector_unregister_fd_noclose(fd_selector s, const int fd) {
+	selector_status ret = SELECTOR_SUCCESS;
+	if (NULL == s || INVALID_FD(fd)) {
+		ret = SELECTOR_IARGS;
+		goto finally;
+	}
+	struct item *item = s->fds + fd;
+	if (!ITEM_USED(item)) {
+		ret = SELECTOR_IARGS;
+		goto finally;
+	}
+	item->interest = OP_NOOP;
+	epoll_ctl(s->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+	memset(item, 0x00, sizeof(*item));
+	item_init(item);
+finally:
+	return ret;
+}
+
 selector_status selector_set_interest(fd_selector s, int fd, fd_interest i) {
 	selector_status ret = SELECTOR_SUCCESS;
 	if (NULL == s || INVALID_FD(fd)) {

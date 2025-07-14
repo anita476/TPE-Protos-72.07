@@ -1177,8 +1177,7 @@ static void handle_connect_failure(struct selector_key *key, int error, bool che
 
 	if (session->remote_fd != -1) {
 		log(ERROR, "[HANDLE_CONNECT_FAILURE] closing session remote fd");
-		selector_unregister_fd(key->s, session->remote_fd);
-		close(session->remote_fd);
+		selector_unregister_fd_noclose(key->s, session->remote_fd);
 		session->remote_fd = -1;
 	}
 
