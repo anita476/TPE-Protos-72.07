@@ -25,7 +25,7 @@ typedef struct server_current_config {
 } server_current_config;
 
 // Connection functions
-int setup_tcp_client_Socket(char *address, char *port);
+int setup_tcp_client_socket(char *address, char *port);
 
 // Authentication functions
 int hello_send(char *username, char *password, int sock);

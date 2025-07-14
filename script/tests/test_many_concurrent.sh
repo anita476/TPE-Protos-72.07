@@ -1,9 +1,7 @@
 #!/bin/bash
 
-# Number of concurrent connections to test
 NUM_CONNECTIONS=2000
 
-# Array of URLs to test (add more if you want)
 URLS=(
     "http://google.com"
     "http://github.com"
@@ -19,25 +17,30 @@ URLS=(
 success=0
 fail=0
 
-# Launch concurrent curl requests
+# Directory for temporary error logs
+TMPDIR=$(mktemp -d)
+trap "rm -rf $TMPDIR" EXIT
+
 for ((i=0; i<NUM_CONNECTIONS; i++)); do
-    # Pick a URL from the list (cycling through if NUM_CONNECTIONS > number of URLs)
     url="${URLS[$((i % ${#URLS[@]}))]}"
     echo "Launching request $((i+1)) to $url"
-    curl --socks5-hostname localhost:1080 "$url" > /dev/null 2>&1 &
+    # Redirect stderr to a unique file for each curl
+    curl --socks5-hostname localhost:1080 "$url" > /dev/null 2> "$TMPDIR/curl_err_$i" &
     pids[$i]=$!
 done
-for pid in "${pids[@]}"; do
+
+for i in "${!pids[@]}"; do
+    pid=${pids[$i]}
     if wait $pid; then
         ((success++))
     else
         ((fail++))
-        echo "Failed with PID $pid"
+        echo "Failed with PID $pid (Request $((i+1)) to ${URLS[$((i % ${#URLS[@]}))]})"
+        echo "Curl error output:"
+        cat "$TMPDIR/curl_err_$i"
+        echo "-----------------------------"
     fi
 done
-
-# Wait for all background jobs to finish
-#wait
 
 echo "All $NUM_CONNECTIONS concurrent requests completed WITH PROXY."
 echo "Successful connections: $success"

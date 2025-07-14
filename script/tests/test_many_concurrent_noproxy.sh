@@ -2,7 +2,7 @@
 
 ## Same test without proxy, should take approx half the time
 # Number of concurrent connections to test
-NUM_CONNECTIONS=1000
+NUM_CONNECTIONS=2000
 
 # Array of URLs to test (add more if you want)
 URLS=(

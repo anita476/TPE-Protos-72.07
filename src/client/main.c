@@ -114,7 +114,7 @@ static int authenticate() {
 	char username[MAX_INPUT], password[MAX_INPUT];
 
 	for (int attempts = 0; attempts < 3; attempts++) {
-		server_socket = setup_tcp_client_Socket(server_address, server_port);
+		server_socket = setup_tcp_client_socket(server_address, server_port);
 		if (server_socket < 0) {
 			ui_show_message("Error", "Failed to connect to server");
 			return 0;
@@ -204,7 +204,6 @@ static int count_logs(void *data) {
 
 static void display_users(void *data, int count, int page) {
 	if (count == 0) {
-		ui_show_message("Info", "No users found");
 		return;
 	}
 
@@ -235,7 +234,6 @@ static void display_users(void *data, int count, int page) {
 
 static void display_logs(void *data, int count, int page) {
 	if (count == 0) {
-		ui_show_message("Info", "No logs found");
 		return;
 	}
 
@@ -323,6 +321,13 @@ static void show_metrics() {
 }
 
 static void show_users() {
+	if (server_socket < 0) {
+		if (handle_connection_lost()) {
+			show_users();
+		}
+		return;
+	}
+
 	pagination_config_t config = {.title_format = "User list - Page %d",
 								  .no_data_message = "No users available",
 								  .no_more_data_message = "No more users available",
@@ -333,13 +338,23 @@ static void show_users() {
 								  .count_func = count_users};
 
 	handle_pagination(&config, server_socket, ITEMS_PER_PAGE);
+
 	if (errno == ENOTCONN) {
 		server_socket = -1;
-		return;
+		if (handle_connection_lost()) {
+			show_users();
+		}
 	}
 }
 
 static void show_logs() {
+	if (server_socket < 0) {
+		if (handle_connection_lost()) {
+			show_logs();
+		}
+		return;
+	}
+
 	pagination_config_t config = {.title_format = "Server logs - Page %d",
 								  .no_data_message = "No logs available",
 								  .no_more_data_message = "No more logs available",
@@ -350,9 +365,12 @@ static void show_logs() {
 								  .count_func = count_logs};
 
 	handle_pagination(&config, server_socket, ITEMS_PER_PAGE);
+
 	if (errno == ENOTCONN) {
 		server_socket = -1;
-		return;
+		if (handle_connection_lost()) {
+			show_logs();
+		}
 	}
 }
 
@@ -501,7 +519,9 @@ static int remove_user() {
 static void change_server_setting(const char *setting_name, const char *unit,
 								  int (*validate_func)(const char *, uint8_t *), uint8_t (*handle_func)(int, uint8_t)) {
 	if (server_socket < 0) {
-		(void) handle_connection_lost();
+		if (handle_connection_lost()) {
+			change_server_setting(setting_name, unit, validate_func, handle_func);
+		}
 		return;
 	}
 
