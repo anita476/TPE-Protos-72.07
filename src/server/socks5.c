@@ -187,7 +187,6 @@ void socks5_handle_new_connection(struct selector_key *key) {
 	log(INFO, "===============================================================");
 	log(INFO, "[HANDLE_CONNECTION] Accepted new client: fd=%d from %s:%d", client_fd, session->logging.client_ip,
 		session->logging.client_port);
-	log_socks5_attempt(session, SOCKS5_REPLY_SUCCESS);
 
 	metrics_increment_connections();
 }

@@ -18,8 +18,8 @@ void handle_pagination(const pagination_config_t *config, int socket, int items_
 	int continue_browsing = 1;
 
 	while (continue_browsing) {
-		errno = 0; // Reset errno before fetching data
-		void *data = config->fetch_func(items_per_page, current_page * items_per_page, socket);
+		errno = 0;
+		void *data = config->fetch_func(items_per_page + 1, current_page * items_per_page, socket);
 
 		if (data == NULL) {
 			if (errno == ENOTCONN) {
@@ -31,6 +31,11 @@ void handle_pagination(const pagination_config_t *config, int socket, int items_
 		}
 
 		int item_count = config->count_func(data);
+		int show_next = 0;
+		if (item_count > items_per_page) {
+			show_next = 1;
+			item_count = items_per_page;
+		}
 
 		config->display_func(data, item_count, current_page);
 
@@ -43,7 +48,7 @@ void handle_pagination(const pagination_config_t *config, int socket, int items_
 			nav_count++;
 		}
 
-		if (item_count == items_per_page) {
+		if (show_next) {
 			snprintf(nav_items[nav_count][0], 64, "%d", nav_count + 1);
 			snprintf(nav_items[nav_count][1], 64, "Next page");
 			nav_count++;
@@ -62,8 +67,7 @@ void handle_pagination(const pagination_config_t *config, int socket, int items_
 			continue_browsing = 0;
 		} else if (current_page > 0 && selection == 1) {
 			current_page--;
-		} else if (item_count == items_per_page &&
-				   ((current_page > 0 && selection == 2) || (current_page == 0 && selection == 1))) {
+		} else if (show_next && ((current_page > 0 && selection == 2) || (current_page == 0 && selection == 1))) {
 			current_page++;
 		} else {
 			continue_browsing = 0;
