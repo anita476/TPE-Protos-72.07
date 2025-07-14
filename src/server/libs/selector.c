@@ -285,7 +285,8 @@ fd_selector selector_new(const size_t initial_elements) {
 		// NOW add eventfd to epoll
 		struct epoll_event ev = {0};
 		ev.events = EPOLLIN;
-		ev.data.ptr = NULL; // Special marker - not a regular fd item
+		// ev.data.ptr = NULL; // Special marker - not a regular fd item
+		ev.data.fd = ret->notify_fd;
 		if (epoll_ctl(ret->epoll_fd, EPOLL_CTL_ADD, ret->notify_fd, &ev) == -1) {
 			perror("epoll_ctl add notify_fd failed");
 			goto fail_cleanup;
@@ -688,20 +689,24 @@ selector_status selector_select(fd_selector s) {
 	// Process I/O events FIRST, so timeout resets are applied before timeout checks
 	for (int i = 0; i < n; i++) {
 		struct item *item = (struct item *) s->events[i].data.ptr;
-		// Handle eventfd notifications (data.ptr == NULL is our marker)
-		if (item == NULL) {
-			uint64_t value;
-			ssize_t bytes = read(s->notify_fd, &value, sizeof(value));
-			if (bytes == sizeof(value)) {
-				log(DEBUG, "[SELECTOR_SELECT] DNS notification received via eventfd (value=%lu)", value);
-			} else if (bytes == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-				log(ERROR, "[SELECTOR_SELECT] Error reading from eventfd: %s", strerror(errno));
-			}
-			// Note: We don't call handle_block_notifications here - it's called at the end
-			continue;
-		}
-		if (!item || !ITEM_USED(item) || !item->handler)
-			continue;
+
+		if (s->events[i].data.fd == s->notify_fd) {
+        // Handle eventfd notification
+        uint64_t value;
+        ssize_t bytes = read(s->notify_fd, &value, sizeof(value));
+        if (bytes == sizeof(value)) {
+            log(DEBUG, "[SELECTOR_SELECT] DNS notification received via eventfd (value=%lu)", value);
+        } else if (bytes == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            log(ERROR, "[SELECTOR_SELECT] Error reading from eventfd: %s", strerror(errno));
+        }
+        continue;
+    }
+    
+    // Handle regular socket events
+    if (!item || !ITEM_USED(item) || !item->handler) {
+        log(DEBUG, "[SELECTOR_SELECT] Skipping invalid item for fd=%d", s->events[i].data.fd);
+        continue;
+    }
 		struct selector_key key = {
 			.s = s,
 			.fd = item->fd,
