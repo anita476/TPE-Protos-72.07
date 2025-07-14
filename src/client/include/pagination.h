@@ -3,6 +3,11 @@
 
 #include <stdint.h>
 
+#define PAGINATION_NAV_ITEMS 4
+#define PAGINATION_NAV_FIELDS 2
+#define PAGINATION_NAV_LABEL_LEN 64
+#define PAGINATION_TITLE_LEN 128
+
 typedef struct {
     const char *title_format;
     const char *no_data_message;

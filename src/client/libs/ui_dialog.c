@@ -1,6 +1,5 @@
 // This is a personal academic project. Dear PVS-Studio, please check it.
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-#include "../include/ui_dialog.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +7,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include "../include/constants.h"
+#include "../include/ui_dialog.h"
+
 static int count_lines(const char *text) {
 	int lines = 1;
 	for (const char *p = text; *p; p++) {
@@ -19,7 +22,6 @@ static int count_lines(const char *text) {
 }
 
 static int read_temp_file_line(char *buffer, size_t buffer_size) {
-	// check if tmp folder is accesible
 	if (access("/tmp", W_OK) != 0) {
 		perror("Cannot write to /tmp");
 		return 0;
@@ -47,7 +49,7 @@ static char *read_temp_file_as_string(char *buffer, size_t buffer_size) {
 }
 
 static int read_temp_file_as_int(void) {
-	char result[16];
+	char result[TEMP_RESULT_SIZE];
 	if (read_temp_file_line(result, sizeof(result))) {
 		return atoi(result);
 	}
@@ -55,23 +57,25 @@ static int read_temp_file_as_int(void) {
 }
 
 void ui_dialog_show_message(const char *title, const char *message) {
-	char command[4096];
+	char command[BUFFER_M];
 	int lines = count_lines(message);
 
-	snprintf(command, sizeof(command), "dialog --title \"%s\" --msgbox \"%s\" %d 45 2>/dev/null", title, message,
-			 (lines > 6) ? 16 : 8);
+	snprintf(command, sizeof(command), "dialog --title \"%s\" --msgbox \"%s\" %d %d 2>/dev/null", title, message,
+			 (lines > DIALOG_MSGBOX_LINE_THRESHOLD) ? DIALOG_MSGBOX_HEIGHT_LONG : DIALOG_MSGBOX_HEIGHT_SHORT,
+			 DIALOG_MSGBOX_WIDTH);
 	system(command);
 }
 
 char *ui_dialog_get_input(const char *title, const char *text, int hidden) {
 	static char result[MAX_INPUT];
-	char command[1024];
+	char command[BUFFER_S];
 
 	if (hidden) {
-		snprintf(command, sizeof(command), "dialog --title \"%s\" --passwordbox \"%s\" 8 35 2>%s", title, text,
-				 TEMP_FILE);
+		snprintf(command, sizeof(command), "dialog --title \"%s\" --passwordbox \"%s\" %d %d 2>%s", title, text,
+				 DIALOG_INPUTBOX_HEIGHT, DIALOG_INPUTBOX_WIDTH, TEMP_FILE);
 	} else {
-		snprintf(command, sizeof(command), "dialog --title \"%s\" --inputbox \"%s\" 8 35 2>%s", title, text, TEMP_FILE);
+		snprintf(command, sizeof(command), "dialog --title \"%s\" --inputbox \"%s\" %d %d 2>%s", title, text,
+				 DIALOG_INPUTBOX_HEIGHT, DIALOG_INPUTBOX_WIDTH, TEMP_FILE);
 	}
 
 	int ret = system(command);
@@ -83,20 +87,21 @@ char *ui_dialog_get_input(const char *title, const char *text, int hidden) {
 }
 
 int ui_dialog_get_menu_selection(const char *title, const char *text, char items[][2][64], int count) {
-	char command[8192];
-	char menu_items[2048] = "";
+	char command[BUFFER_XXL];
+	char menu_items[BUFFER_XL] = "";
 
 	for (int i = 0; i < count; i++) {
-		char item[256];
+		char item[BUFFER_S];
 		snprintf(item, sizeof(item), "\"%s\" \"%s\" ", items[i][0], items[i][1]);
 		strncat(menu_items, item, sizeof(menu_items) - strlen(menu_items) - 1);
 	}
 
-	int menu_height = count + 7;
-	int menu_width = 45;
+	int menu_height = count + DIALOG_MENU_EXTRA_HEIGHT;
+	int menu_width = DIALOG_MENU_WIDTH;
 
 	snprintf(command, sizeof(command), "dialog --title \"%s\" --menu \"%s\" %d %d %d %s 2>%s", title, text,
-			 menu_height > 20 ? 20 : menu_height, menu_width, count, menu_items, TEMP_FILE);
+			 menu_height > DIALOG_MENU_MAX_HEIGHT ? DIALOG_MENU_MAX_HEIGHT : menu_height, menu_width, count, menu_items,
+			 TEMP_FILE);
 
 	int ret = system(command);
 	if (ret == 0) {
@@ -107,7 +112,8 @@ int ui_dialog_get_menu_selection(const char *title, const char *text, char items
 }
 
 int ui_dialog_get_confirmation(const char *title, const char *text) {
-	char command[1024];
-	snprintf(command, sizeof(command), "dialog --title \"%s\" --yesno \"%s\" 8 45 2>/dev/null", title, text);
+	char command[BUFFER_S];
+	snprintf(command, sizeof(command), "dialog --title \"%s\" --yesno \"%s\" %d %d 2>/dev/null", title, text,
+			 DIALOG_CONFIRM_HEIGHT, DIALOG_CONFIRM_WIDTH);
 	return (system(command) == 0);
 }

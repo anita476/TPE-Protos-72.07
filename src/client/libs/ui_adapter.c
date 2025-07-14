@@ -2,14 +2,15 @@
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include <stdio.h>
 
+#include "../include/constants.h"
 #include "../include/ui_adapter.h"
 #include "../include/ui_console.h"
 #include "../include/ui_dialog.h"
 
-static int ui_mode = 0; // 0 = dialog, 1 = console
+static int ui_mode = UI_MODE_DIALOG;
 
 void ui_init(int use_console) {
-	ui_mode = use_console;
+	ui_mode = use_console ? UI_MODE_CONSOLE : UI_MODE_DIALOG;
 }
 
 void ui_show_message(const char *title, const char *message) {

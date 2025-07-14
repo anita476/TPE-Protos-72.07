@@ -1,12 +1,12 @@
 // This is a personal academic project. Dear PVS-Studio, please check it.
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-#include "../include/pagination.h"
-#include "../include/ui_adapter.h"
-
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "../include/pagination.h"
+#include "../include/ui_adapter.h"
 
 void handle_pagination(const pagination_config_t *config, int socket, int items_per_page) {
 	if (socket < 0) {
@@ -39,26 +39,26 @@ void handle_pagination(const pagination_config_t *config, int socket, int items_
 
 		config->display_func(data, item_count, current_page);
 
-		char nav_items[4][2][64];
+		char nav_items[PAGINATION_NAV_ITEMS][PAGINATION_NAV_FIELDS][PAGINATION_NAV_LABEL_LEN];
 		int nav_count = 0;
 
 		if (current_page > 0) {
-			snprintf(nav_items[nav_count][0], 64, "%d", nav_count + 1);
-			snprintf(nav_items[nav_count][1], 64, "Previous page");
+			snprintf(nav_items[nav_count][0], PAGINATION_NAV_LABEL_LEN, "%d", nav_count + 1);
+			snprintf(nav_items[nav_count][1], PAGINATION_NAV_LABEL_LEN, "Previous page");
 			nav_count++;
 		}
 
 		if (show_next) {
-			snprintf(nav_items[nav_count][0], 64, "%d", nav_count + 1);
-			snprintf(nav_items[nav_count][1], 64, "Next page");
+			snprintf(nav_items[nav_count][0], PAGINATION_NAV_LABEL_LEN, "%d", nav_count + 1);
+			snprintf(nav_items[nav_count][1], PAGINATION_NAV_LABEL_LEN, "Next page");
 			nav_count++;
 		}
 
-		snprintf(nav_items[nav_count][0], 64, "%d", nav_count + 1);
-		snprintf(nav_items[nav_count][1], 64, "Back to menu");
+		snprintf(nav_items[nav_count][0], PAGINATION_NAV_LABEL_LEN, "%d", nav_count + 1);
+		snprintf(nav_items[nav_count][1], PAGINATION_NAV_LABEL_LEN, "Back to menu");
 		nav_count++;
 
-		char title[128];
+		char title[PAGINATION_TITLE_LEN];
 		snprintf(title, sizeof(title), config->title_format, current_page + 1);
 
 		int selection = ui_get_menu_selection(title, config->nav_prompt, nav_items, nav_count);

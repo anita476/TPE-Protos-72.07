@@ -1,14 +1,13 @@
 // This is a personal academic project. Dear PVS-Studio, please check it.
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-#include "../include/ui_console.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#define CONSOLE_WIDTH 80
-#define BOX_WIDTH 60
+#include "../include/constants.h"
+#include "../include/ui_console.h"
 
 /* Draw functions */
 
@@ -41,7 +40,7 @@ static void print_text_line(const char *text, int width) {
 
 void ui_print_header(const char *title) {
 	int title_len = strlen(title);
-	int box_width = (title_len > BOX_WIDTH - 4) ? title_len + 4 : BOX_WIDTH;
+	int box_width = (title_len > BOX_WIDTH - HEADER_PADDING) ? title_len + HEADER_PADDING : BOX_WIDTH;
 
 	print_border_line('+', '-', '+', box_width);
 	print_text_line(title, box_width);
@@ -105,7 +104,7 @@ char *ui_console_get_input(const char *title, const char *text, int hidden) {
 
 int ui_console_get_menu_selection(const char *title, const char *text, char items[][2][64], int count) {
 	int selected = 0;
-	char input[16];
+	char input[INPUT_BUFFER_LEN];
 
 	ui_clear_screen();
 	ui_print_header(title);
@@ -115,12 +114,12 @@ int ui_console_get_menu_selection(const char *title, const char *text, char item
 		printf("  %s. %s\n", items[i][0], items[i][1]);
 	}
 
-	printf("\nEnter your choice (1-%d): ", count);
+	printf("\nEnter your choice (%d-%d): ", MIN_MENU_OPTION, count);
 	fflush(stdout);
 
 	if (fgets(input, sizeof(input), stdin) != NULL) {
 		selected = atoi(input);
-		if (selected >= 1 && selected <= count) {
+		if (selected >= MIN_MENU_OPTION && selected <= count) {
 			return selected;
 		}
 	}
@@ -129,7 +128,7 @@ int ui_console_get_menu_selection(const char *title, const char *text, char item
 }
 
 int ui_console_get_confirmation(const char *title, const char *text) {
-	char input[16];
+	char input[INPUT_BUFFER_LEN];
 
 	ui_clear_screen();
 	ui_print_header(title);

@@ -1,0 +1,36 @@
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
+
+#define UI_MODE_DIALOG 0
+#define UI_MODE_CONSOLE 1
+
+#define BUFFER_XS 128
+#define BUFFER_S 256
+#define BUFFER_M 512
+#define BUFFER_L 1024
+#define BUFFER_XL 2048
+#define BUFFER_XXL 4096
+#define BUFFER_XXXL 8192
+
+#define MAX_INPUT 256
+#define MAX_USERS 10
+
+#define MIN_PORT 1
+#define MAX_PORT 65535
+
+#define MAX_USERNAME_LEN 24
+#define MIN_USERNAME_LEN 3
+#define MAX_PASSWORD_LEN 24
+#define MIN_PASSWORD_LEN 4
+#define MIN_BUFFER_SIZE 1
+#define MAX_BUFFER_SIZE 64
+#define MIN_TIMEOUT 1
+#define MAX_TIMEOUT 60
+
+#define DEFAULT_SERVER_ADDRESS "localhost"
+#define DEFAULT_SERVER_PORT "8080"
+
+#define ITEMS_PER_PAGE 10
+#define MAX_DISPLAY_ITEMS 10
+
+#endif // CONSTANTS_H
