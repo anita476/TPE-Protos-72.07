@@ -9,7 +9,8 @@
 #include <stdio.h>	// perror
 #include <stdlib.h> // malloc
 #include <string.h> // memset
-#include <time.h>	// time_t, time()
+#include <sys/eventfd.h>
+#include <time.h> // time_t, time()
 
 #include "../include/logger.h" // log function
 #include "../include/selector.h"
@@ -162,6 +163,8 @@ struct fdselector {
 	// timeout
 	time_t earliest_timeout;
 	int active_sessions;
+
+	int notify_fd; // // eventfd for blocking job notifications
 };
 
 /** cantidad máxima de file descriptors que la plataforma puede manejar */
@@ -252,7 +255,6 @@ static selector_status ensure_capacity(fd_selector s, const size_t n) {
 
 	return ret;
 }
-
 fd_selector selector_new(const size_t initial_elements) {
 	size_t size = sizeof(struct fdselector);
 	fd_selector ret = malloc(size);
@@ -263,28 +265,118 @@ fd_selector selector_new(const size_t initial_elements) {
 		ret->resolution_jobs = 0;
 		ret->earliest_timeout = 0;
 		ret->active_sessions = 0;
+
 		pthread_mutex_init(&ret->resolution_mutex, 0);
+
+		// Create epoll FIRST
+		ret->epoll_fd = epoll_create1(0);
+		if (ret->epoll_fd == -1) {
+			perror("epoll_create1");
+			goto fail_cleanup;
+		}
+
+		// THEN create eventfd
+		ret->notify_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+		if (ret->notify_fd == -1) {
+			perror("eventfd creation failed");
+			goto fail_cleanup;
+		}
+
+		// NOW add eventfd to epoll
+		struct epoll_event ev = {0};
+		ev.events = EPOLLIN;
+		ev.data.ptr = NULL; // Special marker - not a regular fd item
+		if (epoll_ctl(ret->epoll_fd, EPOLL_CTL_ADD, ret->notify_fd, &ev) == -1) {
+			perror("epoll_ctl add notify_fd failed");
+			goto fail_cleanup;
+		}
+
+		log(DEBUG, "[SELECTOR_NEW] EventFD %d added to epoll %d for notifications", ret->notify_fd, ret->epoll_fd);
+
 		if (0 != ensure_capacity(ret, initial_elements)) {
-			selector_destroy(ret);
-			ret = NULL;
+			goto fail_cleanup;
 		} else {
 			// max events that can be handled at once
 			ret->max_events = initial_elements > 0 ? initial_elements : 1024;
 			ret->events = calloc(ret->max_events, sizeof(struct epoll_event));
 			if (!ret->events) {
-				selector_destroy(ret);
-				return NULL;
-			}
-			ret->epoll_fd = epoll_create1(0);
-			if (ret->epoll_fd == -1) {
-				perror("epoll_create1");
-				selector_destroy(ret);
-				return NULL;
+				goto fail_cleanup;
 			}
 		}
 	}
 	return ret;
+
+fail_cleanup:
+	// Proper cleanup
+	if (ret) {
+		if (ret->notify_fd >= 0) {
+			close(ret->notify_fd);
+		}
+		if (ret->epoll_fd >= 0) {
+			close(ret->epoll_fd);
+		}
+		if (ret->events) {
+			free(ret->events);
+		}
+		pthread_mutex_destroy(&ret->resolution_mutex);
+		free(ret);
+	}
+	return NULL;
 }
+
+// fd_selector selector_new(const size_t initial_elements) {
+// 	size_t size = sizeof(struct fdselector);
+// 	fd_selector ret = malloc(size);
+// 	if (ret != NULL) {
+// 		memset(ret, 0x00, size);
+// 		ret->master_t.tv_sec = conf.select_timeout.tv_sec;
+// 		ret->master_t.tv_nsec = conf.select_timeout.tv_nsec;
+// 		ret->resolution_jobs = 0;
+// 		ret->earliest_timeout = 0;
+// 		ret->active_sessions = 0;
+
+// 		// Create eventfd for notifications
+// 		ret->notify_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+// 		if (ret->notify_fd == -1) {
+// 			perror("eventfd creation failed");
+// 			// cleanup and return NULL
+// 			goto fail;
+// 		}
+// 		struct epoll_event ev = {0};
+// 		ev.events = EPOLLIN;
+// 		ev.data.ptr = NULL; // Special marker - not a regular fd item
+// 		if (epoll_ctl(s->epoll_fd, EPOLL_CTL_ADD, s->notify_fd, &ev) == -1) {
+// 			perror("epoll_ctl add notify_fd failed");
+// 			close(s->notify_fd);
+// 			goto fail;
+// 		}
+
+// 		log(DEBUG, "[SELECTOR_NEW] EventFD %d added to epoll for notifications", s->notify_fd);
+
+// 		pthread_mutex_init(&ret->resolution_mutex, 0);
+// 		if (0 != ensure_capacity(ret, initial_elements)) {
+// 			selector_destroy(ret);
+// 			ret = NULL;
+// 		} else {
+// 			// max events that can be handled at once
+// 			ret->max_events = initial_elements > 0 ? initial_elements : 1024;
+// 			ret->events = calloc(ret->max_events, sizeof(struct epoll_event));
+// 			if (!ret->events) {
+// 				selector_destroy(ret);
+// 				return NULL;
+// 			}
+// 			ret->epoll_fd = epoll_create1(0);
+// 			if (ret->epoll_fd == -1) {
+// 				perror("epoll_create1");
+// 				selector_destroy(ret);
+// 				return NULL;
+// 			}
+// 		}
+// 	}
+// 	return ret;
+// fail:
+// 	return NULL;
+// }
 
 void selector_destroy(fd_selector s) {
 	if (s != NULL) {
@@ -313,6 +405,9 @@ void selector_destroy(fd_selector s) {
 		if (s->epoll_fd != -1) {
 			close(s->epoll_fd);
 			s->epoll_fd = -1;
+		}
+		if (s->notify_fd >= 0) {
+			close(s->notify_fd);
 		}
 		free(s);
 	}
@@ -431,29 +526,119 @@ selector_status selector_set_interest_key(struct selector_key *key, fd_interest 
  * se encarga de manejar los resultados del select.
  * se encuentra separado para facilitar el testing
  */
+// static void handle_block_notifications(fd_selector s) {
+// 	struct selector_key key = {
+// 		.s = s,
+// 	};
+// 	pthread_mutex_lock(&s->resolution_mutex);
+// 	struct blocking_job *j = s->resolution_jobs;
+// 	// if (j == NULL) {
+// 	// 	log(DEBUG, "[HANDLE_BLOCK] No pending DNS notifications");
+// 	// } else {
+// 	// 	log(DEBUG, "[HANDLE_BLOCK] Processing DNS notifications");
+// 	// }
+// 	while (j != NULL) {
+// 		struct item *item = s->fds + j->fd;
+// 		if (ITEM_USED(item)) {
+// 			key.fd = item->fd;
+// 			key.data = item->data;
+// 			item->handler->handle_block(&key);
+// 		}
+
+// 		struct blocking_job *aux = j;
+// 		j = j->next;
+// 		free(aux);
+// 	}
+// 	s->resolution_jobs = 0;
+// 	pthread_mutex_unlock(&s->resolution_mutex);
+// }
 static void handle_block_notifications(fd_selector s) {
-	struct selector_key key = {
-		.s = s,
-	};
+	struct selector_key key = { .s = s };
+	
 	pthread_mutex_lock(&s->resolution_mutex);
 	struct blocking_job *j = s->resolution_jobs;
+	
 	while (j != NULL) {
 		struct item *item = s->fds + j->fd;
-		if (ITEM_USED(item)) {
+		
+		if (ITEM_USED(item) && item->data != NULL) {
+			// Session válida - procesar resultado
+			client_session *session = (client_session *) item->data;
+			
+			struct addrinfo *dns_result = (struct addrinfo *) j->data;
+			if (dns_result) {
+				// DNS tuvo éxito
+				session->dns_failed = false;
+				session->dns_error_code = 0;
+				session->connection.data.resolved.dst_addresses = dns_result;
+			} else {
+				// DNS falló
+				session->dns_failed = true;
+				session->dns_error_code = SOCKS5_REPLY_HOST_UNREACHABLE; // o mapear error
+				session->connection.data.resolved.dst_addresses = NULL;
+			}
+			
+			// Llamar handle_block
 			key.fd = item->fd;
 			key.data = item->data;
-			item->handler->handle_block(&key);
+			if (item->handler->handle_block) {
+				item->handler->handle_block(&key);
+			}
+		} else {			
+			if (j->data) {
+				freeaddrinfo((struct addrinfo *) j->data);
+			}
 		}
 
 		struct blocking_job *aux = j;
 		j = j->next;
 		free(aux);
 	}
-	s->resolution_jobs = 0;
+	s->resolution_jobs = NULL;
 	pthread_mutex_unlock(&s->resolution_mutex);
 }
 
+selector_status selector_notify_block_with_result(fd_selector s, const int fd, struct addrinfo *dns_result) {
+	log(DEBUG, "[SELECTOR_NOTIFY] Notifying selector for fd=%d", fd);
+
+	selector_status ret = SELECTOR_SUCCESS;
+
+	struct blocking_job *job = malloc(sizeof(*job));
+	if (job == NULL) {
+		ret = SELECTOR_ENOMEM;
+		goto finally;
+	}
+	job->s = s;
+	job->fd = fd;
+	job->data = dns_result; 
+
+	// encolamos en el selector los resultados
+	pthread_mutex_lock(&s->resolution_mutex);
+	job->next = s->resolution_jobs;
+	s->resolution_jobs = job;
+	pthread_mutex_unlock(&s->resolution_mutex);
+
+	// Wake up selector using eventfd
+	uint64_t value = 1;
+	ssize_t bytes_written = write(s->notify_fd, &value, sizeof(value));
+	if (bytes_written != sizeof(value)) {
+		if (bytes_written == -1) {
+			log(ERROR, "[SELECTOR_NOTIFY] Failed to write to eventfd: %s", strerror(errno));
+		} else {
+			log(ERROR, "[SELECTOR_NOTIFY] Partial write to eventfd: %zd bytes", bytes_written);
+		}
+		ret = SELECTOR_IO;
+	} else {
+		log(DEBUG, "[SELECTOR_NOTIFY] EventFD notification sent successfully");
+	}
+
+finally:
+	return ret;
+}
+
 selector_status selector_notify_block(fd_selector s, const int fd) {
+	log(DEBUG, "[SELECTOR_NOTIFY] Notifying selector for fd=%d", fd);
+
 	selector_status ret = SELECTOR_SUCCESS;
 
 	// TODO(juan): usar un pool
@@ -469,10 +654,26 @@ selector_status selector_notify_block(fd_selector s, const int fd) {
 	pthread_mutex_lock(&s->resolution_mutex);
 	job->next = s->resolution_jobs;
 	s->resolution_jobs = job;
+
 	pthread_mutex_unlock(&s->resolution_mutex);
 
-	// notificamos al hilo principal
-	pthread_kill(s->selector_thread, conf.signal);
+	// Wake up selector using eventfd instead of signal
+	uint64_t value = 1;
+	ssize_t bytes_written = write(s->notify_fd, &value, sizeof(value));
+	if (bytes_written != sizeof(value)) {
+		if (bytes_written == -1) {
+			log(ERROR, "[SELECTOR_NOTIFY] Failed to write to eventfd: %s", strerror(errno));
+		} else {
+			log(ERROR, "[SELECTOR_NOTIFY] Partial write to eventfd: %zd bytes", bytes_written);
+		}
+		ret = SELECTOR_IO;
+	} else {
+		log(DEBUG, "[SELECTOR_NOTIFY] EventFD notification sent successfully");
+	}
+
+	// // notificamos al hilo principal
+	// pthread_kill(s->selector_thread, conf.signal);
+	// log(DEBUG, "[SELECTOR_NOTIFY] Signal sent to selector thread");
 
 finally:
 	return ret;
@@ -520,9 +721,27 @@ selector_status selector_select(fd_selector s) {
 				timeout_ms = 0;
 		}
 	}
+
 	int n = epoll_wait(s->epoll_fd, s->events, s->max_events, timeout_ms);
 	if (n < 0) {
+        if (errno == EINTR) {
+            log(DEBUG, "[SELECTOR_SELECT] Interrupted by signal");
+            // Continue processing - don't return early
+        } else {
+            perror("epoll_wait");
+            ret = SELECTOR_IO;
+            goto finally;
+        }
+    }
+    
+    // log(DEBUG, "[SELECTOR_SELECT] epoll_wait returned %d events", n);
+    
+	// log(DEBUG, "[SELECTOR_SELECT] epoll_wait returned %d, errno=%d", n, errno);
+
+	if (n < 0) {
 		if (errno == EINTR) {
+			log(DEBUG, "[SELECTOR_SELECT] Interrupted by signal - checking for DNS notifications");
+
 			// interrupted by signal, ok
 		} else {
 			perror("epoll_wait");
@@ -530,12 +749,69 @@ selector_status selector_select(fd_selector s) {
 			goto finally;
 		}
 	}
+
+	// Process I/O events FIRST, so timeout resets are applied before timeout checks
+	for (int i = 0; i < n; i++) {
+		struct item *item = (struct item *) s->events[i].data.ptr;
+		// Handle eventfd notifications (data.ptr == NULL is our marker)
+		if (item == NULL) {
+			uint64_t value;
+			ssize_t bytes = read(s->notify_fd, &value, sizeof(value));
+			if (bytes == sizeof(value)) {
+				log(DEBUG, "[SELECTOR_SELECT] DNS notification received via eventfd (value=%lu)", value);
+			} else if (bytes == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+				log(ERROR, "[SELECTOR_SELECT] Error reading from eventfd: %s", strerror(errno));
+			}
+			// Note: We don't call handle_block_notifications here - it's called at the end
+			continue;
+		}
+		if (!item || !ITEM_USED(item) || !item->handler)
+			continue;
+		struct selector_key key = {
+			.s = s,
+			.fd = item->fd,
+			.data = item->data,
+		};
+		uint32_t ev = s->events[i].events;
+		if ((ev & EPOLLIN) && (item->interest & OP_READ) && item->handler->handle_read) {
+			item->handler->handle_read(&key);
+		}
+		if ((ev & EPOLLOUT) && (item->interest & OP_WRITE) && item->handler->handle_write) {
+			item->handler->handle_write(&key);
+		}
+		if (ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
+			// CRITICAL: Take a snapshot of the handler to avoid race
+			struct fd_handler *handler = item->handler;
+			if (handler && handler->handle_close) {
+				handler->handle_close(&key);
+			} else {
+				// Manual cleanup if handler is gone
+				close(item->fd);
+				item->fd = -1;
+				item->handler = NULL;
+				item->data = NULL;
+			}
+		}
+		// if ((ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) && item->handler && item->handler->handle_close) {
+		// 	item->handler->handle_close(&key);
+		// }
+	}
+
+	// NOW check for timeouts AFTER processing events
 	time_t now = time(NULL);
 	for (size_t i = 0; i < s->fd_size; i++) {
 		struct item *item = s->fds + i;
 		if (ITEM_USED(item) && item->data != NULL) {
 			// Only process if data exists and looks like a client session
 			client_session *session = (client_session *) item->data;
+
+			if (session->type == SESSION_SOCKS5 && session->cleaned_up) {
+				log(DEBUG, "[SELECTOR] Skipping cleaned up session for fd=%d", item->fd);
+				// Clear the stale pointer
+				item->data = NULL;
+				item->handler = NULL;
+				continue;
+			}
 			if (session->type == SESSION_SOCKS5) {
 				// Check if this looks like a valid client session by checking for timeout fields
 				if (session->idle_timeout > 0 && session->next_timeout > 0 && now >= session->next_timeout) {
@@ -551,26 +827,7 @@ selector_status selector_select(fd_selector s) {
 			}
 		}
 	}
-	for (int i = 0; i < n; i++) {
-		struct item *item = (struct item *) s->events[i].data.ptr;
-		if (!item || !ITEM_USED(item) || !item->handler)
-			continue;
-		struct selector_key key = {
-			.s = s,
-			.fd = item->fd,
-			.data = item->data,
-		};
-		uint32_t ev = s->events[i].events;
-		if ((ev & EPOLLIN) && (item->interest & OP_READ) && item->handler->handle_read) {
-			item->handler->handle_read(&key);
-		}
-		if ((ev & EPOLLOUT) && (item->interest & OP_WRITE) && item->handler->handle_write) {
-			item->handler->handle_write(&key);
-		}
-		if ((ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) && item->handler->handle_close) {
-			item->handler->handle_close(&key);
-		}
-	}
+
 	handle_block_notifications(s);
 finally:
 	return ret;

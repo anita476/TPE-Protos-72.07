@@ -10,7 +10,7 @@
 
 // SERVER RESPONSE CODES
 #define RESPONSE_SUCCESS 0x00				 // Success
-#define RESPONSE_SUCCESS_CLIENT 0x01		 // Usuario autenticado <- this is the default response code...
+#define RESPONSE_SUCCESS_CLIENT 0x01		 // Usuario autenticado
 #define RESPONSE_SUCCESS_ADMIN 0x02			 // Admin autenticado
 #define RESPONSE_AUTH_FAILURE 0x03			 // Error de autenticación
 #define RESPONSE_GENERAL_SERVER_FAILURE 0x04 // General server error
