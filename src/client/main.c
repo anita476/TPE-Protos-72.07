@@ -237,18 +237,28 @@ static void display_logs(void *data, int count, int page) {
 		return;
 	}
 
-	char logs_info[2048];
-	char log_list[1536] = "";
+	char logs_info[4096];
+	char log_list[3072] = "";
 	client_log_entry_t *current = (client_log_entry_t *) data;
 	int display_count = 0;
 	int start_index = page * ITEMS_PER_PAGE;
 
 	while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
-		char log_line[600];
+		char log_line[1024];
 
-		snprintf(log_line, sizeof(log_line), "%d. [%s] %.*s -> %s:%d (0x%02x)\n", start_index + display_count + 1,
-				 current->date, current->ulen, current->username, current->destination_address,
-				 current->destination_port, current->status_code);
+		snprintf(log_line, sizeof(log_line),
+				 "%d.\n"
+				 "  Date: %s\n"
+				 "  User: %s\n"
+				 "  Type: %c\n"
+				 "  Origin IP: %s\n"
+				 "  Origin port: %d\n"
+				 "  Destination: %s\n"
+				 "  Destination port: %d\n"
+				 "  Status code: 0x%02x\n\n",
+				 start_index + display_count + 1, current->date, current->username, current->register_type,
+				 current->origin_ip, current->origin_port, current->destination_address, current->destination_port,
+				 current->status_code);
 
 		strncat(log_list, log_line, sizeof(log_list) - strlen(log_list) - 1);
 		current = current->next;

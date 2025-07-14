@@ -29,7 +29,7 @@ typedef struct {
 	int client_fd;
 
 	// Authentication info
-	char username[256];
+	char username[USERNAME_MAX_SIZE];
 	uint8_t user_type; // USER_TYPE_CLIENT or USER_TYPE_ADMIN
 	bool authenticated;
 
