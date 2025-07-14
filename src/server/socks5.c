@@ -691,7 +691,7 @@ static void auth_read(struct selector_key *key) {
 		}
 		session->user_type = user_type;
 		session->username = strdup(username);
-		log(FATAL, "Username is: %s", username);
+		// log(FATAL, "Username is: %s", username);
 		buffer_write(wb, SOCKS5_AUTH_SUCCESS);
 		session->current_state = STATE_AUTH_WRITE;
 	}
