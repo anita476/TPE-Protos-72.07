@@ -450,16 +450,18 @@ static void hello_read(struct selector_key *key) {
 	buffer *wb = &session->write_buffer;
 	buffer_write(wb, SOCKS5_VERSION);
 
-	if (no_auth_supported) {
-		buffer_write(wb, SOCKS5_NO_AUTH);
-		log(DEBUG, "[HELLO_READ] Selected NO_AUTH method");
-		session->current_state = STATE_HELLO_WRITE;
-		session->authenticated = false;
-	} else if (auth_supported) {
+	if (auth_supported) {
 		buffer_write(wb, SOCKS5_USER_PASS_AUTH);
 		log(DEBUG, "[HELLO_READ] Selected USER_PASS_AUTH method");
+
 		session->current_state = STATE_HELLO_WRITE;
 		session->authenticated = true;
+	} else if (no_auth_supported) {
+		buffer_write(wb, SOCKS5_NO_AUTH);
+		log(DEBUG, "[HELLO_READ] Selected NO_AUTH method");
+
+		session->current_state = STATE_HELLO_WRITE;
+		session->authenticated = false;
 	} else {
 		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS);
 		log(ERROR, "[HELLO_READ] No acceptable methods. Sending 0xFF.");
