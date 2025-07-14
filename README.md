@@ -21,6 +21,11 @@ Para ejecutar el servidor puede utilizar el comando:
 Los administradores deben ser creados junto al comando para iniciar el servidor mediante `-a user:password`. Opcionalmente, pueden añadirse usuarios con la flag `-u`. 
 `./bin/socks5d -a admin:admin -u user1:user1 -u user1:user1`
 
+Opcionalmente, se puede especificar un puerto de Socks5 con `-p` y uno para management con `-P` de la siguiente manera:
+`./bin/socks5d -a admin:admin -p 1090 -P 8090`
+
+De forma similar, también se puede cambiar la dirección de Socks5 y management con `-l` y `-L`.
+
 Además, es posible obtener el detalle de los argumentos aceptados con `-h`.
 Se agregaron las flags `-g/ --log <LOG_LEVEL>` para manejar el nivel de logging del servidor. Además, se agregó la flag `-s` (silent) para deshabilitar el logging.
 
