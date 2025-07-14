@@ -1,33 +1,28 @@
 // This is a personal academic project. Dear PVS-Studio, please check it.
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include <ctype.h>
+#include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "include/client_constants.h"
 #include "include/lib_client.h"
 #include "include/pagination.h"
 #include "include/ui_adapter.h"
 #include "include/validation.h"
 
-#include <errno.h>
+#define MAX_ATTEMPTS 3
 
-#define MAX_USERS 10
-#define MAX_USERNAME 24
-#define MAX_INPUT 256
-
-#define ITEMS_PER_PAGE 10
-#define MAX_DISPLAY_ITEMS 10
-
-#define DEFAULT_SERVER_ADDRESS "localhost"
-#define DEFAULT_SERVER_PORT "8080"
+#define MENU_ITEM_LABEL_LEN 64
+#define MENU_ITEM_FIELDS 2
 
 static int server_socket = -1;
 static char server_address[256] = DEFAULT_SERVER_ADDRESS;
 static char server_port[16] = DEFAULT_SERVER_PORT;
-static int use_console_ui = 0;
+static int use_console_ui = UI_MODE_DIALOG;
 
 // Connection functions
 static int handle_connection_lost();
@@ -113,7 +108,7 @@ static int get_password(char *password, int size) {
 static int authenticate() {
 	char username[MAX_INPUT], password[MAX_INPUT];
 
-	for (int attempts = 0; attempts < 3; attempts++) {
+	for (int attempts = 0; attempts < MAX_ATTEMPTS; attempts++) {
 		server_socket = setup_tcp_client_socket(server_address, server_port);
 		if (server_socket < 0) {
 			ui_show_message("Error", "Failed to connect to server");
@@ -158,9 +153,10 @@ static int authenticate() {
 
 		close(server_socket);
 
-		if (attempts < 2) {
-			char error_msg[256];
-			snprintf(error_msg, sizeof(error_msg), "Incorrect credentials. Attempts remaining: %d", 2 - attempts);
+		if (attempts < MAX_ATTEMPTS - 1) {
+			char error_msg[BUFFER_XS];
+			snprintf(error_msg, sizeof(error_msg), "Incorrect credentials. Attempts remaining: %d",
+					 MAX_ATTEMPTS - 1 - attempts);
 			ui_show_message("Error", error_msg);
 		}
 
@@ -207,15 +203,15 @@ static void display_users(void *data, int count, int page) {
 		return;
 	}
 
-	char users_info[2048];
-	char user_list[1536] = "";
+	char users_info[BUFFER_XXL];
+	char user_list[BUFFER_XL] = "";
 	user_list_entry *current = (user_list_entry *) data;
 	int display_count = 0;
 	int start_index = page * ITEMS_PER_PAGE;
 
 	while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
 		const char *role = (current->user_type == 1) ? "Administrator" : "User";
-		char user_line[128];
+		char user_line[BUFFER_XS];
 		snprintf(user_line, sizeof(user_line), "%d. %.*s (%s)\n", start_index + display_count + 1, current->ulen,
 				 current->username, role);
 		strncat(user_list, user_line, sizeof(user_list) - strlen(user_list) - 1);
@@ -237,14 +233,14 @@ static void display_logs(void *data, int count, int page) {
 		return;
 	}
 
-	char logs_info[4096];
-	char log_list[3072] = "";
+	char logs_info[BUFFER_XXL];
+	char log_list[BUFFER_XL] = "";
 	client_log_entry_t *current = (client_log_entry_t *) data;
 	int display_count = 0;
 	int start_index = page * ITEMS_PER_PAGE;
 
 	while (current != NULL && display_count < MAX_DISPLAY_ITEMS) {
-		char log_line[1024];
+		char log_line[BUFFER_L];
 
 		snprintf(log_line, sizeof(log_line),
 				 "%d.\n"
@@ -299,7 +295,7 @@ static void show_metrics() {
 		return;
 	}
 
-	char status_info[2048];
+	char status_info[BUFFER_XL];
 	snprintf(status_info, sizeof(status_info),
 			 "Server status: %s\n"
 			 "Current connections: %u\n"
@@ -398,7 +394,7 @@ static void show_config() {
 		return;
 	}
 
-	char config_info[1024];
+	char config_info[BUFFER_L];
 
 	snprintf(config_info, sizeof(config_info),
 			 "Current connection:\n"
@@ -468,7 +464,7 @@ static int add_user() {
 		return 0;
 	}
 
-	char success_msg[512];
+	char success_msg[BUFFER_M];
 	snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully added to the system.", username);
 	ui_show_message("Success", success_msg);
 
@@ -476,7 +472,7 @@ static int add_user() {
 }
 
 static int remove_user() {
-	char selected_user[MAX_USERNAME];
+	char selected_user[MAX_USERNAME_LEN];
 	if (server_socket < 0) {
 		if (handle_connection_lost()) {
 			return remove_user();
@@ -490,7 +486,7 @@ static int remove_user() {
 		return 0;
 	}
 
-	char confirm_msg[256];
+	char confirm_msg[BUFFER_XS];
 	snprintf(confirm_msg, sizeof(confirm_msg),
 			 "Are you sure you want to remove user '%s'?\n\nThis action cannot be undone.", selected_user);
 
@@ -503,7 +499,7 @@ static int remove_user() {
 			return 0;
 		}
 		if (result == RESPONSE_SUCCESS) {
-			char success_msg[256];
+			char success_msg[BUFFER_XS];
 			snprintf(success_msg, sizeof(success_msg), "User '%s' has been successfully removed from the system.",
 					 selected_user);
 			ui_show_message("Success", success_msg);
@@ -533,7 +529,7 @@ static void change_server_setting(const char *setting_name, const char *unit,
 		return;
 	}
 
-	char prompt[256];
+	char prompt[BUFFER_XS];
 	snprintf(prompt, sizeof(prompt), "Enter new %s (%s):", setting_name, unit);
 
 	char *input = ui_get_input(setting_name, prompt, 0);
@@ -546,12 +542,12 @@ static void change_server_setting(const char *setting_name, const char *unit,
 		return;
 	}
 
-	char confirm_msg[256];
+	char confirm_msg[BUFFER_XS];
 	snprintf(confirm_msg, sizeof(confirm_msg), "Are you sure you want to change %s to %d %s?", setting_name, new_value,
 			 unit);
 
 	if (!ui_get_confirmation("Confirm change", confirm_msg)) {
-		char cancel_msg[256];
+		char cancel_msg[BUFFER_XS];
 		snprintf(cancel_msg, sizeof(cancel_msg), "%s change cancelled.", setting_name);
 		ui_show_message("Info", cancel_msg);
 		return;
@@ -566,11 +562,11 @@ static void change_server_setting(const char *setting_name, const char *unit,
 	}
 
 	if (result == RESPONSE_SUCCESS || result == RESPONSE_SUCCESS_ADMIN || result == RESPONSE_SUCCESS_CLIENT) {
-		char success_msg[256];
+		char success_msg[BUFFER_XS];
 		snprintf(success_msg, sizeof(success_msg), "%s successfully changed to %d %s.", setting_name, new_value, unit);
 		ui_show_message("Success", success_msg);
 	} else {
-		char error_msg[256];
+		char error_msg[BUFFER_XS];
 		snprintf(error_msg, sizeof(error_msg), "Failed to change %s. Error code: %d", setting_name, result);
 		ui_show_message("Error", error_msg);
 	}
@@ -592,7 +588,7 @@ static int is_dialog_installed() {
 
 static void admin_menu() {
 	while (1) {
-		char items[5][2][64] = {
+		char items[5][MENU_ITEM_FIELDS][MENU_ITEM_LABEL_LEN] = {
 			{"1", "View metrics"}, {"2", "View logs"}, {"3", "Manage users"}, {"4", "Manage settings"}, {"5", "Exit"}};
 
 		int selected = ui_get_menu_selection("Admin interface", "Select an option:", items, 5);
@@ -633,7 +629,7 @@ static int confirm_exit() {
 
 static void manage_users() {
 	while (1) {
-		char items[4][2][64] = {
+		char items[4][MENU_ITEM_FIELDS][MENU_ITEM_LABEL_LEN] = {
 			{"1", "List all users"}, {"2", "Add new user"}, {"3", "Remove user"}, {"4", "Back to main menu"}};
 
 		int selected = ui_get_menu_selection("Manage users", "Select an option:", items, 4);
@@ -659,10 +655,10 @@ static void manage_users() {
 
 static void configure_settings() {
 	while (1) {
-		char items[4][2][64] = {{"1", "Show configurations"},
-								{"2", "Change buffer size"},
-								{"3", "Change timeout"},
-								{"4", "Back to main menu"}};
+		char items[4][MENU_ITEM_FIELDS][MENU_ITEM_LABEL_LEN] = {{"1", "Show configurations"},
+																{"2", "Change buffer size"},
+																{"3", "Change timeout"},
+																{"4", "Back to main menu"}};
 
 		int selected = ui_get_menu_selection("Server settings", "Select an option:", items, 4);
 		if (selected == -1 || selected == 4)
@@ -705,7 +701,7 @@ static int parse_arguments(int argc, char *argv[]) {
 
 			char *endptr;
 			long port = strtol(argv[i + 1], &endptr, 10);
-			if (*endptr != '\0' || port <= 0 || port > 65535) {
+			if (*endptr != '\0' || port < MIN_PORT || port > MAX_PORT) {
 				fprintf(stderr, "Error: Invalid port number '%s'. Must be between 1 and 65535\n", argv[i + 1]);
 				return -1;
 			}
@@ -714,7 +710,7 @@ static int parse_arguments(int argc, char *argv[]) {
 			server_port[sizeof(server_port) - 1] = '\0';
 			i++;
 		} else if (strcmp(argv[i], "--console") == 0) {
-			use_console_ui = 1;
+			use_console_ui = UI_MODE_CONSOLE;
 		} else if (strcmp(argv[i], "--help") == 0) {
 			print_usage();
 			return 1;
@@ -756,7 +752,7 @@ int main(int argc, char *argv[]) {
 
 	ui_init(use_console_ui);
 
-	char welcome_msg[512];
+	char welcome_msg[BUFFER_M];
 	snprintf(welcome_msg, sizeof(welcome_msg),
 			 "SOCKS5 server admin interface\n\n"
 			 "UI Mode: %s\n"

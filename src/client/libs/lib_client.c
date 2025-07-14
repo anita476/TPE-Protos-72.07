@@ -23,7 +23,7 @@ void fill_log_struct(char *data, client_log_entry_t *log);
 void fill_user_list_entry(char *data, user_list_entry *user);
 uint8_t add_user_send_req(int sock, char *username, char *password, uint8_t user_type_command_code);
 uint8_t remove_user_send_req(int sock, char *username);
-void fill_log_struct_status_code(char * status_code_ptr, uint8_t status_code);
+void fill_log_struct_status_code(char *status_code_ptr, uint8_t status_code);
 static uint8_t user_type;
 
 static uint8_t get_user_type() {
@@ -518,7 +518,7 @@ user_list_entry *handle_get_users(uint8_t n, uint8_t offset, int sock) {
 
 	return head;
 }
-void fill_log_struct_status_code(char * status_code_ptr, uint8_t status_code) {
+void fill_log_struct_status_code(char *status_code_ptr, uint8_t status_code) {
 	snprintf(status_code_ptr, MAX_STATUS_CODE_LEN_TEXT, "0x%02X", status_code);
 	status_code_ptr += 4;
 	*status_code_ptr = ' ';
@@ -562,7 +562,6 @@ void fill_log_struct_status_code(char * status_code_ptr, uint8_t status_code) {
 			break;
 	}
 }
-
 
 void fill_log_struct(char *data, client_log_entry_t *log) {
 	char *ptr = data;
@@ -608,8 +607,6 @@ void fill_log_struct(char *data, client_log_entry_t *log) {
 	ptr += sizeof(uint16_t);
 
 	fill_log_struct_status_code(log->status_code, *ptr);
-
-
 }
 
 void fill_user_list_entry(char *data, user_list_entry *user) {

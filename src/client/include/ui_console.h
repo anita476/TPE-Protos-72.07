@@ -1,7 +1,13 @@
 #ifndef UI_CONSOLE_H
 #define UI_CONSOLE_H
 
-#define MAX_INPUT 256
+#define CONSOLE_WIDTH 80
+#define BOX_WIDTH 60
+#define HEADER_PADDING 4
+#define MENU_ITEM_LABEL_LEN 64
+#define MENU_ITEM_FIELDS 2
+#define INPUT_BUFFER_LEN 16
+#define MIN_MENU_OPTION 1
 
 void ui_console_show_message(const char *title, const char *message);
 

@@ -6,23 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../include/client_constants.h"
 #include "../include/ui_adapter.h"
 #include "../include/validation.h"
 
-#define MAX_USERNAME_LEN 24
-#define MIN_USERNAME_LEN 3
-#define MAX_PASSWORD_LEN 24
-#define MIN_PASSWORD_LEN 4
-#define MIN_BUFFER_SIZE 1
-#define MAX_BUFFER_SIZE 64
-#define MIN_TIMEOUT 1
-#define MAX_TIMEOUT 60
-#define MIN_PORT 1
-#define MAX_PORT 65535
-
 int validate_input(const char *input, int min_len, int max_len, const char *error_prefix) {
 	if (!input || strlen(input) == 0) {
-		char msg[256];
+		char msg[BUFFER_XS];
 		snprintf(msg, sizeof(msg), "%s cannot be empty", error_prefix);
 		ui_show_message("Error", msg);
 		return 0;
@@ -31,14 +21,14 @@ int validate_input(const char *input, int min_len, int max_len, const char *erro
 	size_t len = strlen(input);
 
 	if (len < (size_t) min_len) {
-		char msg[256];
+		char msg[BUFFER_XS];
 		snprintf(msg, sizeof(msg), "%s must be at least %d characters long", error_prefix, min_len);
 		ui_show_message("Error", msg);
 		return 0;
 	}
 
 	if (len >= (size_t) max_len) {
-		char msg[256];
+		char msg[BUFFER_XS];
 		snprintf(msg, sizeof(msg), "%s must be less than %d characters long", error_prefix, max_len);
 		ui_show_message("Error", msg);
 		return 0;
@@ -88,7 +78,7 @@ int validate_password(const char *password) {
 
 int validate_numeric_only(const char *input, const char *field_name) {
 	if (!input || strlen(input) == 0) {
-		char msg[256];
+		char msg[BUFFER_XS];
 		snprintf(msg, sizeof(msg), "%s cannot be empty", field_name);
 		ui_show_message("Error", msg);
 		return 0;
@@ -96,7 +86,7 @@ int validate_numeric_only(const char *input, const char *field_name) {
 
 	for (size_t i = 0; i < strlen(input); i++) {
 		if (!isdigit((unsigned char) input[i])) {
-			char msg[256];
+			char msg[BUFFER_XS];
 			snprintf(msg, sizeof(msg), "%s must contain only numbers", field_name);
 			ui_show_message("Error", msg);
 			return 0;
@@ -115,21 +105,21 @@ int validate_numeric_range(const char *input, long min_value, long max_value, co
 	long value = strtol(input, &endptr, 10);
 
 	if (*endptr != '\0') {
-		char msg[256];
+		char msg[BUFFER_XS];
 		snprintf(msg, sizeof(msg), "Invalid %s format", value_name);
 		ui_show_message("Error", msg);
 		return 0;
 	}
 
 	if (value < min_value) {
-		char msg[256];
+		char msg[BUFFER_XS];
 		snprintf(msg, sizeof(msg), "%s must be at least %ld", value_name, min_value);
 		ui_show_message("Error", msg);
 		return 0;
 	}
 
 	if (value > max_value) {
-		char msg[256];
+		char msg[BUFFER_XS];
 		snprintf(msg, sizeof(msg), "%s cannot exceed %ld", value_name, max_value);
 		ui_show_message("Error", msg);
 		return 0;
@@ -146,7 +136,7 @@ int validate_buffer_size(const char *input, uint8_t *buffer_size) {
 	}
 
 	if (value < 4) {
-		char warning_msg[256];
+		char warning_msg[BUFFER_XS];
 		snprintf(warning_msg, sizeof(warning_msg),
 				 "Warning: Buffer size %ld KB is very small. Recommended minimum is 4 KB.", value);
 		ui_show_message("Warning", warning_msg);
@@ -168,7 +158,7 @@ int validate_timeout(const char *input, uint8_t *timeout_value) {
 
 int validate_alphanumeric(const char *input, const char *field_name) {
 	if (!input || strlen(input) == 0) {
-		char msg[256];
+		char msg[BUFFER_XS];
 		snprintf(msg, sizeof(msg), "%s cannot be empty", field_name);
 		ui_show_message("Error", msg);
 		return 0;
@@ -176,7 +166,7 @@ int validate_alphanumeric(const char *input, const char *field_name) {
 
 	for (size_t i = 0; i < strlen(input); i++) {
 		if (!isalnum((unsigned char) input[i])) {
-			char msg[256];
+			char msg[BUFFER_XS];
 			snprintf(msg, sizeof(msg), "%s can only contain letters and numbers", field_name);
 			ui_show_message("Error", msg);
 			return 0;
