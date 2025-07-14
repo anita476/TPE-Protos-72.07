@@ -160,21 +160,6 @@ uint8_t handle_add_client(int sock, char *username, char *password) {
 	return response[1]; // Return the response code
 }
 
-uint8_t handle_add_admin(int sock, char *username, char *password) {
-	if (get_user_type() != USER_TYPE_ADMIN) {
-		return RESPONSE_NOT_ALLOWED;
-	}
-	uint8_t r = add_user_send_req(sock, username, password, COMMAND_ADD_ADMIN);
-	if (r != 0) {
-		return r;
-	}
-	char response[RESPONSE_HEADER_LEN];
-	if (recv_all(sock, response, RESPONSE_HEADER_LEN) != RESPONSE_HEADER_LEN) {
-		return RESPONSE_GENERAL_SERVER_FAILURE; // Failed to read response
-	}
-	return response[1]; // Return the response code
-}
-
 uint8_t add_user_send_req(int sock, char *username, char *password, uint8_t user_type_command_code) {
 	if (sock < 0) {
 		return RESPONSE_BAD_REQUEST; // Invalid socket

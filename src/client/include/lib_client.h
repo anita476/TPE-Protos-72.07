@@ -44,7 +44,6 @@ server_current_config *handle_get_current_config(int sock, server_current_config
 uint8_t handle_change_buffer_size(int sock, uint8_t new_size);
 uint8_t handle_change_timeout(int sock, uint8_t new_timeout);
 uint8_t handle_add_client(int sock, char *username, char *password);
-uint8_t handle_add_admin(int sock, char *ussername, char *password);
 uint8_t handle_remove_user(int sock, char *username);
 
 // Memory management functions
