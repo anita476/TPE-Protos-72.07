@@ -57,7 +57,7 @@ static int read_temp_file_as_int(void) {
 }
 
 void ui_dialog_show_message(const char *title, const char *message) {
-	char command[BUFFER_M];
+	char command[BUFFER_XL];
 	int lines = count_lines(message);
 
 	snprintf(command, sizeof(command), "dialog --title \"%s\" --msgbox \"%s\" %d %d 2>/dev/null", title, message,
@@ -87,8 +87,8 @@ char *ui_dialog_get_input(const char *title, const char *text, int hidden) {
 }
 
 int ui_dialog_get_menu_selection(const char *title, const char *text, char items[][2][64], int count) {
-	char command[BUFFER_XXL];
-	char menu_items[BUFFER_XL] = "";
+	char command[BUFFER_L];
+	char menu_items[BUFFER_M] = "";
 
 	for (int i = 0; i < count; i++) {
 		char item[BUFFER_S];
