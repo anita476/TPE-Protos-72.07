@@ -21,7 +21,7 @@ mkdir -p "$TMP_DIR"
 
 # Start HTTP server in the background
 cd /tmp
-python3 -m http.server $HTTP_PORT > "$TMP_DIR/http_server.log" 2>&1 &
+python3 -m http.server $HTTP_PORT > "http_server.log" &
 HTTP_PID=$!
 sleep 10  # Give the server time to start
 

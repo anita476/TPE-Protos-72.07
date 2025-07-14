@@ -262,6 +262,7 @@ static void socks5_handle_close(struct selector_key *key) {
 	if (!session) {
 		return;
 	}
+
 	// Remove from timeout tracking
 	selector_remove_session_timeout(key->s, session);
 
@@ -1340,6 +1341,7 @@ static void relay_data(struct selector_key *key) {
 		relay_client_to_remote(key);
 	} else if (key->fd == session->remote_fd) {
 		// Data from remote server to client
+		log(DEBUG, "[RELAY_DATA] Relay remote to client");
 		relay_remote_to_client(key);
 	} else {
 		log(ERROR, "[RELAY_DATA] Unknown fd=%d", key->fd);
@@ -1365,6 +1367,15 @@ static void relay_client_to_remote(struct selector_key *key) {
 	if (bytes_read == 0) {
 		log(DEBUG, "[RELAY] Client closed connection");
 
+		// Check if there's still buffered data to send to remote
+		if (buffer_can_read(client_to_remote_buf)) {
+			log(DEBUG, "[RELAY] Client closed but buffered data remains, keeping connection open");
+			// Keep connection open to flush remaining data
+			selector_set_interest(key->s, session->remote_fd, OP_WRITE);
+			return;
+		}
+
+		// No buffered data, safe to close
 		selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
 		return;
@@ -1422,6 +1433,16 @@ static void relay_remote_to_client(struct selector_key *key) {
 	}
 	if (bytes_read == 0) {
 		log(DEBUG, "[RELAY] Remote closed connection");
+
+		// Check if there's still buffered data to send to client
+		if (buffer_can_read(remote_to_client_buf)) {
+			log(DEBUG, "[RELAY] Remote closed but buffered data remains, keeping connection open");
+			// Keep connection open to flush remaining data
+			selector_set_interest(key->s, session->client_fd, OP_WRITE);
+			return;
+		}
+
+		// No buffered data, safe to close
 		selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
 		return;
@@ -1483,10 +1504,8 @@ static void relay_write(struct selector_key *key) {
 			}
 			metrics_add_bytes_out(bytes_written);
 			buffer_read_adv(remote_to_client_buf, bytes_written);
-		}
 
-		// Reset timeout on successful data transfer
-		if (buffer_can_read(remote_to_client_buf) == false) {
+			// Reset timeout on successful data transfer
 			time_t now = time(NULL);
 			session->next_timeout = now + session->idle_timeout;
 			selector_update_session_timeout(key->s, session, session->next_timeout);
@@ -1518,10 +1537,8 @@ static void relay_write(struct selector_key *key) {
 			}
 			metrics_add_bytes_out(bytes_written);
 			buffer_read_adv(client_to_remote_buf, bytes_written);
-		}
 
-		// Reset timeout on successful data transfer
-		if (buffer_can_read(client_to_remote_buf) == false) {
+			// Reset timeout on successful data transfer
 			time_t now = time(NULL);
 			session->next_timeout = now + session->idle_timeout;
 			selector_update_session_timeout(key->s, session, session->next_timeout);
@@ -1548,6 +1565,8 @@ static void socks5_remote_read(struct selector_key *key) {
 		time_t now = time(NULL);
 		session->next_timeout = now + session->idle_timeout;
 		selector_update_session_timeout(key->s, session, session->next_timeout);
+		log(DEBUG, "[SOCKS5_REMOTE_READ] Resetting timeout to %ld", session->next_timeout);
+		log(DEBUG, "[SOCKS5_REMOTE_READ] Relay remote to client");
 
 		relay_remote_to_client(key);
 	} else {
