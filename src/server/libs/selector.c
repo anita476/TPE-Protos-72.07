@@ -665,6 +665,8 @@ selector_status selector_select(fd_selector s) {
 			log(DEBUG, "[SELECTOR_SELECT] Interrupted by signal");
 			// Continue processing - don't return early
 		} else {
+			log(ERROR, "[SELECTOR] epoll_wait failed: error %d (%s) on epoll_fd %d", errno, strerror(errno),
+				s->epoll_fd);
 			perror("epoll_wait");
 			ret = SELECTOR_IO;
 			goto finally;

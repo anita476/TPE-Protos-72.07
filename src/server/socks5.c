@@ -261,17 +261,16 @@ static void socks5_handle_close(struct selector_key *key) {
 		return;
 	}
 
-	// Remove from timeout tracking
-	selector_remove_session_timeout(key->s, session);
-
 	// Check if we're already cleaning up this session
 	if (session->cleaned_up) {
 		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Session already being cleaned up, skipping");
 		return;
 	}
-
 	// prevent recursive calls
 	session->cleaned_up = true;
+
+	// Remove from timeout tracking
+	selector_remove_session_timeout(key->s, session);
 
 	// Mark which fd was closed
 	if (session->client_fd == key->fd) {
@@ -286,13 +285,13 @@ static void socks5_handle_close(struct selector_key *key) {
 	if (session->client_fd != -1 && session->client_fd != key->fd) {
 		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Closing remaining client fd=%d", session->client_fd);
 		selector_unregister_fd(key->s, session->client_fd);
-		close(session->client_fd);
+		// close(session->client_fd);
 		session->client_fd = -1;
 	}
 	if (session->remote_fd != -1 && session->remote_fd != key->fd) {
 		log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Closing remaining remote fd=%d", session->remote_fd);
 		selector_unregister_fd(key->s, session->remote_fd);
-		close(session->remote_fd);
+		// close(session->remote_fd);
 		session->remote_fd = -1;
 	}
 
@@ -691,7 +690,6 @@ static void auth_read(struct selector_key *key) {
 		}
 		session->user_type = user_type;
 		session->username = strdup(username);
-		// log(FATAL, "Username is: %s", username);
 		buffer_write(wb, SOCKS5_AUTH_SUCCESS);
 		session->current_state = STATE_AUTH_WRITE;
 	}
@@ -1022,7 +1020,8 @@ static void *dns_resolution_thread(void *arg) {
 	hints.ai_family = AF_UNSPEC;	 // Allow IPv4 and IPv6
 	hints.ai_socktype = SOCK_STREAM; // TCP only
 	hints.ai_protocol = IPPROTO_TCP; // TCP protocol
-	hints.ai_flags = AI_ADDRCONFIG;	 // Only return addresses we can actually use check
+	// hints.ai_flags = AI_ADDRCONFIG;	 // Only return addresses we can actually use check
+	hints.ai_flags = 0;	 // Prevent netlink crash
 
 	char port_str[6];
 	snprintf(port_str, sizeof(port_str), "%u", port);
