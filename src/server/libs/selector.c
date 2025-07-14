@@ -5,11 +5,13 @@
  */
 #include <assert.h> // :)
 #include <errno.h>	// :)
+#include <limits.h>
 #include <pthread.h>
 #include <stdio.h>	// perror
 #include <stdlib.h> // malloc
 #include <string.h> // memset
 #include <sys/eventfd.h>
+
 #include <time.h> // time_t, time()
 
 #include "../include/logger.h" // log function
@@ -168,9 +170,7 @@ struct fdselector {
 };
 
 /** cantidad máxima de file descriptors que la plataforma puede manejar */
-#define ITEMS_MAX_SIZE FD_SETSIZE
-
-// en esta implementación el máximo está dado por el límite natural de select(2).
+#define ITEMS_MAX_SIZE (INT_MAX - 1)
 
 /**
  * determina el tamaño a crecer, generando algo de slack para no tener

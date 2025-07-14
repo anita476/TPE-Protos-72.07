@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NUM_CONNECTIONS=2000
+NUM_CONNECTIONS=1000
 
 URLS=(
     "http://google.com"
