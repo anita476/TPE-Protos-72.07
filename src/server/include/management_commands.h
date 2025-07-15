@@ -18,7 +18,6 @@ void cleanup_session(management_session *session);
 uint8_t authenticate_user(const char *username, const char *password);
 uint8_t add_user_to_system(const char *username, const char *password, uint8_t user_type);
 uint8_t remove_user_from_system(const char *username);
-log_entry_t *get_reusable_log_buffer(size_t required_count);
 
 void set_error_state(management_session *session, uint8_t error_code);
 bool write_to_client(struct selector_key *key, bool should_close);

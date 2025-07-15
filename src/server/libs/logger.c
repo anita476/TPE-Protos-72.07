@@ -5,8 +5,13 @@
 #include <string.h>
 #include <time.h>
 
-#define MAX_RECENT_LOGS 50
+// SOCKS5 / management logging system
+log_entry_t recent_logs[MAX_RECENT_LOGS];
+int log_count = 0;
+int log_index = 0; // Circular buffer index
 
+
+// Global logger
 LOG_LEVEL current_level = DEBUG;
 bool disabled = false;
 
@@ -28,9 +33,6 @@ char *levelDescription(LOG_LEVEL level) {
 	return description[level];
 }
 
-static log_entry_t recent_logs[MAX_RECENT_LOGS];
-static int log_count = 0;
-static int log_index = 0; // Circular buffer index
 
 void add_access_log(const char *username, const char *client_ip, uint16_t client_port, uint8_t dest_atyp,
 					const char *dest_addr, uint16_t dest_port, uint8_t status_code) {
@@ -76,24 +78,4 @@ void add_access_log(const char *username, const char *client_ip, uint16_t client
 		client_port, dest_addr ? dest_addr : "unknown", dest_port, status_code);
 }
 
-int get_recent_logs(log_entry_t *buffer, int max_logs, int offset) {
-	if (offset >= log_count) {
-		return 0;
-	}
 
-	int available = log_count - offset;
-	int to_return = (max_logs < available) ? max_logs : available;
-
-	for (int i = 0; i < to_return; i++) {
-		int src_index;
-		if (log_count < MAX_RECENT_LOGS) {
-			src_index = log_count - 1 - offset - i;
-		} else {
-			// buffer full, use circular indexing
-			src_index = (log_index - 1 - offset - i + MAX_RECENT_LOGS) % MAX_RECENT_LOGS;
-		}
-		buffer[i] = recent_logs[src_index];
-	}
-
-	return to_return;
-}

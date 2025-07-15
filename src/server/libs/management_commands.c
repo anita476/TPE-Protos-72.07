@@ -19,9 +19,9 @@ extern size_t g_management_buffer_size;
 extern struct user *users;
 extern uint8_t nusers;
 
-// Static variables for this module
-static log_entry_t *reusable_log_buffer = NULL;
-static size_t reusable_buffer_capacity = 0;
+extern int log_count, log_index;
+extern log_entry_t recent_logs[];
+
 
 /*********** HELPER FUNCTIONS **************/
 // Standard 4-byte response header: VER | STATUS | CMD | ARG
@@ -172,14 +172,11 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 		log(DEBUG, "[MANAGEMENT] Capping request from %d to %d logs (buffer limit)", number, logs_to_fetch);
 	}
 
-	log_entry_t *log_buffer = get_reusable_log_buffer(logs_to_fetch);
-	if (!log_buffer) {
-		log(ERROR, "[MANAGEMENT] Failed to allocate temp log buffer for session client %d", session->client_fd);
-		write_simple_response_header(wb, RESPONSE_GENERAL_SERVER_FAILURE, COMMAND_LOGS);
-		return;
-	}
-
-	int actual_count = get_recent_logs(log_buffer, logs_to_fetch, offset);
+	int actual_count = 0;
+	if (offset < log_count) {
+        int available_logs = log_count - offset;
+        actual_count = (logs_to_fetch < available_logs) ? logs_to_fetch : available_logs;
+    }
 
 	log(DEBUG, "[MANAGEMENT] Retrieved %d logs from offset %d", actual_count, offset);
 	size_t total_size = RESPONSE_HEADER_LEN + (actual_count * LOG_ENTRY_WIRE_SIZE);
@@ -192,7 +189,15 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 
 	// Write each log entry (payload)
 	for (int i = 0; i < actual_count; i++) {
-		log_entry_t *entry = &log_buffer[i];
+		int src_index;
+		if (log_count < MAX_RECENT_LOGS) {
+			src_index = log_count - 1 - offset - i;
+		} else {
+			// Buffer full, use circular indexing
+			src_index = (log_index - 1 - offset - i + MAX_RECENT_LOGS) % MAX_RECENT_LOGS;
+		}
+
+		log_entry_t *entry = &recent_logs[src_index];
 
 		size_t available_bytes;
 		uint8_t *write_ptr = buffer_write_ptr(wb, &available_bytes);
@@ -558,22 +563,6 @@ uint8_t authenticate_user(const char *username, const char *password) {
 	return RESPONSE_AUTH_FAILURE;
 }
 
-log_entry_t *get_reusable_log_buffer(size_t required_count) {
-	if (required_count > reusable_buffer_capacity) {
-		log_entry_t *new_buffer = realloc(reusable_log_buffer, required_count * sizeof(log_entry_t));
-		if (!new_buffer) {
-			log(ERROR, "[MANAGEMENT] Failed to resize reusable buffer to %zu entries", required_count);
-			return NULL;
-		}
-
-		reusable_log_buffer = new_buffer;
-		reusable_buffer_capacity = required_count;
-		log(DEBUG, "[MANAGEMENT] Resized reusable buffer to %zu entries", required_count);
-	}
-
-	return reusable_log_buffer;
-}
-
 // confio que el cliente me mande bien los datos asi que muchos chequeos no hago
 uint8_t add_user_to_system(const char *username, const char *password, uint8_t user_type) {
 	if (!username || !password) {
@@ -662,12 +651,6 @@ void cleanup_session(management_session *session) {
 	if (session->raw_write_buffer) {
 		free(session->raw_write_buffer);
 		session->raw_write_buffer = NULL;
-	}
-
-	if (reusable_log_buffer) {
-		free(reusable_log_buffer);
-		reusable_log_buffer = NULL;
-		reusable_buffer_capacity = 0;
 	}
 
 	session->cleaned_up = true;

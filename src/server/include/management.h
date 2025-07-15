@@ -6,11 +6,7 @@
 #include "constants.h"
 #include "metrics.h"
 #include "selector.h"
-
-// #define BUFFER_SIZE_MAX 1024 * 64
-// #define BUFFER_SIZE_MIN 1024
-// #define TIMEOUT_SEC_MAX 60
-// #define TIMEOUT_SEC_MIN 1
+#include "logger.h"
 
 // Management connection states (similar to SOCKS5 states)
 typedef enum {
@@ -47,7 +43,6 @@ typedef struct {
 
 } management_session;
 
-// Function declarations (following SOCKS5 pattern)
 void management_handle_new_connection(struct selector_key *key);
 
 #endif
