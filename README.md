@@ -38,3 +38,6 @@ Opcionalmente, se puede especificar un host y puerto de la siguiente manera:
 
 Por defecto se intentará ejecutar la UI gráfica de Dialog. Para utilizar la UI de la consola, puede utilizar la flag `--console`.
 Además, es posible obtener el detalle de los argumentos aceptados con `--help`.
+
+
+Para una descripción más detallada sobre el trabajo realizado puede consultarse el informe ubicado en la carpeta `doc`.
