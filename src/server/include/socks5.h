@@ -44,21 +44,21 @@ typedef enum {
 } socks5_state;
 
 typedef struct {
-	uint8_t atyp;					// SOCKS5_ATYP_IPV4, SOCKS5_ATYP_IPV6, or SOCKS5_ATYP_DOMAIN
+	uint8_t atyp; // SOCKS5_ATYP_IPV4, SOCKS5_ATYP_IPV6, or SOCKS5_ATYP_DOMAIN
 	union {
-        // For direct IP addresses (IPv4 and IPv6)
-        struct {
-            struct sockaddr_storage addr;
-            socklen_t addr_len;
-        } direct;
-        
-        // For resolved domains
-        struct {
-            char *domain_name;
-            struct addrinfo *dst_addresses;
-            uint16_t dst_port;
-        } resolved;
-    } data;
+		// For direct IP addresses (IPv4 and IPv6)
+		struct {
+			struct sockaddr_storage addr;
+			socklen_t addr_len;
+		} direct;
+
+		// For resolved domains
+		struct {
+			char *domain_name;
+			struct addrinfo *dst_addresses;
+			uint16_t dst_port;
+		} resolved;
+	} data;
 	// char *domain_to_resolve;		// Domain name for DNS resolution
 	// struct addrinfo *dst_addresses; // Chain of addresses to try
 	// uint16_t dst_port;				// Port for DNS resolution

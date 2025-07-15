@@ -689,22 +689,22 @@ selector_status selector_select(fd_selector s) {
 		struct item *item = (struct item *) s->events[i].data.ptr;
 
 		if (s->events[i].data.fd == s->notify_fd) {
-        // Handle eventfd notification
-        uint64_t value;
-        ssize_t bytes = read(s->notify_fd, &value, sizeof(value));
-        if (bytes == sizeof(value)) {
-            log(DEBUG, "[SELECTOR_SELECT] DNS notification received via eventfd (value=%lu)", value);
-        } else if (bytes == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-            log(ERROR, "[SELECTOR_SELECT] Error reading from eventfd: %s", strerror(errno));
-        }
-        continue;
-    }
-    
-    // Handle regular socket events
-    if (!item || !ITEM_USED(item) || !item->handler) {
-        log(DEBUG, "[SELECTOR_SELECT] Skipping invalid item for fd=%d", s->events[i].data.fd);
-        continue;
-    }
+			// Handle eventfd notification
+			uint64_t value;
+			ssize_t bytes = read(s->notify_fd, &value, sizeof(value));
+			if (bytes == sizeof(value)) {
+				log(DEBUG, "[SELECTOR_SELECT] DNS notification received via eventfd (value=%lu)", value);
+			} else if (bytes == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+				log(ERROR, "[SELECTOR_SELECT] Error reading from eventfd: %s", strerror(errno));
+			}
+			continue;
+		}
+
+		// Handle regular socket events
+		if (!item || !ITEM_USED(item) || !item->handler) {
+			log(DEBUG, "[SELECTOR_SELECT] Skipping invalid item for fd=%d", s->events[i].data.fd);
+			continue;
+		}
 		struct selector_key key = {
 			.s = s,
 			.fd = item->fd,

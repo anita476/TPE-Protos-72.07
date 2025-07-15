@@ -1020,7 +1020,7 @@ static void *dns_resolution_thread(void *arg) {
 	hints.ai_socktype = SOCK_STREAM; // TCP only
 	hints.ai_protocol = IPPROTO_TCP; // TCP protocol
 	// hints.ai_flags = AI_ADDRCONFIG;	 // Only return addresses we can actually use check
-	hints.ai_flags = 0;	 // Prevent netlink crash
+	hints.ai_flags = 0; // Prevent netlink crash
 
 	char port_str[6];
 	snprintf(port_str, sizeof(port_str), "%u", port);
@@ -1236,41 +1236,41 @@ static void handle_connect_success(struct selector_key *key) {
 
 static bool allocate_remote_buffers(client_session *session) {
 	if (session->raw_remote_read_buffer != NULL || session->raw_remote_write_buffer != NULL) {
-        log(ERROR, "[ALLOCATE_BUFFERS] Remote buffers already allocated! This is a bug.");
-        // Clean up existing buffers first
-        if (session->raw_remote_read_buffer) {
-            free(session->raw_remote_read_buffer);
-            session->raw_remote_read_buffer = NULL;
-        }
-        if (session->raw_remote_write_buffer) {
-            free(session->raw_remote_write_buffer);
-            session->raw_remote_write_buffer = NULL;
-        }
-    }
+		log(ERROR, "[ALLOCATE_BUFFERS] Remote buffers already allocated! This is a bug.");
+		// Clean up existing buffers first
+		if (session->raw_remote_read_buffer) {
+			free(session->raw_remote_read_buffer);
+			session->raw_remote_read_buffer = NULL;
+		}
+		if (session->raw_remote_write_buffer) {
+			free(session->raw_remote_write_buffer);
+			session->raw_remote_write_buffer = NULL;
+		}
+	}
 	session->raw_remote_read_buffer = malloc(session->buffer_size);
-    if (session->raw_remote_read_buffer == NULL) {
-        log(ERROR, "[ALLOCATE_BUFFERS] Failed to allocate remote read buffer");
-        metrics_increment_errors(ERROR_TYPE_MEMORY);
-        return false;
-    }
+	if (session->raw_remote_read_buffer == NULL) {
+		log(ERROR, "[ALLOCATE_BUFFERS] Failed to allocate remote read buffer");
+		metrics_increment_errors(ERROR_TYPE_MEMORY);
+		return false;
+	}
 
-    // Allocate write buffer
-    session->raw_remote_write_buffer = malloc(session->buffer_size);
-    if (session->raw_remote_write_buffer == NULL) {
-        log(ERROR, "[ALLOCATE_BUFFERS] Failed to allocate remote write buffer");
-        metrics_increment_errors(ERROR_TYPE_MEMORY);
-        
-        free(session->raw_remote_read_buffer);
-        session->raw_remote_read_buffer = NULL;
-        return false;
-    }
+	// Allocate write buffer
+	session->raw_remote_write_buffer = malloc(session->buffer_size);
+	if (session->raw_remote_write_buffer == NULL) {
+		log(ERROR, "[ALLOCATE_BUFFERS] Failed to allocate remote write buffer");
+		metrics_increment_errors(ERROR_TYPE_MEMORY);
 
-    // Initialize buffers
-    buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
-    buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
+		free(session->raw_remote_read_buffer);
+		session->raw_remote_read_buffer = NULL;
+		return false;
+	}
 
-    log(DEBUG, "[ALLOCATE_BUFFERS] Remote buffers allocated successfully");
-    return true;
+	// Initialize buffers
+	buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
+	buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
+
+	log(DEBUG, "[ALLOCATE_BUFFERS] Remote buffers allocated successfully");
+	return true;
 }
 static bool build_socks5_success_response(client_session *session) {
 	buffer *wb = &session->write_buffer;

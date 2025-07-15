@@ -1,10 +1,10 @@
 #ifndef SELECTOR_H_W50GNLODsARolpHbsDsrvYvMsbT
 #define SELECTOR_H_W50GNLODsARolpHbsDsrvYvMsbT
 
+#include <netdb.h>
 #include <stdbool.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <netdb.h>
 /**
  * selector.c - un muliplexor de entrada salida
  *

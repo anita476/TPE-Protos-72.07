@@ -4,9 +4,9 @@
 #include "../../shared/include/commands.h"
 #include "buffer.h"
 #include "constants.h"
+#include "logger.h"
 #include "metrics.h"
 #include "selector.h"
-#include "logger.h"
 
 // Management connection states (similar to SOCKS5 states)
 typedef enum {

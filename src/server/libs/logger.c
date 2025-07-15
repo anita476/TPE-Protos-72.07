@@ -10,7 +10,6 @@ log_entry_t recent_logs[MAX_RECENT_LOGS];
 int log_count = 0;
 int log_index = 0; // Circular buffer index
 
-
 // Global logger
 LOG_LEVEL current_level = DEBUG;
 bool disabled = false;
@@ -32,7 +31,6 @@ char *levelDescription(LOG_LEVEL level) {
 		return "";
 	return description[level];
 }
-
 
 void add_access_log(const char *username, const char *client_ip, uint16_t client_port, uint8_t dest_atyp,
 					const char *dest_addr, uint16_t dest_port, uint8_t status_code) {
@@ -77,5 +75,3 @@ void add_access_log(const char *username, const char *client_ip, uint16_t client
 	log(INFO, "[ACCESS] %s@%s:%d -> %s:%d (status=0x%02x)", entry->username, client_ip ? client_ip : "unknown",
 		client_port, dest_addr ? dest_addr : "unknown", dest_port, status_code);
 }
-
-

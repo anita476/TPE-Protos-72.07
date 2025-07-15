@@ -26,7 +26,6 @@ extern uint8_t nusers;
 extern int log_count, log_index;
 extern log_entry_t recent_logs[];
 
-
 /*********** HELPER FUNCTIONS **************/
 // Standard 4-byte response header: VER | STATUS | CMD | ARG
 static void write_response_header(buffer *wb, uint8_t status, uint8_t command, uint8_t arg);
@@ -178,9 +177,9 @@ void process_logs_command(management_session *session, uint8_t number, uint8_t o
 
 	int actual_count = 0;
 	if (offset < log_count) {
-        int available_logs = log_count - offset;
-        actual_count = (logs_to_fetch < available_logs) ? logs_to_fetch : available_logs;
-    }
+		int available_logs = log_count - offset;
+		actual_count = (logs_to_fetch < available_logs) ? logs_to_fetch : available_logs;
+	}
 
 	log(DEBUG, "[MANAGEMENT] Retrieved %d logs from offset %d", actual_count, offset);
 	size_t total_size = RESPONSE_HEADER_LEN + (actual_count * LOG_ENTRY_WIRE_SIZE);
@@ -386,7 +385,6 @@ void process_change_buffer_command(management_session *session, uint8_t new_size
 	uint8_t response_code = RESPONSE_GENERAL_SERVER_FAILURE;
 
 	if (new_size < MIN_BUFF_SIZE_KB || new_size > MAX_BUFF_SIZE_KB) {
-		// This shouldnt even happen because client side alr verifies this
 		log(ERROR, "[MANAGEMENT] Invalid buffer size: %d KB", new_size);
 		response_code = RESPONSE_BAD_REQUEST;
 	} else {
@@ -410,7 +408,6 @@ void process_change_timeout_command(management_session *session, uint8_t new_tim
 	uint8_t response_code = RESPONSE_GENERAL_SERVER_FAILURE;
 
 	if (new_timeout < MIN_TIMEOUT_SECONDS || new_timeout > MAX_TIMEOUT_SECONDS) {
-		// This shouldnt even happen because client side alr verifies this
 		log(ERROR, "[MANAGEMENT] Invalid timeout: %d seconds", new_timeout);
 		response_code = RESPONSE_BAD_REQUEST;
 	} else {
@@ -428,7 +425,6 @@ void process_add_user_command(management_session *session, uint8_t arg1, uint8_t
 	buffer *wb = &session->write_buffer;
 	buffer_reset(wb);
 
-	// arg1 = username_len, arg2 = password_len (from the command header)
 	uint8_t username_len = arg1;
 	uint8_t password_len = arg2;
 
@@ -567,7 +563,6 @@ uint8_t authenticate_user(const char *username, const char *password) {
 	return RESPONSE_AUTH_FAILURE;
 }
 
-// confio que el cliente me mande bien los datos asi que muchos chequeos no hago
 uint8_t add_user_to_system(const char *username, const char *password, uint8_t user_type) {
 	if (!username || !password) {
 		log(ERROR, "[MANAGEMENT] NULL username or password provided, returning %d", RESPONSE_BAD_REQUEST);
@@ -612,7 +607,6 @@ uint8_t add_user_to_system(const char *username, const char *password, uint8_t u
 	return RESPONSE_SUCCESS;
 }
 
-// not a very efficient way to do this, but for now it works
 uint8_t remove_user_from_system(const char *username) {
 	int user_index = -1;
 	for (int i = 0; i < nusers; i++) {
@@ -679,7 +673,6 @@ bool write_to_client(struct selector_key *key, bool should_close) {
 		}
 		if (errno == EPIPE) {
 			log(INFO, "[MANAGEMENT] Client closed connection (EPIPE)");
-			// selector_unregister_fd(key->s, key->fd);
 			close(key->fd);
 			return true;
 		}
@@ -699,7 +692,6 @@ bool write_to_client(struct selector_key *key, bool should_close) {
 	}
 
 	if (should_close) {
-		// selector_unregister_fd(key->s, key->fd);
 		close(key->fd);
 	}
 
