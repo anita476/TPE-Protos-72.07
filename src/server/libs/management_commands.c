@@ -11,8 +11,6 @@
 #include <string.h>
 #include <time.h>
 
-// TODO: when should the server close the client vs. when should it just send an error to the client?
-
 #define CLAMP_UINT16(value) ((value) > UINT16_MAX ? UINT16_MAX : (uint16_t) (value))
 
 extern size_t g_socks5_buffer_size;
@@ -29,8 +27,6 @@ static size_t reusable_buffer_capacity = 0;
 // Standard 4-byte response header: VER | STATUS | CMD | ARG
 static void write_response_header(buffer *wb, uint8_t status, uint8_t command, uint8_t arg);
 static void write_simple_response_header(buffer *wb, uint8_t status, uint8_t command);
-
-// TODO: check error state bc idk if its even necessary
 
 /**************** Command processors *****************/
 /*
@@ -71,7 +67,7 @@ void process_metrics_command(management_session *session) {
 
 	// Pack data efficiently
 	*ptr++ = CALSETTING_VERSION;
-	*ptr++ = 1; // TODO: get server state properly, currently hardcoded to 1
+	*ptr++ = 1;
 
 	uint32_t concurrent = htonl(real_metrics->concurrent_connections);
 	memcpy(ptr, &concurrent, 4);
@@ -307,8 +303,6 @@ void process_userlist_command(management_session *session, uint8_t number, uint8
 	uint8_t remaining_users = total_users - offset;
 	users_to_send = (number > remaining_users) ? remaining_users : number;
 	const size_t bytes_per_user = 1 + 1 + USERNAME_MAX_SIZE;
-
-	// TODO: if users_to_send == 0 -> send answer right away?
 
 	// Calculate required space for variable-length entries
 	size_t required_space =

@@ -35,13 +35,11 @@ void load_users(struct user *u, uint8_t n) { // Change the parameter type
 static void sigterm_handler(const int signal);
 static void exit_error(const char *error_msg, int errnum);
 
-// TODO expand parse args to include  log file
 static struct socks5args args;
 
 // For IPv6 addresses -> setup is dual-stack (accepts both IPv4 and IPv6 connections)
 // For IPv4 addresses -> setup is IPv4-only (accepts only IPv4 connections)
 // If no address is specified, it defaults to "::" (IPv6 wildcard)
-// TODO: delete all unnecessary logs later
 int setupServerSocket(const char *service, const char *addr) {
 	struct addrinfo addrCriteria;
 	memset(&addrCriteria, 0, sizeof(addrCriteria));

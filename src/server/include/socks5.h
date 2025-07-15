@@ -43,15 +43,6 @@ typedef enum {
 	STATE_ERROR,
 } socks5_state;
 
-// REQUEST AND RESPONSE STRUCTURES
-// typedef struct socks5_request {
-// 	uint8_t cmd;  // command <- not needed
-// 	uint8_t atyp; // not needed
-// 	uint16_t dst_port;		 // destination port
-// 	char *domain_to_resolve; // temporary domain to resolve if atyp == SOCKS5_ATYP_DOMAIN, freed after resolution
-// 	struct addrinfo *dst_address;
-// } socks5_request;
-
 typedef struct {
 	uint8_t atyp;					// SOCKS5_ATYP_IPV4, SOCKS5_ATYP_IPV6, or SOCKS5_ATYP_DOMAIN
 	union {
@@ -100,7 +91,7 @@ typedef struct {
 	buffer write_buffer;
 
 	// Buffers (remote side)
-	// Ful duplex communication, buffer for REMOTE connection
+	// Full duplex communication, buffer for REMOTE connection
 	uint8_t *raw_remote_read_buffer; // make into pointer to allocate at runtime
 	uint8_t *raw_remote_write_buffer;
 	buffer remote_read_buffer;
@@ -108,8 +99,8 @@ typedef struct {
 
 	size_t buffer_size; // Size for all buffers
 
-	// DNS handling -> is it necessary to separate it?
-	bool dns_failed; // Add this field
+	// DNS handling
+	bool dns_failed;
 	uint8_t dns_error_code;
 
 	// Error handling
@@ -119,7 +110,7 @@ typedef struct {
 
 	// Authentication
 	bool authenticated;
-	char *username; // TODO: later should point to a struct with more user info
+	char *username;
 	uint8_t user_type;
 
 	// Lifecycle
@@ -129,8 +120,6 @@ typedef struct {
 	time_t connection_start;
 	int idle_timeout;
 	time_t next_timeout;
-
-	// bool should_close; // TODO: maybe do this instead of STATE_CLIENT_CLOSE (mizrahi does this)
 } client_session;
 
 void socks5_handle_new_connection(struct selector_key *key);

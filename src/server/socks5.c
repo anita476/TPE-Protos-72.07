@@ -232,7 +232,7 @@ static void socks5_handle_write(struct selector_key *key) {
 	client_session *session = (client_session *) key->data;
 	switch (session->current_state) {
 		case STATE_HELLO_WRITE:
-		case STATE_AUTH_WRITE: // todo take out redundant state
+		case STATE_AUTH_WRITE:
 			write_to_client(key, false);
 			break;
 		case STATE_REQUEST_WRITE:
@@ -682,7 +682,6 @@ static void auth_read(struct selector_key *key) {
 	if (!valid_user(username, password, &user_type)) {
 		log_socks5_attempt(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED);
 		buffer_write(wb, SOCKS5_REPLY_GENERAL_FAILURE); // TODO: CHECK THIS!
-		// set_error_state(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED);
 		session->current_state = STATE_ERROR_WRITE; /// maybe user a different state for auth error?
 	} else {
 		if (session->username) {
@@ -977,7 +976,7 @@ static void request_resolve(struct selector_key *key) {
 	if (thread_key == NULL) {
 		log(ERROR, "[REQUEST_RESOLVE] Failed to allocate memory for thread key.");
 		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE); // TODO: idk what error to set here
+		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
 		handle_error(key);
 		return;
 	}
@@ -1279,7 +1278,6 @@ static bool build_socks5_success_response(client_session *session) {
 	socklen_t local_len = sizeof(local_addr);
 
 	if (getsockname(session->remote_fd, (struct sockaddr *) &local_addr, &local_len) != 0) {
-		// TODO: check if this is the right thing to do? fallback to a default address if getsockname fails
 		log(ERROR, "[BUILD_SOCKS5_SUCCESS_RESPONSE] getsockname failed: %s. Using default 0.0.0.0", strerror(errno));
 		buffer_write(wb, SOCKS5_ATYP_IPV4);
 		for (int i = 0; i < 6; i++) {

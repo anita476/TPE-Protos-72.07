@@ -163,7 +163,6 @@ Reads:
 VER | ULEN | PWDLEN | USERNAME (ULEN bytes) | PASSWORD (PWDLEN bytes)
 */
 
-// TODO: Distinguish between FATAL errors (close immediately) vs. PROTOCOL errors (send response)
 static void hello_read(struct selector_key *key) {
 	management_session *session = (management_session *) key->data;
 	if (!session) {
@@ -263,8 +262,6 @@ static void hello_read(struct selector_key *key) {
 		response_code = RESPONSE_AUTH_FAILURE;
 		session->authenticated = false;
 		log(INFO, "[MANAGEMENT] Authentication failed: %s", username);
-		// TODO: should close the session after sending the response (it's done based on whether the session is
-		// authenticated... is this theb est way?)
 	}
 
 	buffer *wb = &session->write_buffer;
@@ -314,7 +311,7 @@ static void command_read(struct selector_key *key) {
 	size_t wbytes;
 	uint8_t *ptr = buffer_write_ptr(rb, &wbytes);
 	if (wbytes <= 0) {
-		buffer_compact(rb); // TODO: when do we compact vs we just wait (return)?
+		buffer_compact(rb);
 		ptr = buffer_write_ptr(rb, &wbytes);
 		if (wbytes <= 0) {
 			log(ERROR, "[MANAGEMENT] No buffer space for command read");
@@ -341,7 +338,6 @@ static void command_read(struct selector_key *key) {
 	}
 
 	buffer_write_adv(rb, bytes_read);
-	log(DEBUG, "[MANAGEMENT] Read %zd bytes for command", bytes_read); // TODO: unnecessary debug log... maybe delete
 
 	size_t available;
 	uint8_t *data = buffer_read_ptr(rb, &available);
@@ -409,7 +405,6 @@ static void command_read(struct selector_key *key) {
 			process_get_current_config_command(session);
 			break;
 		default:
-			// TODO: this should never happen due to earlier validation
 			log(ERROR, "[MANAGEMENT] Unknown command: %d", cmd);
 			set_error_state(session, RESPONSE_GENERAL_SERVER_FAILURE);
 			handle_error(key);
