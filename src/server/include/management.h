@@ -1,7 +1,6 @@
 #ifndef _MANAGEMENT_H_
 #define _MANAGEMENT_H_
 #include "../../shared/include/calsetting_protocol.h"
-#include "../../shared/include/commands.h"
 #include "buffer.h"
 #include "constants.h"
 #include "logger.h"

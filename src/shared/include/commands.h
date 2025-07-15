@@ -1,6 +1,0 @@
-#ifndef _COMMANDS_H_
-#define _COMMANDS_H_
-
-typedef enum { CMD_TIMEOUT = 0, CMD_BUFFER_SOCKS5, CMD_ACCESS_LOG, CMD_METRICS } COMMAND;
-
-#endif // _COMMANDS_H_
