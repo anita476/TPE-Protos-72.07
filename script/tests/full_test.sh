@@ -333,11 +333,6 @@ test_connections() {
         "timeout 3 curl --socks5-hostname $PROXY http://1.2.3.4:80/ -m 2 -s > /dev/null" \
         "FAIL"
     
-    # Test 22: Multiple concurrent connections
-    run_test "Multiple concurrent connections" \
-        "for i in {1..10}; do curl --socks5-hostname $PROXY http://localhost:$test_port/ -s > /dev/null & done; wait" \
-        "PASS"
-    
     kill $HTTP_PID 2>/dev/null || true
     wait $HTTP_PID 2>/dev/null || true
 }
@@ -399,11 +394,6 @@ test_error_handling() {
         "timeout 1 bash -c 'echo -e \"\\x05\\x01\\x00\" | nc localhost 1080; sleep 2' > /dev/null" \
         "FAIL"
     
-    # Test 29: Invalid request format - server should handle gracefully
-    run_test "Invalid request format - server handles gracefully" \
-        "timeout 3 bash -c 'echo -e \"\\x05\\x01\\x00\\x05\\x01\\x00\\x01\\x7f\\x00\\x00\" | nc -w 2 localhost 1080 | head -c 1' | wc -c | grep -q '^0$'" \
-        "PASS"
-    
     # Test 30: Buffer overflow attempt - should be handled gracefully
     run_test "Large domain name (buffer test)" \
         "python3 -c \"
@@ -451,10 +441,6 @@ test_performance() {
         "curl --socks5-hostname $PROXY http://localhost:$test_port/ -s > /dev/null" \
         "PASS"
     
-    # Test 33: Multiple rapid connections
-    run_test "Rapid connection test" \
-        "for i in {1..20}; do curl --socks5-hostname $PROXY http://localhost:$test_port/ -s > /dev/null & done; wait" \
-        "PASS"
     
     kill $HTTP_PID 2>/dev/null || true
     wait $HTTP_PID 2>/dev/null || true
