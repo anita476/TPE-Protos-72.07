@@ -260,7 +260,7 @@ static void socks5_handle_write(struct selector_key *key) {
 }
 
 static void socks5_handle_close(struct selector_key *key) {
-	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] *** CLOSE HANDLER CALLED *** for fd=%d", key->fd);
+	log(INFO, "[SOCKS5_HANDLE_CLOSE] *** CLOSE HANDLER CALLED *** for fd=%d", key->fd);
 	if (!key || !key->data) {
 		log(ERROR, "[SOCKS5_HANDLE_CLOSE] Invalid key or session data for fd=%d", key->fd);
 		return;
