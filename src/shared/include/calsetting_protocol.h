@@ -68,7 +68,7 @@
 // LIMITS
 // Buffer size limits (in KB for admin interface)
 #define MIN_BUFF_SIZE_KB 1
-#define MAX_BUFF_SIZE_KB 64
+#define MAX_BUFF_SIZE_KB 255
 
 // Timeout limits (in seconds)
 #define MIN_TIMEOUT_SECONDS 1
