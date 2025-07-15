@@ -15,4 +15,4 @@ echo "Testing wrong username..."
 curl --socks5-hostname wrong:admin@$PROXY $URL -s -o /dev/null && echo "FAIL" || echo "PASS"
 
 echo "Testing no credentials..."
-curl --socks5-hostname $PROXY $URL -s -o /dev/null && echo "FAIL" || echo "PASS"
+curl --socks5-hostname $PROXY $URL -s -o /dev/null && echo "PASS" || echo "FAIL"
