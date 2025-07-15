@@ -92,8 +92,6 @@ void selector_destroy(fd_selector s);
  * de bits.
  *
  * OP_NOOP es útil para cuando no se tiene ningún interés.
- *
- * TODO:  check!!  changed this:   OP_WRITE   = 1 << 2,
  */
 typedef enum {
 	OP_NOOP = 0,

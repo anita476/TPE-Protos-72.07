@@ -464,7 +464,7 @@ static void hello_read(struct selector_key *key) {
 	} else {
 		buffer_write(wb, SOCKS5_NO_ACCEPTABLE_METHODS);
 		log(ERROR, "[HELLO_READ] No acceptable methods. Sending 0xFF.");
-		log_socks5_attempt(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED); // TODO dont think this is ok here
+		log_socks5_attempt(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED);
 		metrics_increment_errors(ERROR_TYPE_AUTH);
 		session->current_state = STATE_ERROR_WRITE;
 	}
@@ -681,8 +681,8 @@ static void auth_read(struct selector_key *key) {
 	uint8_t user_type;
 	if (!valid_user(username, password, &user_type)) {
 		log_socks5_attempt(session, SOCKS5_REPLY_CONNECTION_NOT_ALLOWED);
-		buffer_write(wb, SOCKS5_REPLY_GENERAL_FAILURE); // TODO: CHECK THIS!
-		session->current_state = STATE_ERROR_WRITE; /// maybe user a different state for auth error?
+		buffer_write(wb, SOCKS5_REPLY_GENERAL_FAILURE);
+		session->current_state = STATE_ERROR_WRITE;
 	} else {
 		if (session->username) {
 			free(session->username);
@@ -1091,7 +1091,6 @@ static void request_connect(struct selector_key *key) {
 		return;
 	}
 
-	// TODO: delete this
 	// Log connection attempt
 	char addr_buf[INET6_ADDRSTRLEN + 8];
 	sockaddr_to_human(addr_buf, sizeof(addr_buf), addr);
@@ -1622,7 +1621,6 @@ static bool send_socks5_error_response(struct selector_key *key) {
 		return true;
 	}
 
-	// todo should always reset before writing?
 	buffer_reset(wb);
 
 	if (buffer_writeable_bytes(wb) < 10) { // Minimum size for error response
