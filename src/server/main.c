@@ -138,6 +138,7 @@ int setupServerSocket(const char *service, const char *addr) {
 	log(ERROR, "Failed to create server socket");
 	return -1;
 }
+
 int main(int argc, char **argv) {
 	/********************************************** SETTING UP THE SERVER  ***********************/
 

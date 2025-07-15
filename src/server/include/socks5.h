@@ -59,9 +59,6 @@ typedef struct {
 			uint16_t dst_port;
 		} resolved;
 	} data;
-	// char *domain_to_resolve;		// Domain name for DNS resolution
-	// struct addrinfo *dst_addresses; // Chain of addresses to try
-	// uint16_t dst_port;				// Port for DNS resolution
 } connection_data;
 
 typedef struct {
@@ -125,12 +122,3 @@ typedef struct {
 void socks5_handle_new_connection(struct selector_key *key);
 
 #endif
-
-// typedef struct socks5_response {
-// 	uint8_t rep;				   // replyCode
-// 	uint8_t atyp;				   // address type
-// 	struct sockaddr *boundAddress; // bound address
-// 	socklen_t boundLength;
-// 	uint16_t boundPort;		// bound port
-// 	uint8_t remoteSocketFd; // active socket between server and destination
-// } socks5_response;
