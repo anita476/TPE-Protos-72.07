@@ -104,7 +104,6 @@ finally:
 
 selector_status selector_close(void) {
 	// Nada para liberar.
-	// TODO(juan): podriamos reestablecer el handler de la señal.
 	return SELECTOR_SUCCESS;
 }
 
@@ -578,7 +577,6 @@ selector_status selector_notify_block(fd_selector s, const int fd) {
 
 	selector_status ret = SELECTOR_SUCCESS;
 
-	// TODO(juan): usar un pool
 	struct blocking_job *job = malloc(sizeof(*job));
 	if (job == NULL) {
 		ret = SELECTOR_ENOMEM;
