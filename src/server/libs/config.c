@@ -2,7 +2,7 @@
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "../include/config.h"
 
-size_t g_socks5_buffer_size = 4096;
+size_t g_socks5_buffer_size = (1024 * 32);
 struct timespec g_select_timeout = {10, 0};
 
 int g_connection_timeout = 30;
