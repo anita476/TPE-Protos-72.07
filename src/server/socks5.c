@@ -221,6 +221,11 @@ static void socks5_handle_read(struct selector_key *key) {
 		case STATE_ERROR: //
 			handle_error(key);
 			break;
+		// case STATE_CLIENT_CLOSE:
+		// 	log(INFO, "[SHUTDOWN] Client acknowledged FIN, full graceful teardown complete.");
+		// 	selector_unregister_fd(key->s, key->fd);
+		// 	close(key->fd);
+		// 	break;
 		default:
 			// Should not happen
 			log(ERROR, "[SOCKS5_HANDLE_READ] Unexpected state: %d", session->current_state);
@@ -256,6 +261,10 @@ static void socks5_handle_write(struct selector_key *key) {
 
 static void socks5_handle_close(struct selector_key *key) {
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] *** CLOSE HANDLER CALLED *** for fd=%d", key->fd);
+	if (!key || !key->data) {
+		log(ERROR, "[SOCKS5_HANDLE_CLOSE] Invalid key or session data for fd=%d", key->fd);
+		return;
+	}
 	client_session *session = (client_session *) key->data;
 	if (!session) {
 		return;
@@ -297,7 +306,8 @@ static void socks5_handle_close(struct selector_key *key) {
 
 	// If both remote and client are closed, only then clean up resources
 	log(DEBUG, "[SOCKS5_HANDLE_CLOSE] Both fds closed, cleaning up session");
-	selector_unregister_fd(key->s, key->fd);
+	// selector_unregister_fd(key->s, key->fd);
+	selector_unregister_fd_noclose(key->s, session->client_fd);
 	cleanup_session(session);
 	metrics_decrement_connections();
 
@@ -548,8 +558,10 @@ static void write_to_client(struct selector_key *key, bool should_shutdown) {
 	if (should_shutdown) {
 		log(DEBUG, "[WRITE_TO_CLIENT] All data sent. Shutting down socket.");
 		selector_unregister_fd(key->s, key->fd);
-		shutdown(key->fd, SHUT_RDWR);
 		close(key->fd);
+		// shutdown(key->fd, SHUT_RDWR);
+		// session->current_state = STATE_CLIENT_CLOSE;
+		// selector_set_interest(key->s, key->fd, OP_READ); // we wait for client's EOF
 		return;
 	}
 
@@ -1707,7 +1719,7 @@ bool valid_user(const char *username, const char *password, uint8_t *out_type) {
 }
 
 static void cleanup_session(client_session *session) {
-	if (!session)
+	if (!session || session == NULL)
 		return;
 
 	log(DEBUG, "[CLEANUP] Starting session cleanup for client_fd=%d, remote_fd=%d", session->client_fd,
