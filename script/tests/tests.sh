@@ -5,5 +5,5 @@ make test
 echo 'Tests...'
 ./bin/buffer_test
 ./bin/selector_test
-./bin/netutils_test.c
+./bin/netutils_test
 echo 'All done.'
