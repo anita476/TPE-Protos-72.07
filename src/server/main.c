@@ -7,7 +7,6 @@
 #include "include/metrics.h"
 #include "include/selector.h"
 #include "include/socks5.h"
-#include "util.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
