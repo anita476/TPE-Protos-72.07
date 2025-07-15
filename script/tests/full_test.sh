@@ -490,7 +490,7 @@ print('Success' if len(resp) >= 6 else 'Failed')
 \" | grep -q Success" \
         "PASS"
     
-    # Test 36: IPv6 loopback (may not be supported)
+    # Test 36: IPv6 loopback (may not work if nothing is running on 8080)
     run_test "IPv6 loopback connection" \
         "curl --socks5-hostname $PROXY -6 http://[::1]:8080/ -m 5 -s > /dev/null" \
         "FAIL"
