@@ -65,7 +65,7 @@ int sock_blocking_write(const int fd, buffer *b) {
 		nwritten = send(fd, ptr, n, MSG_NOSIGNAL);
 		if (nwritten > 0) {
 			buffer_read_adv(b, nwritten);
-		} else /* if (errno != EINTR) */ {
+		} else {
 			ret = errno;
 			break;
 		}
@@ -86,7 +86,7 @@ int sock_blocking_copy(const int source, const int dest) {
 			if (nwritten > 0) {
 				nread -= nwritten;
 				out_ptr += nwritten;
-			} else /* if (errno != EINTR) */ {
+			} else {
 				ret = errno;
 				goto error;
 			}

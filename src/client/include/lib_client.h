@@ -7,7 +7,6 @@
 
 #define MAX_STATUS_CODE_LEN_TEXT 35
 
-
 typedef struct client_log_entry {
 	char date[DATE_SIZE];
 	uint8_t ulen;
