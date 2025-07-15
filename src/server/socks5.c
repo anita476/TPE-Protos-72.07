@@ -1236,31 +1236,42 @@ static void handle_connect_success(struct selector_key *key) {
 }
 
 static bool allocate_remote_buffers(client_session *session) {
+	if (session->raw_remote_read_buffer != NULL || session->raw_remote_write_buffer != NULL) {
+        log(ERROR, "[ALLOCATE_BUFFERS] Remote buffers already allocated! This is a bug.");
+        // Clean up existing buffers first
+        if (session->raw_remote_read_buffer) {
+            free(session->raw_remote_read_buffer);
+            session->raw_remote_read_buffer = NULL;
+        }
+        if (session->raw_remote_write_buffer) {
+            free(session->raw_remote_write_buffer);
+            session->raw_remote_write_buffer = NULL;
+        }
+    }
 	session->raw_remote_read_buffer = malloc(session->buffer_size);
-	session->raw_remote_write_buffer = malloc(session->buffer_size);
+    if (session->raw_remote_read_buffer == NULL) {
+        log(ERROR, "[ALLOCATE_BUFFERS] Failed to allocate remote read buffer");
+        metrics_increment_errors(ERROR_TYPE_MEMORY);
+        return false;
+    }
 
-	if (!session->raw_remote_read_buffer || !session->raw_remote_write_buffer) {
-		log(ERROR, "[ALLOCATE_BUFFERS] Failed to allocate remote buffers");
-		metrics_increment_errors(ERROR_TYPE_MEMORY);
+    // Allocate write buffer
+    session->raw_remote_write_buffer = malloc(session->buffer_size);
+    if (session->raw_remote_write_buffer == NULL) {
+        log(ERROR, "[ALLOCATE_BUFFERS] Failed to allocate remote write buffer");
+        metrics_increment_errors(ERROR_TYPE_MEMORY);
+        
+        free(session->raw_remote_read_buffer);
+        session->raw_remote_read_buffer = NULL;
+        return false;
+    }
 
-		if (session->raw_remote_read_buffer) {
-			free(session->raw_remote_read_buffer);
-			session->raw_remote_read_buffer = NULL;
-		}
-		if (session->raw_remote_write_buffer) {
-			free(session->raw_remote_write_buffer);
-			session->raw_remote_write_buffer = NULL;
-		}
+    // Initialize buffers
+    buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
+    buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
 
-		log_socks5_attempt(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		set_error_state(session, SOCKS5_REPLY_GENERAL_FAILURE);
-		return false;
-	}
-
-	buffer_init(&session->remote_read_buffer, session->buffer_size, session->raw_remote_read_buffer);
-	buffer_init(&session->remote_write_buffer, session->buffer_size, session->raw_remote_write_buffer);
-
-	return true;
+    log(DEBUG, "[ALLOCATE_BUFFERS] Remote buffers allocated successfully");
+    return true;
 }
 static bool build_socks5_success_response(client_session *session) {
 	buffer *wb = &session->write_buffer;
