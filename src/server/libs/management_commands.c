@@ -13,12 +13,16 @@
 
 #define CLAMP_UINT16(value) ((value) > UINT16_MAX ? UINT16_MAX : (uint16_t) (value))
 
+// Global configuration variables
 extern size_t g_socks5_buffer_size;
 extern int g_connection_timeout;
 extern size_t g_management_buffer_size;
+
+// User management variables
 extern struct user *users;
 extern uint8_t nusers;
 
+// Logging system variables
 extern int log_count, log_index;
 extern log_entry_t recent_logs[];
 
